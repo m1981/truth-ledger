@@ -60,6 +60,8 @@ The system under study states its own limits ("recheck proves reproducibility, n
 
 **Provenance and reproducibility.** The evidence record (command, output hash, exit code, anchor commit) is a minimal provenance capsule in the spirit of reproducible-research practice: enough to mechanically re-execute and compare, deliberately not enough to prove the *interpretation* correct — a gap the system documents rather than hides, and which our method confirms is real (§7.2).
 
+**Software evolution and entropy.** Lehman's laws of software evolution (Lehman, 1980) established empirically that a used program must change and that, absent explicit counter-effort, its complexity grows — decay as the default trajectory, order as a continuously funded exception. The ledger extends this observation from code to *knowledge about code*: facts about an evolving system decay for the same structural reason the system itself does, and require the same explicit, budgeted counter-effort. §7.4 develops this into an information-theoretic reading of the ledger's mechanics.
+
 ---
 
 ## 3. System Design: The Truth Ledger
@@ -250,7 +252,11 @@ The system's stated limit — recheck proves reproducibility, not sound interpre
 
 F1's fail-open guard and F6's weak gate are instances of one pattern: the machinery that checks the invariants acquires invariants of its own, which nothing checks. The apparatus of §4.6 — enumerate every guard, ask what happens when its preconditions fail — generalizes: *skip conditions in test suites are load-bearing and must themselves be gated.*
 
-### 7.4 Why the closed loop is the contribution
+### 7.4 An information-theoretic reading: the ledger as entropy accounting
+
+The ledger's mechanics admit a compact reading in Shannon's terms. At the moment of verification, uncertainty about a proposition is reduced to (approximately) zero, and the anchor commit timestamps that moment. Every subsequent event that *could* have invalidated the fact — a commit touching its evidence paths, a day elapsing against its TTL — reinjects uncertainty, whether or not it actually changed the truth value: the observer cannot know without re-checking, and unresolved possibility *is* entropy. Under this reading, the record's `evidence_paths` and `ttl_days` are an explicit model of the fact's **decay channels** — the specific event classes through which uncertainty re-enters — and the `stale` status is the mechanical admission that accumulated uncertainty has crossed the trust threshold. Re-verification is the energy spent to reduce entropy back to zero, and v0.4's effective anchor (F2's repair) is precisely what makes that expenditure *durable*: without it, the system charged the re-verification cost every cycle while never crediting the entropy reduction. The readiness matrix (ADR-001) then acquires a cleaner justification than its own ADR offers: it is an **entropy budget per cost tier** — P0 premises tolerate no unresolved uncertainty of the `cannot_verify` kind, lower tiers trade tolerated uncertainty for throughput, and the warning annotation prices unverified debt without blocking on it. We note this reading is a framing, not a formalism — no quantitative entropy is computed — but it points at a measurable future-work question (§9): claim half-life, estimated empirically from invalidation logs, would turn the decay-channel model into a calibrated one, and would let intake suggest TTLs from observed decay rates rather than author guesses.
+
+### 7.5 Why the closed loop is the contribution
 
 Neither half stands alone. The artifact without the audit is engineering with impressive self-description; the audit without the repair-and-re-gate is criticism. The loop — refutations designed in, refutations attacked, defects repaired, repairs gated, the original oracle preserved to prove behavior preservation, and the method itself caught erring once — is what we propose as transferable practice for agentic-era trust infrastructure.
 
@@ -277,6 +283,7 @@ Neither half stands alone. The artifact without the audit is engineering with im
 - **Formal verification of the fold.** The core is a pure function over small event alphabets — a natural target for exhaustive model checking (TLA+/Alloy) of confluence, terminality, and single-status reachability, replacing permutation sampling with proof.
 - **Signed records.** Binding `actor` and `ts` cryptographically closes the backdating threat; the growth-gate discipline says: build it when the first forged timestamp is found in the wild, not before.
 - **Attestation upgrade.** Session-manifest attestation (recording *everything* a claiming session executed) when recheck proves too narrow — already gated in the artifact's roadmap.
+- **Claim half-life measurement.** Estimating per-tier and per-decay-channel claim lifetimes from invalidation logs (§7.4), enabling data-driven TTL suggestions at intake.
 - **The efficacy trial.** Longitudinal measurement of false-VERIFIED rates with and without the ledger, across multiple repositories and agent runtimes.
 - **Cross-language reimplementation as replication.** A port (e.g., Go) using the unchanged 19-fault canary as its acceptance oracle would constitute an unusually clean independent replication of the behavioral contract.
 
@@ -330,90 +337,6 @@ stateDiagram-v2
     retracted --> [*]: terminal — later verdicts, invalidations, AND duplicate claim appends ignored
 ```
 
-
-Here are both — glossary first (per your order), written so each term teaches a tiny lesson rather than just defining, then the hook.
-
----
-
-## Appendix D — Glossary (read these like trading cards, not a dictionary)
-
-**Claim** — A sentence about the repo that someone dared to write down. Writing it down is the point: a claim in the ledger can be checked, aged, and killed. A claim in a chat transcript just haunts you.
-
-**Ledger** — One JSONL file, `.truth/claims.jsonl`. The only file in your repo that remembers what everyone believed and when. You never edit it. Ever. Not even to fix a typo. *Especially* not to fix a typo.
-
-**Append-only** — The rule that makes the ledger trustworthy: history grows, it never changes. To "fix" a wrong claim you add a new record saying it's wrong. Think of it as a lab notebook in pen — crossing out is allowed, tearing out pages is not.
-
-**Fold** — The trick that makes append-only livable. Nobody stores a claim's status; a pure function *replays* every event about it and derives the status fresh. Same log in, same statuses out, every time. If the word bothers you: it's `reduce()` over history.
-
-**Status** — What the fold spits out per claim: `unverified` (filed, unjudged), `live` (independently confirmed), `stale` (its evidence changed under it), `diverged` (someone checked and disagreed — this is the system *working*, not failing), `cannot_verify` (honest shrug), `retracted` (dead).
-
-**Evidence class** — The confidence label you attach at filing. **VERIFIED**: "I ran a command, here's the recipe." **INFERRED**: "I reasoned it from something, here's my basis." **UNVERIFIED**: "I'm saying it out loud so it can be checked later." UNVERIFIED is not shameful — unlabeled confidence is.
-
-**Cost tier** — P0/P1/P2: not how *sure* you are, but how much it *hurts* if you're wrong. "The DB is safe to drop" at P0 gets treated very differently from "the logo is blue" at P2, even at identical confidence.
-
-**Evidence recipe** — For VERIFIED claims: the exact command, a hash of its output, its exit code, and the commit it ran at. Enough for a machine to re-run it later and notice the world changed. A screenshot proves you saw something once; a recipe proves it can be seen again.
-
-**Anchor** — The commit your evidence was cooked at. The scan watches everything between the anchor and HEAD; touch the claim's files in that window and it goes stale. Re-verify, and the anchor moves forward — that's what makes re-verification stick.
-
-**TTL** — Time-to-live, for facts git can't see ("the vendor API allows 100 req/min"). Git can't tell you when a vendor changes their docs, but a calendar can tell you when your knowledge is old enough to distrust.
-
-**Verdict** — A judgment on a claim by someone who checked: agree, diverge, cannot_verify — always with a **basis** ("re-ran grep, 0 matches"), never a vibe ("looks right"). Your verdict is itself a claim, and it carries your name.
-
-**Verifier** — A *fresh* agent session handed exactly one claim and a fixed prompt — never the author's reasoning. If the verifier saw the author's transcript, it would inherit the author's blind spots and agreement would prove nothing. Independence isn't hoped for; it's scripted.
-
-**Recheck** — The mechanical half of verification: re-run the recipe, compare hashes. Catches *changed reality*, not *wrong interpretation*. A correct grep with a wrong conclusion passes recheck — that gap is yours.
-
-**Tombstone** — A retracted claim. Terminal. Later verdicts bounce off it, duplicate appends bounce off it, nothing resurrects it. The one irreversible act in the system, which is exactly why it's humans-only and requires explicit confirmation.
-
-**Premise** — A link saying "this work item depends on this claim." The bridge from knowing to doing: if the claim dies, the work is held before an agent picks it up.
-
-**Invariant** — A promise the system makes about itself, stated *with* the observation that would break it. "The ledger is append-only — falsified by one mutated historical line." No named breaker, no real promise.
-
-**Canary** — Nineteen deliberate lies seeded into sandbox repos every week. Every lie must be caught. The day one isn't, the immune system has a hole and you stop trusting green checkmarks until it's fixed.
-
-**Doctor** — Checks *your* wiring, not the tool. The canary proves the scripts can catch faults in a sandbox; doctor proves your actual repo would.
-
-**Queue** — Everything needing a human: diverged claims, stale P0/P1s, unverifiable P0s — with their age in days, because a queue nobody drains is a dashboard, and a dashboard is not a defense.
-
----
-
-## Part 0 — The Hook
-
-### 0.1 A war story
-
-Monday, 10:14. You ask your agent whether anything still calls `legacyAuth()`. It greps, reads, and answers: "No call sites remain. Safe to remove." It's right — you spot-check it yourself. Nice.
-
-Tuesday, a teammate merges a hotfix. Buried in it: one new call to `legacyAuth()`, because their branch was cut last week, before the cleanup.
-
-Friday, 16:40. Different chat, fresh agent session, same repo. You're finishing the refactor and ask, "anything blocking removal of legacyAuth?" The agent — which cannot remember Monday, but *can* read Monday's notes in your planning doc — answers with perfect confidence: "No, this was already verified as unused." You delete the module. CI is green, because the hotfix path only runs in production.
-
-Saturday belongs to the on-call engineer.
-
-Now the uncomfortable part: **nobody lied.** Monday's agent was right on Monday. Friday's agent faithfully repeated a fact that had been true. The repo changed in between, and there was no mechanism — none — by which Tuesday's commit could reach back and mark Monday's fact as expired. The fact had no expiry date, no list of files it depended on, no record of how it was established. It was just a confident sentence, and confident sentences don't age visibly. They stay crisp while reality rots underneath them.
-
-You already have a tool that would never let this happen to *code*. If the hotfix had conflicted with your refactor, git would have stopped the merge cold. Git is ruthless about one question: *what changed?* But git has no opinion whatsoever about the other question: *what did we believe, and does the change break it?*
-
-### 0.2 The one-sentence pitch
-
-> **Git tracks what changed. The truth ledger tracks what we still believe — and lets the changes kill the beliefs.**
-
-Concretely: on Monday, the agent's finding becomes one command —
-
-```
-truth claim "no call sites remain for legacyAuth()" \
-  --class VERIFIED --evidence-cmd "grep -rn legacyAuth src/" \
-  --paths "src/**" --tier P0
-```
-
-— a sentence with a *recipe* (the exact grep, a hash of its empty output, the commit it ran at) and a *tripwire* (the paths it depends on). Tuesday's hotfix touches `src/`; the post-merge scan sees the tripwire and demotes the claim to **stale** — mechanically, with no human vigilance involved. Friday's agent, before trusting anything, runs `truth list --live` — and Monday's fact simply isn't in the list anymore. Better: the removal task was *premised on* that claim, so `truth ready` shows it as **HELD** before any agent even picks it up.
-
-Saturday belongs to nobody.
-
-The rest of this guide unpacks how that one file and one small CLI pull this off — and, just as important, what they *cannot* do, because a trust tool that overstates itself is exactly the failure it was built to prevent.
-
----
-
-
 ## References
 
 *(Indicative; the author of this draft is a language model without database access — citations must be verified before submission.)*
@@ -421,6 +344,7 @@ The rest of this guide unpacks how that one file and one small CLI pull this off
 - Lamport, L., Shostak, R., & Pease, M. (1982). The Byzantine Generals Problem. *ACM TOPLAS*, 4(3).
 - Castro, M., & Liskov, B. (1999). Practical Byzantine Fault Tolerance. *OSDI '99*.
 - Popper, K. (1959). *The Logic of Scientific Discovery.*
+- Lehman, M. M. (1980). Programs, Life Cycles, and Laws of Software Evolution. *Proceedings of the IEEE*, 68(9).
 - Claessen, K., & Hughes, J. (2000). QuickCheck: A Lightweight Tool for Random Testing of Haskell Programs. *ICFP '00*.
 - Shapiro, M., Preguiça, N., Baquero, C., & Zawirski, M. (2011). Conflict-free Replicated Data Types. *SSS 2011*.
 - Nakamoto, S. (2008). Bitcoin: A Peer-to-Peer Electronic Cash System.
