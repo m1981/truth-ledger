@@ -1,0 +1,72 @@
+# truth-ledger copier template — minimal by design.
+#
+# NON-INTERFERENCE CONTRACT (each clause is testable; see tests/ in the
+# template repo history):
+#
+#   N1  .truth/claims.jsonl is NOT a template file. Copier never creates
+#       it from the template, never diffs it, never rewrites it on
+#       `copier update`. It is touched into existence by an idempotent
+#       task. This is what protects INV-A (append-only) from the
+#       scaffolding tool itself.
+#   N2  .gitattributes is NOT owned by the template. The merge=union rule
+#       is appended by an idempotent task (grep-or-echo), so user rules
+#       survive and repeated copy/update adds the line at most once.
+#   N3  No git ceremony: no `git init`, no auto-commit, no history
+#       written on the user's behalf. Hooks install only if `.git`
+#       already exists, and only the stable 2-line shims — the real gate
+#       logic (check-truth.sh) updates through normal file diffs.
+#   N4  AGENTS.md is _skip_if_exists: an existing discovery file is never
+#       clobbered; the operator merges the snippet by hand.
+#   N5  The scaffold self-test FAILS CLOSED: if the 19-fault canary does
+#       not fully pass in the freshly scaffolded project, the task exits
+#       non-zero and copier aborts loudly. A safety check whose failure
+#       mode is a print statement is a norm, not a property.
+#
+# Zero questions on purpose: the ledger is repo-shape-agnostic, so there
+# is nothing to ask. Fewer variants, nothing to rot, nothing for a
+# variant-matrix CI to cover.
+
+_min_copier_version: "9.0.0"
+_subdirectory: template
+_answers_file: .copier-answers.truth-ledger.yml
+
+_skip_if_exists:
+  - AGENTS.md          # N4: never clobber an existing discovery file
+
+_message_after_copy: |
+  truth-ledger scaffolded and canary-verified (19/19).
+
+  Remaining manual steps (deliberately not automated):
+    1. If this repo has no .git yet:  git init && bash scripts/install-hooks.sh
+    2. Copy the 4-line snippet from AGENTS.md into every instruction file
+       your agent runtimes load (CLAUDE.md, .cursorrules, ...).
+    3. pip install jsonschema   (the drift detector must run ARMED in CI)
+    4. scripts/truth doctor     (after your first commit — it checks that
+       anchors are resolvable, which needs at least one commit)
+    5. Commit the scaffold yourself. Your history is yours.
+
+_tasks:
+  # N1 — create the ledger OUTSIDE copier's management. Idempotent:
+  # `touch` on an existing, populated ledger changes nothing. Runs on
+  # copy and update so a deleted ledger is restored empty, never rewritten.
+  - command: "mkdir -p .truth && touch .truth/claims.jsonl"
+
+  # N2 — idempotent append of the union-merge rule. grep guard means
+  # copy + N updates still yield exactly one line, and any user-authored
+  # .gitattributes content is preserved untouched.
+  - command: "grep -qxF '.truth/claims.jsonl merge=union' .gitattributes 2>/dev/null || printf '%s\\n' '.truth/claims.jsonl merge=union' >> .gitattributes"
+
+  # Permissions must survive updates (a pulled-in file diff resets them).
+  - command: "chmod +x scripts/truth scripts/check-truth.sh scripts/truth-canary.sh scripts/install-hooks.sh"
+
+  # N3 — hooks only where a repo already exists, shims only, no commits.
+  # On update, install-hooks.sh is safe to re-run (idempotent overwrite of
+  # the 2-line shims); guarded on .git so scaffolding into a bare
+  # directory stays inert.
+  - command: "test -d .git && bash scripts/install-hooks.sh || echo 'no .git yet: run scripts/install-hooks.sh after git init'"
+
+  # N5 — fail-closed acceptance: the full seeded-fault canary must pass in
+  # the scaffolded project or the scaffold ABORTS (non-zero exit). Scaffold
+  # only: on update, the weekly canary routine owns this.
+  - command: "bash scripts/truth-canary.sh"
+    when: "{{ _copier_operation == 'copy' }}"
