@@ -23,10 +23,13 @@ Procedure, in order:
    The tool applies these rules for you: hash mismatch -> diverge;
    evidence command not found (exit 127) -> cannot_verify (environment
    problem, not reality problem); deleted evidence files -> diverge
-   (reality changed). If the recheck diverges, you are done.
-   If it agrees, continue: a matching hash proves the command still
-   produces that output, not that the claim's TEXT is a sound
-   interpretation of it.
+   (reality changed). Those negative outcomes are FILED automatically
+   (they are mechanical facts) -- if the recheck diverges, you are done;
+   do not file a duplicate.
+   A MATCHING hash is only reported, never filed: it proves the command
+   still produces that output, not that the claim's TEXT is a sound
+   interpretation of it. Your agree (or diverge) is filed by you, once,
+   after step 2.
 
 2. DECODE INDEPENDENTLY. State to yourself what the claim asserts, then
    ask: does the evidence actually support that assertion? Check the

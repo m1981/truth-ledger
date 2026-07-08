@@ -49,11 +49,28 @@ if $T doctor >/dev/null 2>&1; then
 else
   miss "doctor failed a correctly wired repo"; $T doctor || true
 fi
+# TL-1: hooks live where core.hooksPath says; .git/hooks wiring must not count
+git config core.hooksPath .hookmgr/_
+mkdir -p .hookmgr/_
+if $T doctor >/dev/null 2>&1; then
+  miss "doctor trusted .git/hooks while core.hooksPath points elsewhere"
+else
+  ok "doctor failed when core.hooksPath bypasses the wired hooks"
+fi
+# husky-style delegation: user hooks one level above the `_` shim dir, no +x
+printf '#!/usr/bin/env sh\nbash scripts/check-truth.sh || exit 1\n' > .hookmgr/pre-commit
+printf '#!/usr/bin/env sh\npython3 scripts/truth invalidate-scan --quiet\n' > .hookmgr/post-merge
+if $T doctor >/dev/null 2>&1; then
+  ok "doctor passed hook-manager wiring (hooksPath + _ delegation)"
+else
+  miss "doctor failed a correctly wired hook-manager repo"; $T doctor || true
+fi
+git config --unset core.hooksPath
 
 say "FAULT B (INV-C): commit touching evidence paths must mark the claim stale"
 CID_B=$($T claim "watched.txt says hello" --class VERIFIED \
         --evidence-cmd "cat watched.txt" --paths "watched.txt" --tier P0)
-$T verdict "$CID_B" --recheck >/dev/null
+$T verdict "$CID_B" agree --basis "canary: verified at filing" >/dev/null
 git add .truth/claims.jsonl && git commit -qm "canary: claim B" --no-verify
 echo "changed" >> watched.txt
 git add watched.txt && git commit -qm "canary: mutate evidence" --no-verify
@@ -72,6 +89,19 @@ if $T verdict "$CID_C" --recheck | grep -q diverge; then
   ok "recheck flagged hash mismatch on $CID_C"
 else
   miss "recheck accepted stale evidence on $CID_C"
+fi
+
+say "FAULT O (TL-4): recheck with matching hash must report, not file"
+echo hello > intact.txt
+CID_O=$($T claim "intact.txt says hello" --class VERIFIED \
+        --evidence-cmd "cat intact.txt" --paths "intact.txt" --tier P1)
+N_BEFORE=$(grep -c "" .truth/claims.jsonl)
+$T verdict "$CID_O" --recheck >/dev/null
+N_AFTER=$(grep -c "" .truth/claims.jsonl)
+if [ "$N_AFTER" -eq "$N_BEFORE" ] && $T list --unverified | grep -q "$CID_O"; then
+  ok "matching recheck filed nothing; $CID_O still awaits a judged verdict"
+else
+  miss "recheck auto-filed a verdict on matching evidence (verifier pre-committed)"
 fi
 
 say "FAULT D (G10): claim past its ttl_days must expire to stale"
@@ -132,7 +162,7 @@ EOF
 chmod +x bd
 CID_L=$($T claim "watched.txt now says hello changed" --class VERIFIED \
         --evidence-cmd "cat watched.txt" --paths "watched.txt" --tier P1 --duplicate-ok)
-$T verdict "$CID_L" --recheck >/dev/null
+$T verdict "$CID_L" agree --basis "canary: verified at filing" >/dev/null
 $T premise bd-x1 "$CID_B" >/dev/null
 $T premise bd-x2 "$CID_L" >/dev/null
 READY_OUT=$(PATH="$PWD:$PATH" $T ready)
@@ -263,7 +293,7 @@ echo data > g.txt
 git add -A && git commit -qm "canary: init"
 CID_E=$($T claim "g.txt says data" --class VERIFIED \
         --evidence-cmd "cat g.txt" --paths "g.txt" --tier P0)
-$T verdict "$CID_E" --recheck >/dev/null
+$T verdict "$CID_E" agree --basis "canary: verified at filing" >/dev/null
 git checkout -q --orphan rewritten
 git add -A && git commit -qm "canary: history rewritten"
 git branch -D main -q

@@ -529,6 +529,19 @@ def cmd_verdict(a):
         else:
             digest, rc = run_evidence(ev["command"])
             verdict, basis = recheck_verdict(ev, digest, rc)
+        if verdict == "agree":
+            # A matching hash is a report, not a judgment: filing agree here
+            # would commit the verifier to a verdict before the
+            # interpretation step, and force protocol-obedient verifiers to
+            # double-file. Only the mechanical negative outcomes (diverge,
+            # cannot_verify) are objective enough to auto-file.
+            out = {"claim": a.claim_id, "recheck": "agree", "filed": False}
+            print(json.dumps(out) if a.json else
+                  f"{a.claim_id} recheck: hash matches -- nothing filed. If "
+                  "the evidence also supports the claim's TEXT, file your "
+                  f"judgment: truth verdict {a.claim_id} agree --basis "
+                  "'<what you checked>'")
+            return
     else:
         if not a.verdict or not a.basis:
             sys.exit("truth: manual verdicts require <verdict> and --basis")
@@ -713,16 +726,50 @@ def cmd_doctor(a):
     gd = r.stdout.strip()
     if not os.path.isabs(gd):
         gd = os.path.join(root, gd)
-    for hook, needle, purpose in (("pre-commit", "check-truth", "INV-A/INV-B"),
-                                  ("post-merge", "invalidate-scan", "INV-C")):
-        hp = os.path.join(gd, "hooks", hook)
-        if os.path.exists(hp) and os.access(hp, os.X_OK) \
-                and needle in open(hp, encoding="utf-8", errors="replace").read():
-            ok(f"{hook} hook enforces {purpose}")
+    # Hooks live where core.hooksPath says, not where an installer wrote
+    # them: checking .git/hooks on a husky/lefthook repo reports health the
+    # repo does not have (a doctor that fails open on its one job).
+    hp_cfg = subprocess.run(["git", "config", "core.hooksPath"],
+                            capture_output=True, text=True,
+                            cwd=root).stdout.strip()
+    if hp_cfg:
+        hooks_dir = hp_cfg if os.path.isabs(hp_cfg) else os.path.join(root, hp_cfg)
+    else:
+        hooks_dir = os.path.join(gd, "hooks")
+
+    def hook_candidates(name):
+        # (path, must_be_executable). git requires +x in the effective dir;
+        # manager-delegated user hooks (husky runs `.husky/<name>` from the
+        # `_` shim dir via sh) commonly are not executable themselves.
+        cands = [(os.path.join(hooks_dir, name), True)]
+        if os.path.basename(hooks_dir.rstrip(os.sep)) == "_":
+            cands.append((os.path.join(
+                os.path.dirname(hooks_dir.rstrip(os.sep)), name), False))
+        return cands
+
+    for names, needle, purpose in ((("pre-commit",), "check-truth", "INV-A/INV-B"),
+                                   (("post-merge", "post-commit"),
+                                    "invalidate-scan", "INV-C")):
+        hit = None
+        for name in names:
+            for hp, need_x in hook_candidates(name):
+                if os.path.exists(hp) and (not need_x or os.access(hp, os.X_OK)) \
+                        and needle in open(hp, encoding="utf-8",
+                                           errors="replace").read():
+                    hit = hp
+                    break
+            if hit:
+                break
+        if hit:
+            ok(f"{names[0]} hook enforces {purpose}",
+               os.path.relpath(hit, root))
         else:
-            fail(f"{hook} hook enforces {purpose}",
-                 f"missing/not executable/does not call {needle} "
-                 "(use CI equivalents if hooks are unavailable, see README)")
+            where = os.path.relpath(hooks_dir, root)
+            fail(f"{names[0]} hook enforces {purpose}",
+                 f"no executable hook invoking {needle} under {where}"
+                 + (" -- core.hooksPath is set, so .git/hooks is IGNORED by git"
+                    if hp_cfg else "")
+                 + " (use CI equivalents if hooks are unavailable, see README)")
 
     found = [f for f in DISCOVERY_FILES
              if os.path.exists(os.path.join(root, f))
