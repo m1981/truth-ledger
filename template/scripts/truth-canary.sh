@@ -233,9 +233,12 @@ git checkout -q -- .truth/claims.jsonl
 
 say "FAULT A (INV-A): mutating a historical ledger line must block the commit"
 git add -A && git commit -qm "canary: settle ledger" --no-verify
-sed -i '1s/claim/CLAIM_TAMPERED/' .truth/claims.jsonl
+# -i.bak is the only sed -i form GNU and BSD/macOS sed both accept
+sed -i.bak '1s/claim/CLAIM_TAMPERED/' .truth/claims.jsonl && rm -f .truth/claims.jsonl.bak
 git add .truth/claims.jsonl
-if bash scripts/check-truth.sh >/dev/null 2>&1; then
+if ! grep -q CLAIM_TAMPERED .truth/claims.jsonl; then
+  miss "fault injection failed: ledger line was never mutated (sed)"
+elif bash scripts/check-truth.sh >/dev/null 2>&1; then
   miss "check-truth.sh allowed a mutated historical record"
 else
   ok "check-truth.sh blocked the tampered ledger"
