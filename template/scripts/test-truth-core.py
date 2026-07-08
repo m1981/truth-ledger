@@ -349,6 +349,128 @@ class TestDispatch(unittest.TestCase):
         # also caught by a missing terminator
         self.assertLess(out.index("CLAIM RECORD"), out.rindex("END-OF-DISPATCH"))
 
+# ------------------------------------------------ work kernel (ADR-002)
+
+def issue_rec(rid="wk-00000001", ts=TS, **over):
+    p = {"title": "do the thing", "text": "", "deps": [], "premises": []}
+    p.update(over)
+    return rec("issue", p, rid=rid, ts=ts)
+
+def issue_ev(event, ref="wk-00000001", ts=TS, rid="tr-000000e1", basis="b"):
+    return rec("issue_event", {"issue": ref, "event": event, "basis": basis},
+               rid=rid, ts=ts)
+
+class TestFoldIssues(unittest.TestCase):
+    def test_new_issue_is_open(self):
+        issues = tm.fold_issues(events(issue_rec()))
+        self.assertEqual(issues["wk-00000001"]["status"], "open")
+
+    def test_lifecycle_open_claimed_closed_reopened(self):
+        evs = events(
+            issue_rec(ts="2026-07-01T00:00:00+00:00"),
+            issue_ev("claimed", ts="2026-07-01T00:00:01+00:00", rid="tr-000000e1"),
+            issue_ev("closed", ts="2026-07-01T00:00:02+00:00", rid="tr-000000e2"),
+            issue_ev("reopened", ts="2026-07-01T00:00:03+00:00", rid="tr-000000e3"))
+        for cut, want in ((1, "open"), (2, "claimed"), (3, "closed"), (4, "open")):
+            issues = tm.fold_issues(evs[:cut])
+            self.assertEqual(issues["wk-00000001"]["status"], want)
+
+    def test_cancelled_is_terminal(self):
+        evs = events(
+            issue_rec(ts="2026-07-01T00:00:00+00:00"),
+            issue_ev("cancelled", ts="2026-07-01T00:00:01+00:00", rid="tr-000000e1"),
+            issue_ev("reopened", ts="2026-07-01T00:00:02+00:00", rid="tr-000000e2"),
+            issue_ev("claimed", ts="2026-07-01T00:00:03+00:00", rid="tr-000000e3"))
+        issues = tm.fold_issues(evs)
+        self.assertEqual(issues["wk-00000001"]["status"], "cancelled")
+
+    def test_last_issue_payload_wins(self):
+        evs = events(
+            issue_rec(title="v1", ts="2026-07-01T00:00:00+00:00"),
+            issue_rec(title="v2", ts="2026-07-01T00:00:05+00:00"))
+        issues = tm.fold_issues(evs)
+        self.assertEqual(issues["wk-00000001"]["issue"]["payload"]["title"], "v2")
+
+    def test_confluence_file_order_irrelevant(self):
+        a = issue_rec(ts="2026-07-01T00:00:00+00:00")
+        b = issue_ev("claimed", ts="2026-07-01T00:00:01+00:00", rid="tr-000000e1")
+        c = issue_ev("closed", ts="2026-07-01T00:00:02+00:00", rid="tr-000000e2")
+        fwd = tm.fold_issues(events(a, b, c))
+        rev = tm.fold_issues(events(c, b, a))
+        self.assertEqual(fwd["wk-00000001"]["status"],
+                         rev["wk-00000001"]["status"])
+
+    def test_event_for_unknown_issue_ignored(self):
+        issues = tm.fold_issues(events(issue_ev("closed", ref="wk-deadbeef")))
+        self.assertEqual(issues, {})
+
+class TestIssueEventError(unittest.TestCase):
+    def test_transition_matrix(self):
+        ok = [("open", "claimed"), ("claimed", "released"), ("open", "closed"),
+              ("claimed", "closed"), ("closed", "reopened"),
+              ("open", "cancelled"), ("claimed", "cancelled"),
+              ("closed", "cancelled")]
+        bad = [("closed", "claimed"), ("open", "released"), ("open", "reopened"),
+               ("closed", "closed"), ("cancelled", "reopened"),
+               ("cancelled", "closed"), ("cancelled", "claimed")]
+        for st, ev in ok:
+            self.assertIsNone(tm.issue_event_error(st, ev), f"{st}->{ev}")
+        for st, ev in bad:
+            self.assertIsNotNone(tm.issue_event_error(st, ev), f"{st}->{ev}")
+
+class TestNativeReady(unittest.TestCase):
+    def _issues(self, *evs):
+        return tm.fold_issues(events(*evs))
+
+    def test_open_no_deps_is_ready(self):
+        ready = tm.native_ready_issues(self._issues(issue_rec()))
+        self.assertEqual(ready, [{"id": "wk-00000001", "title": "do the thing"}])
+
+    def test_claimed_not_ready(self):
+        issues = self._issues(issue_rec(), issue_ev("claimed",
+                              ts="2026-07-01T00:00:01+00:00"))
+        self.assertEqual(tm.native_ready_issues(issues), [])
+
+    def test_dep_gates_until_closed(self):
+        dep = issue_rec(rid="wk-000000aa", ts="2026-07-01T00:00:00+00:00")
+        top = issue_rec(rid="wk-000000bb", deps=["wk-000000aa"],
+                        ts="2026-07-01T00:00:00+00:00")
+        blocked = self._issues(dep, top)
+        self.assertNotIn("wk-000000bb",
+                         [i["id"] for i in tm.native_ready_issues(blocked)])
+        unblocked = self._issues(dep, top,
+                                 issue_ev("closed", ref="wk-000000aa",
+                                          ts="2026-07-01T00:00:01+00:00"))
+        self.assertIn("wk-000000bb",
+                      [i["id"] for i in tm.native_ready_issues(unblocked)])
+
+    def test_cancelled_or_unknown_dep_blocks_forever(self):
+        dep = issue_rec(rid="wk-000000aa", ts="2026-07-01T00:00:00+00:00")
+        top = issue_rec(rid="wk-000000bb", deps=["wk-000000aa"],
+                        ts="2026-07-01T00:00:00+00:00")
+        cancelled = self._issues(dep, top,
+                                 issue_ev("cancelled", ref="wk-000000aa",
+                                          ts="2026-07-01T00:00:01+00:00"))
+        self.assertNotIn("wk-000000bb",
+                         [i["id"] for i in tm.native_ready_issues(cancelled)])
+        ghost = self._issues(issue_rec(rid="wk-000000bb", deps=["wk-00ghost0"]))
+        self.assertEqual(tm.native_ready_issues(ghost), [])
+
+class TestIssuePremiseMerge(unittest.TestCase):
+    def test_premise_at_birth_collected_and_merged(self):
+        issues = tm.fold_issues(events(issue_rec(premises=["tr-000000c1"])))
+        born = tm.issue_premises(issues)
+        self.assertEqual(born, {"wk-00000001": ["tr-000000c1"]})
+        merged = tm.merge_premises({"wk-00000001": ["tr-000000c2"],
+                                    "bd-x1": ["tr-000000c3"]}, born)
+        self.assertEqual(merged["wk-00000001"], ["tr-000000c2", "tr-000000c1"])
+        self.assertEqual(merged["bd-x1"], ["tr-000000c3"])
+
+    def test_merge_deduplicates(self):
+        merged = tm.merge_premises({"w": ["tr-000000c1"]},
+                                   {"w": ["tr-000000c1"]})
+        self.assertEqual(merged["w"], ["tr-000000c1"])
+
 # ------------------------------------------ schema conformance (shared corpus)
 
 # Each fixture: (name, record, expected_valid). This corpus is the single
@@ -387,6 +509,21 @@ CORPUS = [
                                    "claim": "tr-00000001"}), True),
     ("premise missing issue", rec("premise", {"claim": "tr-00000001"}), False),
     ("unknown kind", rec("wish", {"claim": "tr-00000001"}), False),
+    # ---- work kernel (ADR-002, v0.5) ----
+    ("issue ok", issue_rec(deps=["wk-00000002"],
+                           premises=["tr-00000001"]), True),
+    ("issue missing title", issue_rec(title=""), False),
+    ("issue with tr envelope id", issue_rec(rid="tr-00000001"), False),
+    ("issue bad dep ref", issue_rec(deps=["bd-x1"]), False),
+    ("issue bad premise ref", issue_rec(premises=["nope"]), False),
+    ("issue_event claimed ok", issue_ev("claimed"), True),
+    ("issue_event closed with basis", issue_ev("closed", basis="done"), True),
+    ("issue_event closed missing basis",
+     rec("issue_event", {"issue": "wk-00000001", "event": "closed"}), False),
+    ("issue_event bad event", issue_ev("paused"), False),
+    ("issue_event bad ref", issue_ev("claimed", ref="bd-x1"), False),
+    ("issue_event with wk envelope id",
+     issue_ev("claimed", rid="wk-00000009"), False),
 ]
 
 class TestConformancePython(unittest.TestCase):

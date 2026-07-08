@@ -42,7 +42,25 @@ readiness-join semantics.
    `CLAUDE.md`, `.cursorrules`, `copilot-instructions.md`, etc. too.
 4. `pip install jsonschema` — required so the drift detector runs armed.
 5. `scripts/truth doctor` — installation must pass.
-6. `bash scripts/truth-canary.sh` — nineteen faults, all CAUGHT, or stop.
+6. `bash scripts/truth-canary.sh` — every fault CAUGHT, or stop.
+
+## Work kernel (ADR-002, v0.5)
+
+Issues can live in the same ledger as facts — no external tracker needed:
+
+    scripts/truth issue "title" --premise tr-xxxx   # premise-at-birth
+    scripts/truth start wk-xxxx                     # claim it
+    scripts/truth done wk-xxxx --basis "..." \
+      --claim "<what the work made true>" --class VERIFIED \
+      --evidence-cmd "..." --paths "..."            # claim-at-death
+    scripts/truth ready                             # open ∧ deps closed ∧ premises valid
+    scripts/truth issues                            # full board with derived status
+
+`closed` can be reopened (`done --reopen`); `cancelled` is terminal and
+human-gated (`TRUTH_HUMAN=1 truth done wk-x --cancel --basis "..."`).
+External trackers still work through the seam (`TRUTH_TRACKER_CMD`,
+`--stdin`); `truth issues --ready-json` emits the same contract, so you
+can run both and diff. Full semantics: `docs/adr/002-native-work-kernel.md`.
 
 ## Daily operation
 

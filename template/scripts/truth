@@ -1,5 +1,21 @@
 #!/usr/bin/env python3
-"""truth v0.4.1 -- append-only claims ledger beside any work tracker.
+"""truth v0.5 -- append-only claims ledger with a native work kernel.
+
+v0.5 (ADR-002, work kernel): issues live in the same ledger as claims.
+  Two new record kinds -- `issue` (wk- envelope id; payload title/text/
+  deps/premises) and `issue_event` (claimed|released|closed|reopened|
+  cancelled) -- folded in the same confluent (ts, id) order. Status is
+  derived, never stored. `closed` is NOT terminal (work is cyclical);
+  `cancelled` IS terminal and requires TRUTH_HUMAN=1 (G12 symmetry).
+  Verbs: issue / start / done / issues. `done --claim` files the
+  completion fact and the closing event atomically (claim-at-death);
+  `issue --premise` links at creation (premise-at-birth; zero premises
+  warns). `ready` source precedence: --stdin, TRUTH_TRACKER_CMD, native
+  (when issue records exist), then `bd ready --json`. `issues
+  --ready-json` emits the E1 adapter contract, so the kernel is itself a
+  tracker source and the seam and kernel can never disagree. The ADR-002
+  refusal list is binding: no assignees, priorities, dates, labels,
+  hierarchy, comments, or compaction without a superseding ADR.
 
 v0.4.1 (tracker adapter seam): `ready` no longer hardcodes Beads.
   Sources: --stdin pipe | TRUTH_TRACKER_CMD | default `bd ready --json`.
@@ -60,13 +76,16 @@ PROMPT_REL = "prompts/truth-verifier.md"
 EVIDENCE_CLASSES = ("VERIFIED", "INFERRED", "UNVERIFIED")
 TIERS = ("P0", "P1", "P2")
 VERDICTS = ("agree", "diverge", "cannot_verify", "retracted")
-KINDS = ("claim", "verdict", "invalidation", "premise")
+KINDS = ("claim", "verdict", "invalidation", "premise", "issue", "issue_event")
 STATUSES = ("unverified", "live", "stale", "diverged", "cannot_verify", "retracted")
+ISSUE_EVENTS = ("claimed", "released", "closed", "reopened", "cancelled")
+ISSUE_STATUSES = ("open", "claimed", "closed", "cancelled")
 DISCOVERY_FILES = ("AGENTS.md", "CLAUDE.md", ".cursorrules",
                    ".github/copilot-instructions.md")
 DUPLICATE_THRESHOLD = 0.6
 QUEUE_AGE_WARN_DAYS = 14
 ID_RE = re.compile(r"^tr-[0-9a-f]{8}$")
+WK_ID_RE = re.compile(r"^wk-[0-9a-f]{8}$")
 
 # ═══════════════════════════════════════════════════════════════════════
 # PURE CORE -- no I/O, no clock reads, no env, no subprocess.
@@ -117,12 +136,12 @@ def parse_ts(s):
 
 # --------------------------------------------------- record construction
 
-def make_id(payload, ts, actor_name):
+def make_id(payload, ts, actor_name, prefix="tr-"):
     blob = json.dumps(payload, sort_keys=True) + ts + actor_name
-    return "tr-" + hashlib.sha256(blob.encode()).hexdigest()[:8]
+    return prefix + hashlib.sha256(blob.encode()).hexdigest()[:8]
 
-def make_record(kind, payload, actor_name, session_name, ts):
-    return {"id": make_id(payload, ts, actor_name), "kind": kind,
+def make_record(kind, payload, actor_name, session_name, ts, prefix="tr-"):
+    return {"id": make_id(payload, ts, actor_name, prefix), "kind": kind,
             "actor": actor_name, "session": session_name, "ts": ts,
             "payload": payload}
 
@@ -182,6 +201,89 @@ def age_days(entry, now):
     if ts is None:
         return None
     return max(0, (now - ts).days)
+
+# --------------------------------------------------- work kernel (ADR-002)
+
+_ISSUE_EVENT_STATUS = {"claimed": "claimed", "released": "open",
+                       "closed": "closed", "reopened": "open",
+                       "cancelled": "cancelled"}
+
+def fold_issues(events):
+    """Derive issue states from the same event stream, in the same
+    confluent (ts, id) total order as fold(). Two rules differ from claim
+    folding, both decided in ADR-002: the LAST issue record with a given
+    id wins (update-by-refile -- an issue's payload is mutable intent, not
+    a first-wins assertion), and `cancelled` is terminal (G12 symmetry)
+    while `closed` is not (work is cyclical; closing asserts completion,
+    not falsity)."""
+    ordered = sorted(events, key=lambda ne: (ne[1].get("ts") or "",
+                                             ne[1].get("id") or ""))
+    issues = {}
+    for _, ev in ordered:
+        kind, p = ev.get("kind"), ev.get("payload", {})
+        if kind == "issue":
+            if ev["id"] in issues:
+                issues[ev["id"]]["issue"] = ev  # last payload wins
+            else:
+                issues[ev["id"]] = {"issue": ev, "status": "open",
+                                    "status_ts": ev.get("ts")}
+        elif kind == "issue_event":
+            ref = p.get("issue")
+            if ref in issues and issues[ref]["status"] != "cancelled":
+                status = _ISSUE_EVENT_STATUS.get(p.get("event"))
+                if status:
+                    issues[ref]["status"] = status
+                    issues[ref]["status_ts"] = ev.get("ts")
+    return issues
+
+def issue_event_error(status, event):
+    """Filing-time transition rules. The fold above is permissive (any
+    recorded event moves status, for confluence across merged branches);
+    the CLI is strict at intake so nonsense transitions fail loudly."""
+    if status == "cancelled":
+        return "issue is cancelled -- terminal state (ADR-002/G12)"
+    allowed = {"claimed": ("open",), "released": ("claimed",),
+               "closed": ("open", "claimed"), "reopened": ("closed",),
+               "cancelled": ("open", "claimed", "closed")}
+    if status not in allowed.get(event, ()):
+        return f"cannot file '{event}' from status '{status}'"
+    return None
+
+def issue_premises(issues):
+    """Premise links declared at creation (ADR-002 premise-at-birth)."""
+    out = {}
+    for wid, e in issues.items():
+        for c in e["issue"]["payload"].get("premises", []):
+            out.setdefault(wid, [])
+            if c not in out[wid]:
+                out[wid].append(c)
+    return out
+
+def merge_premises(a, b):
+    out = {k: list(v) for k, v in a.items()}
+    for k, links in b.items():
+        for c in links:
+            out.setdefault(k, [])
+            if c not in out[k]:
+                out[k].append(c)
+    return out
+
+def native_ready_issues(issues):
+    """Tracker-side readiness only: open AND every dep closed. Premise
+    validity is deliberately NOT applied here -- it is applied by
+    join_ready, identically for every tracker source, which is what makes
+    the kernel and the E1 seam incapable of disagreeing (ADR-002). A dep
+    on a cancelled or unknown issue never satisfies, so such work stays
+    blocked and visible in `issues` rather than silently ready."""
+    out = []
+    for wid, e in sorted(issues.items()):
+        if e["status"] != "open":
+            continue
+        deps = e["issue"]["payload"].get("deps", [])
+        if all(issues.get(d, {}).get("status") == "closed" for d in deps):
+            out.append({"id": wid,
+                        "title": e["issue"]["payload"].get("title", wid)})
+    return out
 
 # ------------------------------------------------- intake decisions (G1/6/8)
 
@@ -374,9 +476,12 @@ def validate_events(events):
         for field in ("id", "kind", "actor", "session", "ts", "payload"):
             if field not in ev:
                 errors.append(f"line {n}: missing envelope field '{field}'")
-        if "id" in ev and not ID_RE.match(str(ev["id"])):
-            errors.append(f"line {n}: envelope id does not match tr-hex8")
         kind, p = ev.get("kind"), ev.get("payload", {})
+        # issue records carry wk- envelope ids (ADR-002); everything else tr-
+        id_re, id_name = ((WK_ID_RE, "wk-hex8") if kind == "issue"
+                          else (ID_RE, "tr-hex8"))
+        if "id" in ev and not id_re.match(str(ev["id"])):
+            errors.append(f"line {n}: envelope id does not match {id_name}")
         if kind not in KINDS:
             errors.append(f"line {n}: unknown kind '{kind}'")
         elif kind == "claim":
@@ -409,6 +514,20 @@ def validate_events(events):
                 errors.append(f"line {n}: malformed premise")
             elif not ID_RE.match(str(p.get("claim"))):
                 errors.append(f"line {n}: premise claim ref not tr-hex8")
+        elif kind == "issue":
+            if not p.get("title"):
+                errors.append(f"line {n}: issue missing title")
+            if any(not WK_ID_RE.match(str(d)) for d in p.get("deps", [])):
+                errors.append(f"line {n}: issue dep ref not wk-hex8")
+            if any(not ID_RE.match(str(c)) for c in p.get("premises", [])):
+                errors.append(f"line {n}: issue premise ref not tr-hex8")
+        elif kind == "issue_event":
+            if p.get("event") not in ISSUE_EVENTS or not p.get("issue"):
+                errors.append(f"line {n}: malformed issue_event")
+            elif not WK_ID_RE.match(str(p.get("issue"))):
+                errors.append(f"line {n}: issue_event ref not wk-hex8")
+            elif p.get("event") in ("closed", "cancelled") and not p.get("basis"):
+                errors.append(f"line {n}: {p['event']} issue_event missing basis")
     return errors
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -472,8 +591,8 @@ def run_evidence(cmd):
     r = subprocess.run(cmd, shell=True, capture_output=True)
     return hashlib.sha256(r.stdout).hexdigest(), r.returncode
 
-def append_record(kind, payload):
-    rec = make_record(kind, payload, actor(), session(), now_iso())
+def append_record(kind, payload, prefix="tr-"):
+    rec = make_record(kind, payload, actor(), session(), now_iso(), prefix)
     path = ledger_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
@@ -501,41 +620,51 @@ def load_events(stream=None):
 
 # ---------------------------------------------------------------- commands
 
-def cmd_claim(a):
-    claims, _ = fold(load_events())
-
-    if not a.duplicate_ok:
-        similar = duplicate_conflicts(a.text, claims)
+def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
+                        ttl_days, basis, single_run, duplicate_ok, claims):
+    """Full claim intake -- G8 duplicate gate, INV-B/INV-C/G1 checks, G6
+    determinism double-run -- WITHOUT appending. Shared by `claim` and
+    `done --claim` so claim-at-death goes through the identical intake,
+    and so `done` can validate everything before it appends anything
+    (ADR-002: both records or neither)."""
+    if not duplicate_ok:
+        similar = duplicate_conflicts(text, claims)
         if similar:
             lines = "\n".join(f"  {cid}: {t}" for cid, t in similar)
             sys.exit("truth: refusing near-duplicate of active claim(s) (G8):\n"
                      f"{lines}\nRe-file with --duplicate-ok if genuinely distinct.")
 
-    paths = [p.strip() for p in a.paths.split(",")] if a.paths else []
-    payload = {"text": a.text, "evidence_class": a.evidence_class,
-               "cost_tier": a.tier, "ttl_days": a.ttl_days,
+    paths = [p.strip() for p in paths_csv.split(",")] if paths_csv else []
+    payload = {"text": text, "evidence_class": evidence_class,
+               "cost_tier": tier, "ttl_days": ttl_days,
                "evidence_paths": paths}
 
-    if a.evidence_class == "VERIFIED":
-        err = verified_intake_error(a.evidence_cmd, paths, a.ttl_days,
+    if evidence_class == "VERIFIED":
+        err = verified_intake_error(evidence_cmd, paths, ttl_days,
                                     head_commit())
         if err:
             sys.exit(err)
-        digest, rc = run_evidence(a.evidence_cmd)
-        if not a.single_run:
-            err = determinism_error((digest, rc), run_evidence(a.evidence_cmd))
+        digest, rc = run_evidence(evidence_cmd)
+        if not single_run:
+            err = determinism_error((digest, rc), run_evidence(evidence_cmd))
             if err:
                 sys.exit(err)
-        payload["evidence"] = {"command": a.evidence_cmd,
+        payload["evidence"] = {"command": evidence_cmd,
                                "output_hash": "sha256:" + digest,
                                "returncode": rc}
         payload["anchor_commit"] = head_commit()
-    elif a.evidence_class == "INFERRED":
-        err = inferred_intake_error(a.basis)
+    elif evidence_class == "INFERRED":
+        err = inferred_intake_error(basis)
         if err:
             sys.exit(err)
-        payload["basis"] = a.basis
+        payload["basis"] = basis
+    return payload
 
+def cmd_claim(a):
+    claims, _ = fold(load_events())
+    payload = build_claim_payload(a.text, a.evidence_class, a.evidence_cmd,
+                                  a.paths, a.tier, a.ttl_days, a.basis,
+                                  a.single_run, a.duplicate_ok, claims)
     rec = append_record("claim", payload)
     print(json.dumps(rec) if a.json else rec["id"])
 
@@ -643,13 +772,126 @@ def cmd_queue(a):
             print(f"{r['id']}  {r['tier']:<3} {r['status']:<13} age {age:<5} "
                   f"{r['reason']}: {r['text']}")
 
-def tracker_issues(a):
+# ------------------------------------------------ work kernel commands (ADR-002)
+
+def cmd_issue(a):
+    events = load_events()
+    issues = fold_issues(events)
+    claims, _ = fold(events)
+    deps = [d.strip() for d in a.deps.split(",")] if a.deps else []
+    unknown_deps = [d for d in deps if d not in issues]
+    if unknown_deps:
+        # Deps must reference existing wk- issues. Because an issue cannot
+        # name an id that does not exist yet, CLI-filed dep graphs are
+        # acyclic by construction -- this rejection IS the filing-time
+        # cycle defense (ADR-002).
+        sys.exit(f"truth: unknown dep(s): {', '.join(unknown_deps)} -- deps "
+                 "must reference existing wk- issues")
+    premises = list(dict.fromkeys(a.premise or []))
+    unknown_prem = [c for c in premises if c not in claims]
+    if unknown_prem:
+        print(f"warning: premise claim(s) not in ledger: "
+              f"{', '.join(unknown_prem)} -- this issue will be HELD until "
+              "they exist (ADR-001: missing blocks)", file=sys.stderr)
+    if not premises:
+        print("warning: no --premise given -- this issue is not protected "
+              "by the ledger; if it stands on any repository fact, link it "
+              "(premise-at-birth, ADR-002)", file=sys.stderr)
+    payload = {"title": a.title, "text": a.text or "",
+               "deps": deps, "premises": premises}
+    rec = append_record("issue", payload, prefix="wk-")
+    print(json.dumps(rec) if a.json else rec["id"])
+
+def _issue_or_exit(issues, wid):
+    if wid not in issues:
+        sys.exit(f"truth: unknown issue {wid}")
+    return issues[wid]["status"]
+
+def cmd_start(a):
+    issues = fold_issues(load_events())
+    status = _issue_or_exit(issues, a.issue_id)
+    event = "released" if a.release else "claimed"
+    err = issue_event_error(status, event)
+    if err:
+        sys.exit(f"truth: {err}")
+    append_record("issue_event", {"issue": a.issue_id, "event": event,
+                                  "basis": a.basis or ""})
+    print(f"{a.issue_id} -> {event}")
+
+def cmd_done(a):
+    events = load_events()
+    issues = fold_issues(events)
+    status = _issue_or_exit(issues, a.issue_id)
+    if a.cancel and a.reopen:
+        sys.exit("truth: --cancel and --reopen are mutually exclusive")
+    event = "cancelled" if a.cancel else "reopened" if a.reopen else "closed"
+    if event == "cancelled" and os.environ.get("TRUTH_HUMAN") != "1":
+        sys.exit("truth: cancelling an issue is a human tombstone decision "
+                 "(ADR-002, G12 symmetry): it kills an intention without "
+                 "evidence of completion. A human confirms with "
+                 "TRUTH_HUMAN=1. Agents: close with a basis saying the "
+                 "work should die, and let the human queue decide.")
+    if not a.basis:
+        sys.exit(f"truth: '{event}' requires --basis (cite what you did, "
+                 "never a vibe)")
+    err = issue_event_error(status, event)
+    if err:
+        sys.exit(f"truth: {err}")
+    claim_rec = None
+    if a.claim_text:
+        if event != "closed":
+            sys.exit("truth: --claim only accompanies a plain close "
+                     "(claim-at-death records what the finished work made true)")
+        claims, _ = fold(events)
+        # Validate and run evidence BEFORE any append: both records or
+        # neither (ADR-002). build_claim_payload sys.exits on any failure.
+        payload = build_claim_payload(a.claim_text, a.evidence_class,
+                                      a.evidence_cmd, a.paths, a.tier,
+                                      a.ttl_days, a.claim_basis,
+                                      a.single_run, a.duplicate_ok, claims)
+        claim_rec = append_record("claim", payload)
+    append_record("issue_event", {"issue": a.issue_id, "event": event,
+                                  "basis": a.basis})
+    out = f"{a.issue_id} -> {event}"
+    if claim_rec:
+        out += f"; filed {claim_rec['id']}"
+    print(out)
+
+def cmd_issues(a):
+    events = load_events()
+    issues = fold_issues(events)
+    if a.ready_json:
+        # The E1 adapter contract, emitted by the kernel itself: pipe into
+        # `truth ready --stdin` and the join must equal the native path.
+        print(json.dumps(native_ready_issues(issues)))
+        return
+    claims, premises = fold(events)
+    premises = merge_premises(premises, issue_premises(issues))
+    rows = []
+    for wid, e in sorted(issues.items()):
+        p = e["issue"]["payload"]
+        rows.append({"id": wid, "status": e["status"],
+                     "title": p.get("title"), "deps": p.get("deps", []),
+                     "premises": premises.get(wid, [])})
+    if a.json:
+        print(json.dumps(rows, indent=2))
+    else:
+        for r in rows:
+            extra = ""
+            if r["deps"]:
+                extra += f"  deps: {','.join(r['deps'])}"
+            if r["premises"]:
+                extra += f"  premises: {','.join(r['premises'])}"
+            print(f"{r['id']}  {r['status']:<9} {r['title']}{extra}")
+
+def tracker_issues(a, native=None):
     """The tracker adapter seam (E1, v0.4.1). The join is tracker-agnostic:
     any source that yields a JSON array of issue objects with at least an
     `id` (and ideally `title`) satisfies the contract. Sources, in order:
 
       --stdin             pipe issues in:   <your-tracker-cmd> | truth ready --stdin
       TRUTH_TRACKER_CMD   a shell command printing the JSON array
+      native work kernel  when the ledger holds issue records (ADR-002)
       default             `bd ready --json` (Beads)
 
     The ledger stands alone without any tracker; `ready` is its consumer,
@@ -658,7 +900,10 @@ def tracker_issues(a):
     if getattr(a, "stdin_issues", False):
         raw, src = sys.stdin.read(), "stdin"
     else:
-        cmd = os.environ.get("TRUTH_TRACKER_CMD", "bd ready --json")
+        cmd = os.environ.get("TRUTH_TRACKER_CMD")
+        if cmd is None and native is not None:
+            return native
+        cmd = cmd or "bd ready --json"
         r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
         if r.returncode != 0:
             sys.exit(f"truth: tracker command failed ({cmd!r}, exit {r.returncode}).\n"
@@ -677,8 +922,14 @@ def tracker_issues(a):
     return issues
 
 def cmd_ready(a):
-    claims, premises = fold(load_events())
-    issues = tracker_issues(a)
+    events = load_events()
+    claims, premises = fold(events)
+    issues_fold = fold_issues(events)
+    native = native_ready_issues(issues_fold) if issues_fold else None
+    issues = tracker_issues(a, native)
+    # premise-at-birth links apply whichever source delivered the issues,
+    # so native, --stdin, and adapter paths join identically (ADR-002)
+    premises = merge_premises(premises, issue_premises(issues_fold))
     ready, annotated = join_ready(issues, claims, premises)
     if a.json:
         print(json.dumps(ready, indent=2))
@@ -861,11 +1112,59 @@ def main():
     s.add_argument("--quiet", action="store_true")
     s.set_defaults(fn=cmd_invalidate_scan)
 
-    p = sub.add_parser("premise", help="link a Beads issue to a claim it depends on")
+    p = sub.add_parser("premise", help="link a tracker issue (external or wk-) "
+                       "to a claim it depends on")
     p.add_argument("issue")
     p.add_argument("claim_id")
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_premise)
+
+    i = sub.add_parser("issue", help="file a work item in the ledger (ADR-002); "
+                       "link the facts it stands on with --premise")
+    i.add_argument("title")
+    i.add_argument("--text", help="longer description")
+    i.add_argument("--deps", help="comma-separated wk- ids this issue depends on")
+    i.add_argument("--premise", action="append",
+                   help="claim id this work stands on (repeatable; "
+                        "premise-at-birth)")
+    i.add_argument("--json", action="store_true")
+    i.set_defaults(fn=cmd_issue)
+
+    st = sub.add_parser("start", help="claim a work item (files 'claimed')")
+    st.add_argument("issue_id")
+    st.add_argument("--release", action="store_true",
+                    help="file 'released' instead: give the item back")
+    st.add_argument("--basis")
+    st.set_defaults(fn=cmd_start)
+
+    dn = sub.add_parser("done", help="close a work item; --claim files what "
+                        "the finished work made true (claim-at-death)")
+    dn.add_argument("issue_id")
+    dn.add_argument("--basis", help="required: what was done / why it dies")
+    dn.add_argument("--cancel", action="store_true",
+                    help="terminal tombstone; requires TRUTH_HUMAN=1 (G12)")
+    dn.add_argument("--reopen", action="store_true",
+                    help="reopen a closed item (work is cyclical)")
+    dn.add_argument("--claim", dest="claim_text",
+                    help="text of the completion fact to file atomically")
+    dn.add_argument("--class", dest="evidence_class", default="UNVERIFIED",
+                    choices=EVIDENCE_CLASSES)
+    dn.add_argument("--evidence-cmd")
+    dn.add_argument("--paths")
+    dn.add_argument("--tier", default="P2", choices=TIERS)
+    dn.add_argument("--ttl-days", type=int, default=None)
+    dn.add_argument("--claim-basis", help="basis for an INFERRED completion claim")
+    dn.add_argument("--single-run", action="store_true")
+    dn.add_argument("--duplicate-ok", action="store_true")
+    dn.set_defaults(fn=cmd_done)
+
+    iss = sub.add_parser("issues", help="list work items with derived status; "
+                         "--ready-json emits the E1 adapter contract")
+    iss.add_argument("--json", action="store_true")
+    iss.add_argument("--ready-json", dest="ready_json", action="store_true",
+                     help="JSON array of {id,title} for open, dep-satisfied "
+                          "items (pipe into `truth ready --stdin`)")
+    iss.set_defaults(fn=cmd_issues)
 
     l = sub.add_parser("list", help="list claims by derived status")
     for flag in STATUSES:
@@ -878,9 +1177,10 @@ def main():
     q.add_argument("--json", action="store_true")
     q.set_defaults(fn=cmd_queue)
 
-    r = sub.add_parser("ready", help="tracker's unblocked issues filtered by "
-                       "premise validity (ADR-001); default tracker: Beads "
-                       "(bd ready --json), override via TRUTH_TRACKER_CMD or --stdin")
+    r = sub.add_parser("ready", help="unblocked issues filtered by premise "
+                       "validity (ADR-001); source: --stdin, TRUTH_TRACKER_CMD, "
+                       "native work kernel if issue records exist, else "
+                       "`bd ready --json` (ADR-002 precedence)")
     r.add_argument("--json", action="store_true")
     r.add_argument("--stdin", dest="stdin_issues", action="store_true",
                    help="read the issues JSON array from stdin instead of "

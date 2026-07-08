@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.4 -- seeded-fault acceptance suite (seeded faults + TL hardening + adapter seam + bd normalization).
+# truth-canary.sh v0.5 -- seeded-fault acceptance suite (seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -290,6 +290,125 @@ if TRUTH_HUMAN=1 $T verdict "$CID_M" retracted --basis "human confirms" >/dev/nu
 else
   miss "human-confirmed retraction refused"
 fi
+
+# ---- FAULT R (ADR-002, v0.5): native work kernel ---------------------------
+say "FAULT R (ADR-002): premise-at-birth must warn when skipped"
+WK_NP=$($T issue "kernel probe with no premise" 2>r_warn.txt)
+if grep -q "premise-at-birth" r_warn.txt && [ -n "$WK_NP" ]; then
+  ok "issue filed without premises carries the discipline warning ($WK_NP)"
+else
+  miss "no premise-at-birth warning: $(cat r_warn.txt)"
+fi
+rm -f r_warn.txt
+
+say "FAULT R2 (ADR-002): unknown dep must be rejected at filing (cycle defense)"
+if $T issue "dep on nothing" --deps wk-deadbeef >/dev/null 2>&1; then
+  miss "issue accepted a dep on a nonexistent wk- id"
+else
+  ok "unknown dep refused -- CLI dep graphs stay acyclic by construction"
+fi
+
+say "FAULT R3 (ADR-002): native ready must HOLD broken premises, pass live ones"
+WK_LIVE=$($T issue "kernel issue on live premise" --premise "$CID_R" 2>/dev/null)
+WK_STALE=$($T issue "kernel issue on stale premise" --premise "$CID_B" 2>/dev/null)
+READY_NATIVE=$(PATH="/usr/bin:/bin" $T ready)
+if echo "$READY_NATIVE" | grep -q "^$WK_LIVE" && \
+   echo "$READY_NATIVE" | grep -q "^HELD $WK_STALE"; then
+  ok "native ready: $WK_LIVE passes, $WK_STALE HELD (no tracker involved)"
+else
+  miss "native ready join wrong: $READY_NATIVE"
+fi
+
+say "FAULT R4 (ADR-002): dep-blocked issue must be absent until its dep closes"
+WK_DEP=$($T issue "kernel issue blocked by dep" --deps "$WK_LIVE" 2>/dev/null)
+if PATH="/usr/bin:/bin" $T ready | grep -q "^$WK_DEP"; then
+  miss "dep-blocked $WK_DEP appeared in ready"
+else
+  ok "dep-blocked $WK_DEP absent from ready"
+fi
+$T start "$WK_LIVE" >/dev/null
+$T done "$WK_LIVE" --basis "canary: dep work finished" >/dev/null
+if PATH="/usr/bin:/bin" $T ready | grep -q "^$WK_DEP"; then
+  ok "$WK_DEP became ready after its dep closed"
+else
+  miss "$WK_DEP still blocked after dep closed"
+fi
+
+say "FAULT R5 (ADR-002): kernel-as-tracker seam must join identically to native"
+NATIVE_OUT=$(PATH="/usr/bin:/bin" $T ready)
+SEAM_OUT=$($T issues --ready-json | $T ready --stdin)
+if [ "$NATIVE_OUT" = "$SEAM_OUT" ] && [ -n "$NATIVE_OUT" ]; then
+  ok "issues --ready-json | ready --stdin equals native ready (seam == kernel)"
+else
+  miss "seam and kernel disagree: native=[$NATIVE_OUT] seam=[$SEAM_OUT]"
+fi
+
+say "FAULT R6 (ADR-002/G12): cancel is a human tombstone; terminal after"
+WK_DEAD=$($T issue "kernel issue a verifier wants dead" 2>/dev/null)
+if $T done "$WK_DEAD" --cancel --basis "agent overreach" >/dev/null 2>&1; then
+  miss "non-human cancel accepted"
+else
+  ok "cancel refused without TRUTH_HUMAN=1"
+fi
+if TRUTH_HUMAN=1 $T done "$WK_DEAD" --cancel --basis "human confirms" >/dev/null 2>&1; then
+  ok "human-confirmed cancel accepted"
+else
+  miss "human-confirmed cancel refused"
+fi
+if $T done "$WK_DEAD" --reopen --basis "resurrection attempt" >/dev/null 2>&1 || \
+   $T start "$WK_DEAD" >/dev/null 2>&1; then
+  miss "cancelled $WK_DEAD accepted a lifecycle event (not terminal)"
+else
+  ok "cancelled $WK_DEAD is terminal: reopen and start both refused"
+fi
+
+say "FAULT R7 (ADR-002): done --claim must file both records or neither"
+WK_AT=$($T issue "kernel issue closing with a claim" 2>/dev/null)
+N_BEFORE=$(grep -c "" .truth/claims.jsonl)
+if $T done "$WK_AT" --basis "canary" --claim "the clock ticked" \
+     --class VERIFIED --evidence-cmd "date +%s%N" --paths "watched.txt" \
+     2>/dev/null; then
+  miss "done --claim accepted nondeterministic completion evidence"
+else
+  N_AFTER=$(grep -c "" .truth/claims.jsonl)
+  if [ "$N_AFTER" -eq "$N_BEFORE" ]; then
+    ok "failed claim intake filed NEITHER record (issue still open)"
+  else
+    miss "failed claim intake left a torn write ($((N_AFTER-N_BEFORE)) record(s))"
+  fi
+fi
+DONE_OUT=$($T done "$WK_AT" --basis "canary: finished" \
+           --claim "intact.txt still says hello after kernel work" \
+           --class VERIFIED --evidence-cmd "cat intact.txt" \
+           --paths "intact.txt" --duplicate-ok)
+N_FINAL=$(grep -c "" .truth/claims.jsonl)
+if [ "$N_FINAL" -eq $((N_BEFORE + 2)) ] && echo "$DONE_OUT" | grep -q "filed tr-" \
+   && $T issues --json | grep -A1 "\"id\": \"$WK_AT\"" | grep -q closed; then
+  ok "claim-at-death filed claim + closed event atomically"
+else
+  miss "claim-at-death wrong: lines $N_BEFORE->$N_FINAL, out=$DONE_OUT"
+fi
+
+say "FAULT R8 (INV-A): mutating a historical issue record must block the commit"
+git add -A && git commit -qm "canary: settle kernel records" --no-verify
+python3 - "$WK_LIVE" <<'PYEOF'
+import sys
+lines = open(".truth/claims.jsonl").readlines()
+for i, ln in enumerate(lines):
+    if f'"id": "{sys.argv[1]}"' in ln and '"kind": "issue"' in ln:
+        lines[i] = ln.replace('"kind": "issue"', '"kind": "ISSUE_TAMPERED"')
+        break
+open(".truth/claims.jsonl", "w").writelines(lines)
+PYEOF
+git add .truth/claims.jsonl
+if ! grep -q ISSUE_TAMPERED .truth/claims.jsonl; then
+  miss "fault injection failed: issue record was never mutated"
+elif bash scripts/check-truth.sh >/dev/null 2>&1; then
+  miss "gate accepted a mutated historical issue record"
+else
+  ok "gate blocked the tampered issue record"
+fi
+git checkout -q -- .truth/claims.jsonl
 
 # ---- FAULT N (v0.4): mid-file insertion must block the commit -------------
 say "FAULT N (INV-A strict): mid-file insertion (pure addition) must be blocked"

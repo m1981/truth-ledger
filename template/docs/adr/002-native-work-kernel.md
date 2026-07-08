@@ -1,6 +1,6 @@
 # ADR-002: Native work kernel — issues as ledger records
 
-Status: Proposed
+Status: Accepted (2026-07-08, Michal; implemented in v0.5)
 Date: 2026-07-08
 Supersedes: — (narrows the role of the external-tracker default introduced
 with the v0.4.1 adapter seam; does not remove the seam)
@@ -56,11 +56,17 @@ kinds and five verbs, governed by the ledger's existing principles.
 **Records.** Both kinds live in the same `claims.jsonl`, protected by the
 same INV-A line-prefix gate, folded in the same `(ts, id)` total order:
 
-    {"kind": "issue", "id": "wk-<hash>", "ts": ..., "actor": ..., "session": ...,
+    {"kind": "issue", "id": "wk-<hash8>", "ts": ..., "actor": ..., "session": ...,
      "payload": {"title": ..., "text": ..., "deps": ["wk-..."], "premises": ["tr-..."]}}
 
-    {"kind": "issue_event", "ref": "wk-<hash>", "event": "claimed" | "released" |
-     "closed" | "reopened" | "cancelled", "basis": "...", ...}
+    {"kind": "issue_event", "id": "tr-<hash8>", "ts": ..., "actor": ..., "session": ...,
+     "payload": {"issue": "wk-<hash8>", "event": "claimed" | "released" |
+                 "closed" | "reopened" | "cancelled", "basis": "..."}}
+
+(As implemented: the issue's identity is its wk- envelope id; events are
+ordinary tr- records referencing it via `payload.issue`, mirroring how
+verdicts reference claims. `cancelled`/`reopened` ride flags on `done`
+rather than adding verbs.)
 
 Issue *status is derived by the fold, never stored* — exactly as claim
 status is. Re-filing an `issue` record with an existing id updates payload
