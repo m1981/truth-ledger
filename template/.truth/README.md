@@ -1,10 +1,19 @@
-# .truth — append-only claims ledger (v0.4)
+# .truth — append-only claims ledger (v0.4.1)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
 A plain-JSONL truth layer that lives beside a work tracker (e.g. Beads;
 optional — the ledger works standalone, see docs/adr/001). Work records
 answer *what to do*; this ledger answers *what is known and how*.
+
+The tracker coupling is an adapter seam (v0.4.1): `truth ready` consumes
+a JSON array of issues with `id` (+ `title`) from — in precedence order —
+a pipe (`<tracker-cmd> | truth ready --stdin`), the environment
+(`TRUTH_TRACKER_CMD="<cmd printing the array>"`), or the default Beads
+adapter (`bd ready --json`). No tracker? The ledger stands alone and you
+degrade from a gate to a dashboard (`truth queue`, `truth list --live`).
+A missing or failing tracker exits with guidance, never a traceback —
+all three source paths are canary-gated (FAULT J).
 
 v0.4 hardens the fold for confluence (order-independent under
 `merge=union`), enforces human-only retraction, makes re-verification

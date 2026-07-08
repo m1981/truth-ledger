@@ -112,7 +112,7 @@ A scan (wired to post-merge hooks or CI) demotes claims whose premises git can c
 
 ### 3.7 Epistemic readiness (ADR-001)
 
-`truth ready` intersects the work tracker's unblocked issues with premise validity under a tier-sensitive matrix: `live` passes; `unverified` passes **with a warning** (requiring verification of every premise before any work would contradict the friction budget); `cannot_verify` blocks only P0 premises; `stale`, `diverged`, `retracted`, and missing claims always block. The trade — work may proceed on an unverified premise that later proves false — is stated in the ADR as the price of low friction, with a named fallback if warning fatigue appears.
+`truth ready` intersects the work tracker's unblocked issues with premise validity under a tier-sensitive matrix: `live` passes; `unverified` passes **with a warning** (requiring verification of every premise before any work would contradict the friction budget); `cannot_verify` blocks only P0 premises; `stale`, `diverged`, `retracted`, and missing claims always block. The trade — work may proceed on an unverified premise that later proves false — is stated in the ADR as the price of low friction, with a named fallback if warning fatigue appears. The tracker coupling is a deliberate adapter seam (v0.4.1): the join consumes any source emitting a JSON array of issue objects with an `id`, sourced from standard input, a configurable command (`TRUTH_TRACKER_CMD`), or the default Beads adapter; a missing or failing tracker degrades the ledger from a gate to a dashboard with explicit guidance rather than erroring, and all three source paths are canary-gated.
 
 ### 3.8 The self-defense apparatus
 

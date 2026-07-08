@@ -108,6 +108,9 @@ made mechanical instead of vigilance-dependent.
 ## Requirements
 
 POSIX, git, Python 3. `jsonschema` (dev/CI) so the drift detector runs
-armed. Optional: a work tracker (e.g. Beads) unlocks `truth ready` —
-issues premised on dead facts are HELD before an agent picks them up; the
-ledger works standalone without it.
+armed. Optional: a work tracker unlocks `truth ready` — issues premised on dead
+facts are HELD before an agent picks them up. The seam is tracker-agnostic
+(v0.4.1): Beads by default (`bd ready --json`), any other tracker via
+`TRUTH_TRACKER_CMD="<cmd printing a JSON array of {id, title}>"` or a pipe
+(`my-tracker export | scripts/truth ready --stdin`). Without one, the
+ledger works standalone — a dashboard instead of a gate.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.4 -- seeded-fault acceptance suite (14 + K L M N).
+# truth-canary.sh v0.4 -- seeded-fault acceptance suite (22 checks: seeded faults + adapter seam).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -140,6 +140,28 @@ if echo "$READY_OUT" | grep -q "^HELD bd-x1" && echo "$READY_OUT" | grep -q "^bd
   ok "bd-x1 held on stale premise; bd-x2 passed on live premise"
 else
   miss "ready join wrong: $READY_OUT"
+fi
+# v0.4.1 -- the adapter seam is a property, not a promise:
+READY_ENV=$(PATH="/usr/bin:/bin" TRUTH_TRACKER_CMD="$PWD/bd ready --json" $T ready)
+if echo "$READY_ENV" | grep -q "^HELD bd-x1" && echo "$READY_ENV" | grep -q "^bd-x2"; then
+  ok "TRUTH_TRACKER_CMD adapter joins identically (no bd on PATH)"
+else
+  miss "TRUTH_TRACKER_CMD adapter wrong: $READY_ENV"
+fi
+READY_STDIN=$(./bd ready | $T ready --stdin)
+if echo "$READY_STDIN" | grep -q "^HELD bd-x1" && echo "$READY_STDIN" | grep -q "^bd-x2"; then
+  ok "--stdin adapter joins identically (tracker-agnostic pipe)"
+else
+  miss "--stdin adapter wrong: $READY_STDIN"
+fi
+if PATH="/usr/bin:/bin" TRUTH_TRACKER_CMD="definitely-not-a-tracker --json" $T ready >/dev/null 2>&1; then
+  miss "ready succeeded with a nonexistent tracker command"
+else
+  if PATH="/usr/bin:/bin" TRUTH_TRACKER_CMD="definitely-not-a-tracker --json" $T ready 2>&1 | grep -q "Traceback"; then
+    miss "missing tracker produced a raw traceback, not guidance"
+  else
+    ok "missing tracker degrades with guidance, no traceback"
+  fi
 fi
 
 # ---- FAULT K (v0.4): duplicate-id append must not resurrect a tombstone ----

@@ -319,7 +319,7 @@ stateDiagram-v2
 
 **`truth ready` says HELD — but I checked, the premise is fine!** Then say so on the record: re-verify the premise claim (`verdict <id> agree --basis ...`) and `ready` will release the issue. HELD isn't the system claiming the fact is false — it's the system refusing to let work proceed on a fact *nobody has re-checked since the ground moved*.
 
-**Do I need Beads/a work tracker?** No — the ledger stands alone as claims + verdicts + queue. The tracker adds one thing: `truth ready`, the join that mechanically holds work on broken premises. Without it, you degrade gracefully from a gate to a dashboard.
+**Do I need Beads/a work tracker?** No — the ledger stands alone as claims + verdicts + queue. The tracker adds one thing: `truth ready`, the join that mechanically holds work on broken premises. Without it, you degrade gracefully from a gate to a dashboard. And "a work tracker" means *any* tracker: the join reads a JSON array of `{id, title}` issues — Beads by default, anything else via `TRUTH_TRACKER_CMD="your-cmd"` or a pipe: `your-tracker export --json | truth ready --stdin`.
 
 **The evidence command works in my shell but the recheck says cannot_verify.** Exit 127: the verifier's environment can't find the command. That's classified as an *environment* problem, not a reality problem — deliberately distinct from diverge. Fix the environment or record evidence using the boring universal vocabulary: grep, find, ls, test runs.
 

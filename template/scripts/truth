@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""truth v0.4 -- append-only claims ledger beside Beads.
+"""truth v0.4.1 -- append-only claims ledger beside any work tracker.
+
+v0.4.1 (tracker adapter seam): `ready` no longer hardcodes Beads.
+  Sources: --stdin pipe | TRUTH_TRACKER_CMD | default `bd ready --json`.
+  Contract: a JSON array of issue objects with `id` (+ `title`).
+  Missing/failing tracker degrades with guidance (previously: raw
+  FileNotFoundError traceback, contradicting the "fails loudly with
+  fallback" doc). Canary FAULT J now gates all three sources.
 
 v0.4 (audit-driven; SEMANTIC changes, canary extended to 19 checks):
   * fold is CONFLUENT: (ts, id) total order replaces file order, so
@@ -599,17 +606,42 @@ def cmd_queue(a):
             print(f"{r['id']}  {r['tier']:<3} {r['status']:<13} age {age:<5} "
                   f"{r['reason']}: {r['text']}")
 
+def tracker_issues(a):
+    """The tracker adapter seam (E1, v0.4.1). The join is tracker-agnostic:
+    any source that yields a JSON array of issue objects with at least an
+    `id` (and ideally `title`) satisfies the contract. Sources, in order:
+
+      --stdin             pipe issues in:   <your-tracker-cmd> | truth ready --stdin
+      TRUTH_TRACKER_CMD   a shell command printing the JSON array
+      default             `bd ready --json` (Beads)
+
+    The ledger stands alone without any tracker; `ready` is its consumer,
+    not its dependency -- so failure here degrades, never tracebacks.
+    """
+    if getattr(a, "stdin_issues", False):
+        raw, src = sys.stdin.read(), "stdin"
+    else:
+        cmd = os.environ.get("TRUTH_TRACKER_CMD", "bd ready --json")
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        if r.returncode != 0:
+            sys.exit(f"truth: tracker command failed ({cmd!r}, exit {r.returncode}).\n"
+                     "  The ledger works without a tracker -- fallback: truth list --live.\n"
+                     "  To wire one: set TRUTH_TRACKER_CMD to any command printing a JSON\n"
+                     "  array of {id, title} issues, or pipe: <tracker-cmd> | truth ready --stdin")
+        raw, src = r.stdout, repr(cmd)
+    try:
+        issues = json.loads(raw or "[]")
+    except json.JSONDecodeError:
+        sys.exit(f"truth: {src} output is not JSON -- tracker contract may "
+                 "have drifted (known E1 risk); report, do not patch around")
+    if not isinstance(issues, list):
+        sys.exit(f"truth: {src} output is JSON but not an array -- the "
+                 "adapter contract is a JSON array of issue objects")
+    return issues
+
 def cmd_ready(a):
     claims, premises = fold(load_events())
-    r = subprocess.run(["bd", "ready", "--json"], capture_output=True, text=True)
-    if r.returncode != 0:
-        sys.exit("truth: `bd ready --json` failed -- is Beads installed? "
-                 "Fallback: bd ready + truth list --live")
-    try:
-        issues = json.loads(r.stdout or "[]")
-    except json.JSONDecodeError:
-        sys.exit("truth: bd ready output is not JSON -- Beads contract may "
-                 "have drifted (known E1 risk); report, do not patch around")
+    issues = tracker_issues(a)
     ready, annotated = join_ready(issues, claims, premises)
     if a.json:
         print(json.dumps(ready, indent=2))
@@ -775,8 +807,13 @@ def main():
     q.add_argument("--json", action="store_true")
     q.set_defaults(fn=cmd_queue)
 
-    r = sub.add_parser("ready", help="bd ready filtered by premise validity (ADR-001)")
+    r = sub.add_parser("ready", help="tracker's unblocked issues filtered by "
+                       "premise validity (ADR-001); default tracker: Beads "
+                       "(bd ready --json), override via TRUTH_TRACKER_CMD or --stdin")
     r.add_argument("--json", action="store_true")
+    r.add_argument("--stdin", dest="stdin_issues", action="store_true",
+                   help="read the issues JSON array from stdin instead of "
+                        "invoking a tracker command")
     r.set_defaults(fn=cmd_ready)
 
     d = sub.add_parser("dispatch",
