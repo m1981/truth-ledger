@@ -328,12 +328,26 @@ class TestJoinReady(unittest.TestCase):
 
 class TestDispatch(unittest.TestCase):
     def test_header_stripped_claim_appended(self):
-        out = tm.dispatch_text("human header\n---\nVERIFIER BODY\n",
-                               rec("claim", claim_p()))
-        self.assertTrue(out.startswith("VERIFIER BODY"))
+        prompt = "human header\n---\nVERIFIER BODY\n\n1. RULE ONE.\n2. RULE TWO.\n"
+        out = tm.dispatch_text(prompt, rec("claim", claim_p()))
         self.assertNotIn("human header", out)
+        self.assertIn("VERIFIER BODY", out)
         self.assertIn("CLAIM RECORD", out)
         self.assertIn('"tr-00000001"', out)
+
+    def test_envelope_self_describes_integrity(self):
+        # TL-3: transports can lossily compress the dispatch; a complete
+        # copy must be distinguishable from a truncated one by its reader.
+        import hashlib as _h
+        prompt = "human header\n---\nVERIFIER BODY\n\n1. RULE ONE.\n2. RULE TWO.\n"
+        out = tm.dispatch_text(prompt, rec("claim", claim_p()))
+        digest = _h.sha256(prompt.encode("utf-8")).hexdigest()
+        self.assertTrue(out.startswith("INTEGRITY (check before following)"))
+        self.assertIn("contains 2 numbered rules", out)
+        self.assertTrue(out.endswith(f"END-OF-DISPATCH sha256:{digest}"))
+        # claim record sits INSIDE the envelope, so record truncation is
+        # also caught by a missing terminator
+        self.assertLess(out.index("CLAIM RECORD"), out.rindex("END-OF-DISPATCH"))
 
 # ------------------------------------------ schema conformance (shared corpus)
 

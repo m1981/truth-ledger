@@ -29,7 +29,7 @@ export TRUTH_ACTOR=canary TRUTH_SESSION=s-canary
 mkrepo "$TMP1"
 echo "hello" > watched.txt
 echo "v1"    > fabricated.txt
-printf 'verifier header\n---\nVERIFIER BODY\n' > prompts/truth-verifier.md
+printf 'verifier header\n---\nVERIFIER BODY\n\n1. RULE ONE.\n2. RULE TWO.\n' > prompts/truth-verifier.md
 git add -A && git commit -qm "canary: init"
 
 say "DOCTOR (G4): must FAIL on an unwired repo, PASS after wiring"
@@ -102,6 +102,33 @@ if [ "$N_AFTER" -eq "$N_BEFORE" ] && $T list --unverified | grep -q "$CID_O"; th
   ok "matching recheck filed nothing; $CID_O still awaits a judged verdict"
 else
   miss "recheck auto-filed a verdict on matching evidence (verifier pre-committed)"
+fi
+
+say "FAULT P (TL-3): dispatch must self-describe integrity (rule count + prompt hash)"
+DISPATCH=$($T dispatch "$CID_O")
+STATED=$(printf '%s\n' "$DISPATCH" | sed -n 's/.*contains \([0-9][0-9]*\) numbered rules.*/\1/p' | head -1)
+ACTUAL=$(printf '%s\n' "$DISPATCH" | grep -Ec '^[0-9]+\. ')
+TERM_HASH=$(printf '%s\n' "$DISPATCH" | sed -n 's/^END-OF-DISPATCH sha256:\(.*\)$/\1/p')
+FILE_HASH=$(python3 -c "import hashlib;print(hashlib.sha256(open('prompts/truth-verifier.md','rb').read()).hexdigest())")
+if [ -n "$STATED" ] && [ "$STATED" -eq "$ACTUAL" ] && [ "$TERM_HASH" = "$FILE_HASH" ]; then
+  ok "dispatch states $STATED rules (matches actual) and terminator hash matches prompt file"
+else
+  miss "dispatch self-description broken: stated=$STATED actual=$ACTUAL termhash=${TERM_HASH:-absent}"
+fi
+
+say "FAULT Q (TL-5): records must carry a real session id, never s-unknown"
+TRUTH_SESSION="" $T claim "session fallback probe" --class UNVERIFIED --tier P2 >/dev/null
+LAST_SESSION=$(tail -1 .truth/claims.jsonl | python3 -c "import json,sys;print(json.load(sys.stdin)['session'])")
+if [ "$LAST_SESSION" != "s-unknown" ] && [ -n "$LAST_SESSION" ]; then
+  ok "unset TRUTH_SESSION falls back to a derived id ($LAST_SESSION)"
+else
+  miss "record filed with session '$LAST_SESSION'"
+fi
+TRUTH_SESSION=s-custom-probe $T claim "session override probe" --class UNVERIFIED --tier P2 --duplicate-ok >/dev/null
+if tail -1 .truth/claims.jsonl | grep -q '"session": "s-custom-probe"'; then
+  ok "explicit TRUTH_SESSION is honored verbatim"
+else
+  miss "TRUTH_SESSION override not recorded"
 fi
 
 say "FAULT D (G10): claim past its ttl_days must expire to stale"

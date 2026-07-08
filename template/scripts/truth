@@ -342,10 +342,27 @@ def join_ready(issues, claims, premises):
     return ready, annotated
 
 def dispatch_text(prompt_content, claim_record):
-    """G11: the exact verifier context -- prompt body + claim, nothing else."""
+    """G11: the exact verifier context -- prompt body + claim, nothing else.
+    The envelope self-describes its own integrity: G11 scripts what the
+    verifier is SENT, but proxies and context trimmers can lossily compress
+    what ARRIVES (observed in the wild: a compression layer dropped an
+    entire numbered rule). The header states what a complete copy contains;
+    the terminator carries the prompt-file hash so a verifier can compare
+    against the file on disk."""
     body = prompt_content.split("\n---\n", 1)[-1].strip()
-    return (body + "\n\n\nCLAIM RECORD (verify exactly what is written):\n\n"
-            + json.dumps(claim_record, indent=2, sort_keys=True))
+    rules = sum(1 for ln in body.splitlines() if re.match(r"\d+\. ", ln))
+    digest = hashlib.sha256(prompt_content.encode("utf-8")).hexdigest()
+    header = (f"INTEGRITY (check before following): a complete copy of this "
+              f"dispatch contains {rules} numbered rules and ends with the "
+              f"line 'END-OF-DISPATCH sha256:{digest}'. If any rule number "
+              "is missing or that terminator is absent, your copy was "
+              "altered in transit -- do not proceed from it; read "
+              f"{PROMPT_REL} from disk instead and compare its hash "
+              f"(shasum -a 256 {PROMPT_REL}).")
+    return (header + "\n\n" + body
+            + "\n\n\nCLAIM RECORD (verify exactly what is written):\n\n"
+            + json.dumps(claim_record, indent=2, sort_keys=True)
+            + f"\n\nEND-OF-DISPATCH sha256:{digest}")
 
 # --------------------------------------------------------- validation
 
@@ -442,7 +459,14 @@ def actor():
     return os.environ.get("TRUTH_ACTOR", os.environ.get("USER", "unknown"))
 
 def session():
-    return os.environ.get("TRUTH_SESSION", "s-unknown")
+    explicit = os.environ.get("TRUTH_SESSION")
+    if explicit:
+        return explicit
+    # Fallback correlation without coordination: our own PID changes per
+    # command, but the invoking shell/harness is stable for a sitting, so
+    # ppid+date groups records filed from one operating context. This is
+    # forensic grouping, not identity -- set TRUTH_SESSION for real ids.
+    return f"s-{os.getppid()}-{now_dt():%Y%m%d}"
 
 def run_evidence(cmd):
     r = subprocess.run(cmd, shell=True, capture_output=True)
