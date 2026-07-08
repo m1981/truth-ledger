@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.4 -- seeded-fault acceptance suite (22 checks: seeded faults + adapter seam).
+# truth-canary.sh v0.4 -- seeded-fault acceptance suite (seeded faults + TL hardening + adapter seam + bd normalization).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -210,6 +210,30 @@ if echo "$READY_STDIN" | grep -q "^HELD bd-x1" && echo "$READY_STDIN" | grep -q 
   ok "--stdin adapter joins identically (tracker-agnostic pipe)"
 else
   miss "--stdin adapter wrong: $READY_STDIN"
+fi
+# v0.4.1 -- the bundled bd adapter must normalize varied JSON shapes and
+# still drive the join (restored after TL merge dropped these two checks).
+cat > bd-variant <<'EOF'
+#!/usr/bin/env bash
+printf '%s' '{"issues":[{"issue_id":"bd-x1","summary":"issue on stale premise"},{"key":"bd-x2","name":"issue on live premise"}]}'
+EOF
+chmod +x bd-variant
+READY_ADAPT=$(TRUTH_BD_CMD="$PWD/bd-variant" TRUTH_TRACKER_CMD="bash $HERE/truth-bd-adapter.sh" $T ready)
+if echo "$READY_ADAPT" | grep -q "^HELD bd-x1" && echo "$READY_ADAPT" | grep -q "^bd-x2"; then
+  ok "bd adapter normalizes {issue_id,summary,key,name} and joins correctly"
+else
+  miss "bd adapter join wrong: $READY_ADAPT"
+fi
+# adapter must FAIL LOUDLY (non-zero) rather than emit an empty join
+cat > bd-noid <<'EOF'
+#!/usr/bin/env bash
+printf '%s' '[{"foo":"bar"}]'
+EOF
+chmod +x bd-noid
+if TRUTH_BD_CMD="$PWD/bd-noid" bash "$HERE/truth-bd-adapter.sh" >/dev/null 2>&1; then
+  miss "bd adapter silently accepted issues with no id"
+else
+  ok "bd adapter fails loudly when no id field is recognized"
 fi
 if PATH="/usr/bin:/bin" TRUTH_TRACKER_CMD="definitely-not-a-tracker --json" $T ready >/dev/null 2>&1; then
   miss "ready succeeded with a nonexistent tracker command"

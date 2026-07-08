@@ -7,3 +7,4 @@ Facts about the world outside the repo: add `--ttl-days N` instead of --paths.
 Never edit .truth/claims.jsonl directly; status changes are new records.
 
 See `.truth/README.md` for full documentation.
+Using Beads as the work tracker? See `docs/beads-integration-guide.md` for the claim->verify->work->close loop and adapter wiring.
