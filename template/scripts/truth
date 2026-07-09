@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""truth v0.5 -- append-only claims ledger with a native work kernel.
+"""truth v0.5.3 -- append-only claims ledger with a native work kernel.
+
+v0.5.3 (ADR-006, issue-fold hardening): duplicate issue ids are now
+  FIRST-WINS in fold_issues, matching fold()'s claim handling. v0.5's
+  original last-wins choice described a verb the CLI never implements
+  (`truth issue` always mints a fresh id from hash(payload, ts, actor);
+  no command re-files an existing wk- id), so it was pure attack surface:
+  an appended duplicate carrying `premises: []` silently stripped an
+  issue's ADR-001 protection, needing no backdating and no terminal-state
+  coincidence -- unlike the analogous claims-side gap (paper §8 item 6),
+  which needs both. Closes it the way F6 closed it for claims.
 
 v0.5 (ADR-002, work kernel): issues live in the same ledger as claims.
   Two new record kinds -- `issue` (wk- envelope id; payload title/text/
@@ -210,12 +220,14 @@ _ISSUE_EVENT_STATUS = {"claimed": "claimed", "released": "open",
 
 def fold_issues(events):
     """Derive issue states from the same event stream, in the same
-    confluent (ts, id) total order as fold(). Two rules differ from claim
-    folding, both decided in ADR-002: the LAST issue record with a given
-    id wins (update-by-refile -- an issue's payload is mutable intent, not
-    a first-wins assertion), and `cancelled` is terminal (G12 symmetry)
+    confluent (ts, id) total order as fold(). Duplicate issue ids are
+    FIRST-WINS (ADR-006), identical to fold()'s claim handling -- closes
+    the same class of attack F6 closed for claims: an appended duplicate
+    wk- id could otherwise overwrite `premises` and silently strip an
+    issue's ADR-001 protection. `cancelled` is terminal (G12 symmetry)
     while `closed` is not (work is cyclical; closing asserts completion,
-    not falsity)."""
+    not falsity) -- that rule, unlike first-wins, does differ from claim
+    folding and is decided in ADR-002."""
     ordered = sorted(events, key=lambda ne: (ne[1].get("ts") or "",
                                              ne[1].get("id") or ""))
     issues = {}
@@ -223,10 +235,9 @@ def fold_issues(events):
         kind, p = ev.get("kind"), ev.get("payload", {})
         if kind == "issue":
             if ev["id"] in issues:
-                issues[ev["id"]]["issue"] = ev  # last payload wins
-            else:
-                issues[ev["id"]] = {"issue": ev, "status": "open",
-                                    "status_ts": ev.get("ts")}
+                continue  # first issue payload wins; duplicates cannot alter it
+            issues[ev["id"]] = {"issue": ev, "status": "open",
+                                "status_ts": ev.get("ts")}
         elif kind == "issue_event":
             ref = p.get("issue")
             if ref in issues and issues[ref]["status"] != "cancelled":

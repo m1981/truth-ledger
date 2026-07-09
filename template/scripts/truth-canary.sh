@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.5.2 -- seeded-fault acceptance suite (seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + spec-health + doc-health).
+# truth-canary.sh v0.5.3 -- seeded-fault acceptance suite (seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + spec-health + doc-health).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -411,6 +411,25 @@ else
   ok "gate blocked the tampered issue record"
 fi
 git checkout -q -- .truth/claims.jsonl
+
+say "FAULT R9 (ADR-006): appending a duplicate issue id must not strip premises"
+python3 - "$WK_STALE" <<'PYEOF'
+import json, sys
+wid = sys.argv[1]
+rec = {"id": wid, "kind": "issue", "actor": "agent-x", "session": "s-evil",
+       "ts": "2099-01-01T00:00:00+00:00",
+       "payload": {"title": "kernel issue on stale premise", "text": "",
+                   "deps": [], "premises": []}}
+open(".truth/claims.jsonl", "a").write(json.dumps(rec, sort_keys=True) + "\n")
+PYEOF
+if ! grep -q '"session": "s-evil"' .truth/claims.jsonl; then
+  miss "fault injection failed: duplicate issue record was never appended"
+elif PATH="/usr/bin:/bin" $T ready | grep -q "^HELD $WK_STALE"; then
+  ok "duplicate-id append ignored; $WK_STALE still HELD (premises intact)"
+else
+  miss "duplicate-id append stripped $WK_STALE's premises -- it is now ready"
+fi
+git checkout -q -- .truth/claims.jsonl 2>/dev/null || true
 
 say "FAULT S1 (spec-health): spec citing only live/open ids must pass"
 mkdir -p docs/specs

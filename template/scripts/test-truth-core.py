@@ -384,12 +384,29 @@ class TestFoldIssues(unittest.TestCase):
         issues = tm.fold_issues(evs)
         self.assertEqual(issues["wk-00000001"]["status"], "cancelled")
 
-    def test_last_issue_payload_wins(self):
+    def test_first_issue_payload_wins(self):
+        """ADR-006: matches fold()'s claim handling -- a duplicate wk- id
+        cannot alter the issue's title, deps, or premises, no matter its
+        timestamp."""
         evs = events(
             issue_rec(title="v1", ts="2026-07-01T00:00:00+00:00"),
             issue_rec(title="v2", ts="2026-07-01T00:00:05+00:00"))
         issues = tm.fold_issues(evs)
-        self.assertEqual(issues["wk-00000001"]["issue"]["payload"]["title"], "v2")
+        self.assertEqual(issues["wk-00000001"]["issue"]["payload"]["title"], "v1")
+
+    def test_duplicate_issue_id_cannot_strip_premises(self):
+        """ADR-006: the finding this fix closes -- a later-timestamped
+        duplicate wk- id emptying `premises` must not disarm ADR-001
+        protection. No backdating needed for this attack (last-wins would
+        have let an ordinary 'now' timestamp win), which is exactly why
+        last-wins was the wrong default."""
+        evs = events(
+            issue_rec(premises=["tr-000000c1"], ts="2026-07-01T00:00:00+00:00"),
+            issue_rec(premises=[], ts="2099-01-01T00:00:00+00:00"))
+        issues = tm.fold_issues(evs)
+        self.assertEqual(
+            issues["wk-00000001"]["issue"]["payload"]["premises"],
+            ["tr-000000c1"])
 
     def test_confluence_file_order_irrelevant(self):
         a = issue_rec(ts="2026-07-01T00:00:00+00:00")
