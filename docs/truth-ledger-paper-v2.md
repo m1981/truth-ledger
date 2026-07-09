@@ -1,0 +1,603 @@
+# The Truth Ledger: A Claim-Invalidation Layer for Agentic Software Development
+
+**Status:** v2. Merges the frozen v0.4 audit with pilot field evidence through
+2026-07-09 into one living document, superseding the earlier split between
+`truth-ledger-paper.md` (audit, frozen at v0.4) and
+`truth-ledger-field-notes.md` (deployment, living). Artifact version audited:
+v0.4. Artifact version deployed: v0.5.2. Pilot: one multi-component
+kitchen-manufacturing monorepo (domain core, catalog service, ERP, CAM, two
+adapters), one solo developer, LLM agent sessions doing the implementation
+work, day-0 2026-07-08. All quantitative claims in §2 are self-reported by
+that same developer, who is also this paper's sole author and auditor —
+see §8 item 1.
+
+**How to read this paper.** Section headers are ordered by evidence class,
+not narrative convention: mechanism and measurement first, interpretation
+last. §6 is explicitly optional — skip it if you want the artifact, not the
+theory. §7 applies the artifact's own discipline to this document: a table
+of what would falsify this paper's own claims.
+
+---
+
+## 0. What this is, in one paragraph
+
+Language-model agents assert facts about codebases — "this module owns all
+currency conversion," "no call sites remain for this API" — with no record
+of how the fact was established and no mechanism for a later code change to
+invalidate it. The truth ledger is a cache-invalidation system for those
+sentences: every trusted claim carries a command whose output was hashed at
+a known commit, and any subsequent git event or elapsed TTL that could
+undermine the claim mechanically demotes it. That's the whole idea. Sections
+1–5 are that idea, its measured behavior in one real deployment, and the
+defects an adversarial audit found in it. Section 6 is the theoretical
+vocabulary (Byzantine fault tolerance, falsificationism, entropy) that
+motivated the design — presented after the mechanism, and after the field
+correction to what that vocabulary got wrong.
+
+---
+
+## 1. The mechanism
+
+**Storage.** A single append-only JSONL file, `.truth/claims.jsonl`, beside
+a work tracker it never writes to. A dependency-free Python CLI
+(`scripts/truth`, 1,213 lines as of v0.5.2 — it was ~750 at the v0.4 audit
+scope §3–§4 cover; the growth is the work kernel and satellite mechanisms
+of §5), two shell gates (`check-truth.sh`, a commit-time prefix check, and
+a post-merge invalidation-scan hook), a fixed verifier prompt, a JSON
+Schema. Concurrent writers are assumed, not incidental: multiple appends
+racing to the same file rely on POSIX `O_APPEND` atomicity for
+single-write-call, single-filesystem safety — stated here as a load-bearing
+assumption, not only as the caveat it also appears as in §8.
+
+**Six record kinds**, sharing an envelope (`id`, `kind`, `actor`,
+`session`, `ts`):
+
+- **claim** — an assertion with an `evidence_class` (VERIFIED / INFERRED /
+  UNVERIFIED), a `cost_tier` (P0/P1/P2, the cost of acting on it if false),
+  and — for VERIFIED — an evidence capsule: the command run, a SHA-256 of
+  its output, exit code, the anchor commit, and either watched
+  `evidence_paths` (facts git can see) or `ttl_days` (facts about the
+  world outside the repository).
+- **verdict** — a judgment (`agree` / `diverge` / `cannot_verify` /
+  `retracted`), always with a `basis` sentence.
+- **invalidation** — a mechanical demotion: evidence paths touched, TTL
+  elapsed, or anchor commit unreachable after history rewriting.
+- **premise** — a work item's declared dependency on a claim.
+- **issue** / **issue_event** — added by the work kernel (§5, its design
+  record ADR-002, not reproduced in this paper):
+  work items are folded the same way claims are, so premise-at-birth and
+  claim-at-death are more events in the same log rather than a second
+  system.
+
+**Derivation.** The fold below covers claim status; the work kernel adds
+an analogous fold for issue status, described in §5. Status is never
+stored; a pure function replays the log:
+
+```
+no events              → unverified
+verdict agree          → live
+verdict diverge        → diverged        (queued for attention)
+verdict cannot_verify   → cannot_verify   (queued if P0)
+verdict retracted       → retracted       (terminal — later events ignored)
+invalidation            → stale           (queued if P0/P1)
+```
+
+A claim is born `unverified` regardless of its `evidence_class` — filing a
+VERIFIED claim runs and hashes the evidence command at intake, but that
+double-run is a gate, not a verdict; only an explicit `agree` event (via
+`truth dispatch`, §1 Verification below) advances it to `live`. This is
+deliberate: evidence attached at filing and evidence independently
+confirmed are kept as two distinct events in the log, never conflated.
+
+Terminality of `retracted` is the strongest promise the system makes: a
+human decision to kill a claim cannot be undone by any later event —
+**on the paths this design defends against**, precisely stated below.
+
+**Fold semantics, precisely.** The fold replays every event — claim,
+verdict, invalidation, premise — in the canonical total order
+`(timestamp, id)`, ascending, regardless of file position (this is what
+makes replay order-independent; §4, F3). Within that order, the *first*
+claim record to establish a given id fixes that claim's text and evidence
+capsule; any later claim record bearing the same id is ignored for content
+(§4, F6) — its append is permitted (the log is append-only, not
+edit-only) but has no effect on derived state. Composing this with the
+accepted timestamp-forgery threat (§8 item 6) yields one open, undefended
+gap, stated plainly rather than left implicit: an appender who backdates a
+duplicate-id claim record to sort *before* the genuine one in canonical
+order becomes "first," silently substituting its text and evidence
+capsule under an id that may already carry a live verdict. Verdicts and
+invalidations still apply correctly to whichever content wins — no
+verdict is lost or misattributed — but the claim's *substance* is not
+protected against this specific composition of two individually-documented
+behaviors. This is accepted and now documented, not prevented or
+detected; it is the same class of residual threat as §8 item 6 generally,
+made concrete for the fold rather than left as a general caveat about
+timestamps.
+
+**Intake gates.** `truth claim` refuses, before anything is written:
+VERIFIED claims with no evidence command; claims with neither paths nor
+TTL; filing in a repository with no commits to anchor to; evidence commands
+whose two intake runs hash differently (nondeterministic, overridable); and
+near-duplicates of active claims by word-level, case-folded token overlap
+≥ 0.6 against claim text (overridable, and always allowed for corrections
+of dead claims).
+
+**Invalidation.** A scan, wired to post-merge hooks or CI, demotes claims
+whose premises git can check. Anchor-loss after rebase/squash/gc demotes
+with reason "anchor unreachable" — failing toward distrust rather than
+assuming innocence.
+
+**Verification.** `truth dispatch <id>` emits a fixed prompt plus the claim
+record — never the authoring session's transcript or reasoning. The
+verifier first runs a deterministic recheck (hash mismatch → diverge;
+command not found → cannot_verify), then independently judges whether the
+evidence supports the claim's *text* — the gap between "does this command
+still produce this output" and "does this output support this sentence."
+Verifiers cannot retract.
+
+**Policy.** `truth ready` intersects the work tracker's unblocked issues
+with premise validity, tier-sensitive: `live` passes; `unverified` passes
+with a warning; `cannot_verify` blocks only P0 premises; `stale`,
+`diverged`, `retracted`, and missing claims always block. Work may proceed
+on an unverified premise that later proves false — a stated trade for low
+filing friction, with a named fallback if warning fatigue appears.
+
+That is the entire mechanism: an event log, a derivation function, entry
+gates, exit triggers, an independent recheck, and a policy join. Nothing
+above this line requires the word "Byzantine."
+
+---
+
+## 2. What it actually catches, with numbers
+
+One pilot repository, one solo developer, LLM agent sessions doing the
+implementation work — the regime the design targets. Day-0: 2026-07-08.
+Measured as of 2026-07-09:
+
+| Measure | Value |
+|---|---|
+| Verifier dispatches | 32 |
+| — agree | 29 |
+| — diverge, genuine (claim actually wrong) | 2 |
+| — diverge, mechanical (evidence recipe changed, fact still true) | 1 |
+| — cannot_verify | 0 |
+| Claims in ledger | 21 (15 live, 6 retracted) |
+| Human retractions (`TRUTH_HUMAN=1`) | 6 — all by the human, none by an agent |
+| Concurrent agent sessions writing one ledger | 6 interleaved, zero corruption |
+| Tripwire recall & false-alarm rate (post-commit scan, one real refactor) | 1/1 staled when it should have (recall), 0 false alarms that round (precision signal; both n=1) |
+| Seeded faults, this repo's template canary | 19 (unchanged since v0.4; the count that gates every commit here) |
+| Seeded faults, the pilot's downstream canary | grew 19 → 42 → 45 → 48 as work kernel, spec-health, and doc-health shipped — a separate suite in a separate repo, not this one's (Appendix B) |
+
+**The dominant real failure mode is scope overreach, not hallucination.**
+Both genuine divergences shared one shape: a *correct* evidence command
+backing an *overreaching* claim text — a repo-wide clause ("the only
+occurrences in the repo are…") backed by a package-scoped grep whose
+`--include` filter was doing invisible work. Same author, same defect
+pattern, caught twice by independent verifiers (n=2, same author, same
+defect shape — a signal, not yet a distribution). Zero fabricated or
+hallucinated claims were observed in this window. This matters beyond the
+pilot's small N: it is evidence about what kind of failure this tool is
+actually built to catch, addressed directly in §6.1.
+
+**Scripted independence held, and exceeded its brief.** Verifiers
+receiving dispatch-only context (no authoring session's reasoning) caught
+the author both times a divergence occurred. Twice, independently, a
+verifier went further than asked — tracing a claim about commit-time
+enforcement to the actually-active hook manager rather than trusting a
+vestigial config path, unprompted skepticism about a norm dressed as an
+enforced property — the same pattern F4 names in §4.
+
+**The repairs held under real concurrency.** Re-verified claims stayed
+live across subsequent scans (no re-staling loop); human-gated retraction
+was exercised six times, always correctly; near-duplicate intake fired
+correctly once and was consciously overridden; six concurrent sessions
+interleaved appends with zero corruption and an order-independent fold.
+Small-scale evidence only — six sessions on one machine is not two humans
+on two machines, and the paper's single-regime caveat (§8) stands.
+
+---
+
+## 3. The audit method
+
+Seven instruments, each targeting a defect class the others miss:
+
+1. **Consistency audit of the specification** — diff every contract
+   representation (README, schema, code, diagrams) against the others;
+   two copies of one contract will drift.
+2. **Seeded-fault acceptance testing** — run the shipped fault suite to
+   establish a baseline, then audit its *coverage*: which stated
+   properties does no seeded fault exercise?
+3. **Property-based and permutation testing** — state invariants as
+   universally quantified properties and search for counterexamples (the
+   QuickCheck lineage; Claessen & Hughes, 2000); for an event-sourced log
+   merged by union, the decisive property is confluence (every event
+   order folds to the same state).
+4. **Adversarial capability enumeration** — list every actor (agent
+   session, human, verifier, CI) and, for each capability that actor
+   *actually has*, attempt to violate an invariant using only that
+   capability. Every property lands in exactly one bucket: prevented,
+   detected, or accepted-and-documented. Anything in no bucket is a
+   finding.
+5. **Boundary and degenerate-case analysis** — empty logs, duplicate ids,
+   same-timestamp events, glob edge cases, rewritten history.
+6. **Fail-open analysis of the detection machinery** — does a detector run
+   when its optional dependency is absent, and if not, does the suite fail
+   or silently pass?
+7. **Independent reproduction and recursion** — every finding demonstrated
+   by a runnable script against the real artifact in a fresh sandbox, and
+   the method turned on its own output: every repair must pass the
+   *original* acceptance suite, unchanged.
+
+The organizing rule across all seven: evidence is survival of a genuine
+attempt at refutation, not accumulation of green runs. A hundred passing
+fault-suite runs are worth less than one well-aimed attack that fails to
+land.
+
+---
+
+## 4. Findings and repairs
+
+Seven defects, six from the original audit (v0.2/v0.3 → v0.4) and one
+found later by inspection during pilot deployment (v0.5.x). Each row:
+what broke, how it was demonstrated, whether the shipped test suite would
+have caught it, and the fix.
+
+Severity scale: Low (cosmetic/documented risk) < Medium (wrong status
+under a specific, narrow condition) < High (wrong status under normal
+operation) < Critical (a headline invariant falsified by an attack no
+gate covered).
+
+| # | Finding | Severity | Demonstration | Caught by shipped tests? | Fix |
+|---|---|---|---|---|---|
+| F1 | Schema stale against code on two features (`retracted` verdicts, TTL-only claims); drift detector fails open (silently skips) without an optional dependency | High | Real CLI produced a ledger the schema rejected; suite reported `OK (skipped=2)` without `jsonschema` | Only if the optional dependency was installed | Schema updated; missing dependency is now a **test failure** unless explicitly waived — the detector fails closed (blocks) instead of open (skips) |
+| F2 | Re-verified claims re-stale every scan — anchor frozen at filing, never advanced | High | stale → agree → live → next scan, zero new edits → stale again | No | `agree` verdicts on path-anchored claims advance an **effective anchor**; scan diffs from it |
+| F3 | Fold not confluent under union merge — `{agree, diverge}` folds to `live` or `diverged` depending on merge direction | Medium | Exhaustive permutation check | No | Fold sorts events into total order `(timestamp, id)` before replay — the standard CRDT last-writer-wins move (Shapiro et al., 2011) |
+| F4 | "Retraction is humans-only" enforced nowhere — CLI checked only that a basis was present, never the actor | Medium | Verifier-actor retraction accepted | No | Retraction requires setting `TRUTH_HUMAN=1` — this converts an unenforced norm into a self-attested convention with a syntax, not an identity-checked property; any actor able to set an environment variable can still retract (§8 item 5) |
+| F5 | Evidence-path globs cross directory separators (`src/*.py` matches `src/sub/deep.py`) | Low | Direct check | Partially | Custom glob translation: `*`/`?` stop at `/`, `**` spans |
+| F6 | **Tombstone resurrection by pure append** — a duplicate claim record bearing a retracted id resets status to `unverified`; both shipped gates (diff-deletion heuristic, well-formedness check) pass it | Critical | A retracted P0 claim — text: *"the database is safe to drop"* — resurrected through both gates and `validate` | No — the canary seeded this fault only on the verdict path | Fold ignores duplicate claim ids (first wins); commit gate replaced with a line-prefix check: the staged file must literally extend the committed one — but see §1's "Fold semantics, precisely" for a related, still-open gap this fix does not close |
+| INV-M | **Dead tripwire** — space-separated `--paths` ("a.sh b.sh") silently stores as one literal path matching nothing; the claim is true, the hash matches, the verifier agrees, and the invalidation trigger can never fire | High | Found by inspection in the pilot ledger, not by any gate | No — nothing checks a claim's protection metadata for validity | Proposed, not yet shipped: intake check refusing whitespace-but-no-comma paths and zero-match literals; canary fault seeding a dead tripwire |
+
+**Verification effort at repair time (v0.4):** 41 unit and conformance
+tests green with the schema detector armed; 12 new regression tests added,
+one per finding; 19/19 seeded faults caught, up from an original 14 — the
+original 14 unchanged and still green, which is what demonstrates behavior
+preservation rather than merely new coverage.
+
+**What survived attack** (the negative results, reported because a method
+that only reports hits is not measuring anything): retraction terminality
+held on the verdict path under reordering and resurrection attempts before
+the fix; all intake gates fired as documented; the invalidation scan is
+idempotent; degenerate ledgers fold cleanly; the readiness matrix matches
+its design record (ADR-001, not reproduced here) cell-for-cell;
+anchor-loss demotion fails toward distrust; the
+dispatch seam leaks no author reasoning; the core is a pure function of
+time and touches no I/O, which is what made unit-level attacks on it cheap
+in the first place.
+
+**A prediction the evidence refuted:** F1's root cause was predicted to be
+fixture-corpus omission. Wrong — the corpus contained both cases, and the
+suite failed correctly when armed. The real cause, a detector failing open
+on an absent optional dependency, was worse for process and better for
+design than the prediction. Recorded because a method that cannot be
+surprised isn't testing anything.
+
+**The recursive episode, twice.** The first attempt to fix F3 used
+second-granularity timestamps; same-second events tied and fell to a
+random id tie-break, making the fold confluent but wrong under ties — the
+original, unchanged acceptance suite caught its own auditor's bug
+nondeterministically, fixed by moving to microsecond timestamps. Months
+later, in the pilot, a dead-name pre-commit check fired on the very commit
+introducing the naming convention it enforces, and again on its own
+author's later edit. Two instances, in different codebases and different
+timeframes, are a pattern worth watching rather than an established
+operating mode — deliberately kept out of §7's falsifiability table,
+since two data points support no real falsifier; a third instance, or a
+long dry spell, would be the honest way to revisit this claim later.
+
+---
+
+## 5. What generalizes: citation over restatement
+
+One pattern recurred across every new mechanism the pilot grew: **facts
+restated in prose rot; facts cited by id stay checkable** — the same
+structural growth Lehman documented for code itself, absent explicit
+counter-effort (Lehman, 1980), applied here to knowledge about code rather
+than the code. Three mechanisms fell out of this observation, all now
+upstream in the project template:
+
+- **Work kernel** — work items are ledger records with a premise declared
+  at birth and a completion claim filed at death; readiness requires open
+  status, closed dependencies, *and* valid premises.
+- **spec-health** — feature specs may state facts only by citing ledger
+  ids; a sweep judges every spec by the readiness status of the ids it
+  cites. A cold review of the pilot's first spec immediately found the
+  convention's own blind spot: a fact that is premise of no cited work
+  item is invisible to the readiness check — now a warning.
+- **doc-health** — the same discipline applied to prose generally:
+  forbidden post-rename names, broken relative links. A sweep of the
+  pilot's 105 live markdown files found decay **concentrated entirely in
+  pre-ledger prose** — every document written under the citation
+  convention came back clean but one routing gap.
+
+That last result is evidence for a claim the original design never
+explicitly made: this isn't only a detector of decayed facts after the
+fact — citing a fact by id, rather than restating it, may prevent the
+decay at the point of authorship. One repository, 105 files, one sweep, is
+not a controlled trial and does not establish causation; the distribution
+(100% clean post-convention, all rot pre-convention) is a plausible signal
+worth a real test — a second repository, or a before/after within this
+one as more documents accrue — not yet a demonstrated effect.
+
+The transferable idea, held to that same caution, is the pattern rather
+than any one satellite: an artifact class admitted into a repository
+plausibly needs its own health tripwire at the moment it's admitted, or it
+risks becoming archive material — a hypothesis this pilot is consistent
+with, not one it proves.
+
+---
+
+## 6. Interpretive framings (optional — mechanism doesn't depend on this section)
+
+This section names the theoretical vocabulary that motivated the design.
+None of it is required to understand or operate the artifact; all of it
+is presented with the correction the field evidence supplied.
+
+### 6.1 Byzantine fault tolerance — as analogy, corrected
+
+Byzantine fault tolerance (Lamport, Shostak & Pease, 1982; Castro &
+Liskov, 1999) formalizes agreement when components fail arbitrarily —
+crashing, lying, colluding — and its transferable idea is structural:
+trust need not be a judgment about a component, it can be a checkable
+property of a protocol's redundancy. This system borrows that *move* —
+replace "do I trust this claim" with "does the structure guarantee a
+false claim is detected" — and explicitly does not borrow BFT's
+machinery: there is no quorum, no `3f+1` replica bound, no vote. It is not
+a consensus protocol and was never meant to be one — unlike the lineage
+that extended Byzantine agreement to open-membership settings (Nakamoto,
+2008; Yin et al.'s HotStuff, 2019), which this system doesn't need because
+it targets one operator's sessions, not open, mutually distrusting
+replicas.
+
+The original design motivation mapped failure classes directly: crash
+faults to unverified claims, omission faults to silently outdated facts,
+Byzantine faults to hallucinated or forged claims, correlated faults to a
+verifier sharing the author's priors. Field measurement (§2) found none
+of the pilot's real defects in the Byzantine or correlated-fault rows —
+zero hallucinations across 32 dispatches. The dominant real fault, scope
+overreach by an honest actor with honest evidence, has no row in the
+table at all: it isn't a crash, an omission, a lie, or a shared bias. It's
+a mismatch between a quantifier in natural language and the domain of the
+command that was supposed to support it — a fault category native to
+*this* domain (claims stated in prose) with no analogue in a domain about
+computational agreement. The honest conclusion is that BFT contributed a
+useful design stance and an overclaimed failure taxonomy; the taxonomy
+should be read as a starting enumeration, not a closed one.
+
+### 6.2 Falsificationism — as engineering discipline
+
+Popper's demarcation — a claim is scientific only insofar as it specifies
+what would refute it — is used here as an acceptance criterion, not a
+philosophical commitment: the invariant table (Appendix A) is one row per
+property, naming its falsifier and its gate. §3's method takes the
+further step of attacking the falsifiers themselves, since a weak
+falsifier passing proves nothing. What this bought in practice: a battery
+built from decades-old, individually unremarkable techniques (fault
+injection, property-based testing, capability-based red-teaming) that,
+composed and pointed at a system already built around named refutations,
+found seven real defects including one that falsified a headline
+invariant through its own stated refutation condition.
+
+### 6.3 Entropy — as unformalized metaphor
+
+At verification, uncertainty about a claim is reduced to near zero and
+the anchor commit timestamps that moment; every subsequent event that
+*could* invalidate the claim reinjects uncertainty whether or not it
+actually changed the truth value, because the observer cannot know
+without re-checking. Under this reading, `evidence_paths` and `ttl_days`
+are an explicit model of a fact's decay channels, and `stale` is the
+mechanical admission that accumulated uncertainty crossed a threshold.
+This is a framing, not a formalism: no entropy is computed anywhere in
+the system or in this paper. The field data in §2 (dispatch counts,
+divergence rates) is exactly the raw material a real calculation would
+need — an estimated claim half-life per cost tier, from which intake
+could suggest TTLs instead of relying on author guesses — but that
+calculation has not been done, and this section should not be read as
+implying it has.
+
+---
+
+## 7. This paper's own claims, and what would falsify them
+
+Applied to this document the discipline it applies to the artifact: each
+claim below is falsifiable by a specific, nameable observation.
+
+| Claim | Falsified by |
+|---|---|
+| Hallucination is not the dominant failure mode in this deployment regime | One confirmed fabricated claim (fact asserted with no basis in reality, not merely scope overreach) appearing anywhere in the pilot ledger's history |
+| Scope overreach, not fabrication, is the pilot's dominant real failure | A third genuine divergence whose cause is not a quantifier/evidence-domain mismatch |
+| The v0.4 repairs hold under real concurrent use | Any corruption, lost update, or non-confluent fold observed in the pilot's git history of `.truth/claims.jsonl` |
+| Citation discipline is *hypothesized* to prevent documentation decay, not only detect it (§5 states this as a hypothesis, not a result) | A post-ledger-convention document found to contain undetected rot, discovered by any means other than the doc-health sweep itself |
+
+The first two rows share one underlying dataset — 32 dispatches, 2 genuine
+divergences, same author — so they are two readings of one small sample,
+not two independent confirmations, and should be weighted accordingly.
+Their falsifiers are also deliberately hair-trigger relative to the
+claims' actual logical form: one fabricated claim would not mathematically
+overturn "not dominant," and one differently-caused divergence would not
+overturn "dominant" out of three. Read both falsifiers as tripwires that
+should prompt re-examination, not as strict logical negations — precision
+this table cannot fully deliver from n=32.
+
+**Deliberately absent from this table:** two claims that don't belong in
+a falsifiability table by its own admission rule. First, *this system
+generalizes beyond a solo-developer regime* — not a claim this paper makes
+anywhere; §8 item 4 names single-regime evaluation as an open limit, not a
+result. Second, *recursive self-catching (§4) is a repeating pattern, not
+a single episode* — discussed in §4 as two observed instances, but a claim
+this table cannot state a real falsifier for (no fixed observation window
+would cleanly refute "pattern" from two data points), so it stays a
+narrative observation in §4 rather than a row here. A falsifiability table
+should not include claims the paper itself disclaims, or claims it cannot
+actually falsify.
+
+The single largest claim this paper does *not* make, and should not be
+read as making: that the ledger reduces false-VERIFIED rates in practice.
+Everything above concerns mechanism — the machine detects what it is
+built to detect. Whether it *helps*, net of the friction it adds, requires
+the control comparison described in §10 and has not yet been run.
+
+---
+
+## 8. Honest limits, ranked
+
+Ranked by how much a skeptical reader should discount everything above
+this list before weighing it, not by raw "size" alone: item 1 conditions
+trust in every number in §2 and every defect in §4, so it leads even
+though item 2 names the largest single *unanswered question*.
+
+1. **Single-observer conflict of interest, in both halves.** The audit
+   battery was assembled by one auditor; the pilot's operator is also the
+   artifact's sole author and this paper's sole author. Every number in
+   §2 and every defect in §4 is self-reported by the same person who
+   built the thing being measured. Independent replication — a second
+   team auditing the artifact, or a second deployment measuring the
+   pilot's numbers — is the real check and has not happened.
+2. **Efficacy is unmeasured.** The largest open *question*, conditional
+   on item 1's caveat being accepted. A monthly hand-audit against the
+   day-0 baseline is the system's own prescribed check; the first is due
+   ~2026-08-08 and will be recorded in a future revision of this
+   document, not asserted here.
+3. **The field window is short.** Every §2 number comes from roughly a
+   24–48 hour window (day-0 2026-07-08, measured 2026-07-09). Language
+   like "dominant failure mode" or "repeating pattern" describes what has
+   been seen in that window, not a steady-state rate — treat every count
+   in §2 as provisional until the pilot has run for months, not days.
+4. **Single-regime evaluation.** One solo developer, one repository, six
+   concurrent agent sessions on one machine. Multi-human, multi-machine
+   concurrency is untested and is exactly the regime that would stress
+   the confluence and `O_APPEND` assumptions hardest.
+5. **Agent compliance is behavioral, not technical.** The entire layer is
+   discovered through a few lines of instruction-file text; a runtime
+   that never loads them bypasses everything. Held so far in the pilot —
+   but the pilot's operator is also the layer's author, so discovery by
+   unbriefed agents in unrelated repositories is untested.
+6. **Timestamp forgery is accepted, not solved — including its
+   composition with duplicate-id dedup** (§1, "Fold semantics,
+   precisely"). An appender chooses its own `ts`; the line-prefix gate
+   makes forged appends permanent and attributable in git history but
+   does not prevent backdating, and a backdated duplicate can win claim
+   content under first-wins dedup. Deferred behind a growth gate (signed
+   records) rather than half-built.
+7. **The dead-tripwire class (INV-M) has a proposed fix, not a shipped
+   one.** Currently mitigated by an operating convention (file a
+   successor claim, retract the original), not a gate.
+8. **Vocabulary debt.** "Diverged" conflates "reality changed" with "the
+   measuring command's output format changed." No urgency, but the
+   distinction is real and currently unnamed in the status vocabulary.
+
+---
+
+## 9. Adopting this
+
+The friction budget is stated as a design constraint, not a marketing
+claim: one command to file a claim, four lines of instruction-file text
+for an agent to discover the layer exists. In practice, three operating
+conventions earned in the pilot are worth adopting alongside the code
+itself, since none of them are yet enforced mechanically:
+
+- **Never write a repo-wide clause backed by a package-scoped command.**
+  Name the by-design survivors explicitly instead of relying on a
+  quantifier the evidence command doesn't actually check.
+- **Commit the work, then file the completion claim** — not the reverse;
+  a claim filed before its own shipping commit can be staled by that
+  commit within seconds.
+- **Pin evidence-command output that embeds counts** (`"0 failures across
+  70 docs"` will mechanically diverge as the corpus grows even though the
+  claimed fact stays true); prefer a stable sentinel like `... && echo
+  CLEAN`.
+
+Requirements: POSIX, git, Python 3; the `jsonschema` package if the
+schema-drift detector should run armed rather than fail closed (block,
+the safe default) instead of running unarmed and silently skipping.
+
+---
+
+## 10. Future work
+
+- **The efficacy trial** — see §8 item 2 for the gap; the concrete design
+  is: longitudinal false-VERIFIED rate, with and without the ledger,
+  across repositories and agent runtimes.
+- **A scoping-fault countermeasure beyond discipline.** §2's dominant
+  finding currently has only an operating convention (§9) as a defense. A
+  concrete, not-yet-built next step: an intake heuristic flagging
+  universal quantifiers ("only", "no ... anywhere", "the repo") in claim
+  text when the evidence command carries path or `--include` filters —
+  catching the exact shape both genuine divergences shared.
+- **INV-M's gate** (§4, §8 item 7) — proposed here, not yet shipped as
+  code.
+- **Claim half-life measurement** (§6.3) — turning the decay-channel
+  metaphor into a calibrated one from invalidation-log data, enabling
+  data-driven TTL suggestions at intake instead of author guesses.
+- **Formal verification of the fold.** The core is a pure function over a
+  small event alphabet — a natural target for exhaustive model checking
+  (TLA+/Alloy) of confluence and terminality, replacing the permutation
+  sampling of §3 instrument 3 with proof.
+- **Cross-language reimplementation as replication.** A port (e.g., Go)
+  using the unchanged seeded-fault suite as its acceptance oracle would be
+  an unusually clean independent replication of the behavioral contract —
+  a direct answer to §8 item 1, which nothing else on this list actually
+  resolves.
+- **Attestation upgrade.** Session-manifest attestation — recording
+  everything a claiming session executed, not just its final command — if
+  recheck-only verification proves too narrow in practice.
+
+---
+
+## Appendix A. Invariant table (merged, v0.4 + proposed)
+
+| ID | Property | Falsified by | Gate |
+|----|----------|--------------|------|
+| INV-A | Ledger is append-only: staged file is a line-prefix extension of committed file | One edit, deletion, or insertion committed | Prefix gate |
+| INV-B | VERIFIED claims carry command, hash, anchor, paths-or-TTL | One bare VERIFIED accepted | Intake tests |
+| INV-C | Evidence-path changes demote before re-trust | One stale claim rendered live | Seeded fault |
+| INV-D | Recheck detects non-reproducing evidence | One hash mismatch scored agree | Seeded fault |
+| INV-E | TTL'd claims expire | One claim outliving its TTL | Seeded fault |
+| INV-F | History rewrites invalidate, with reason | One orphaned anchor still trusted | Seeded fault |
+| INV-G | Retraction is terminal, on every path *tested* | One resurrected tombstone | Seeded fault (verdict path, append path) — **open**: a backdated duplicate-id append can still substitute claim content under a retracted id without disturbing the terminal verdict itself; see §1 "Fold semantics, precisely" and §8 item 6 |
+| INV-H | Broken premises hold work | One issue ready on a stale premise | Seeded fault |
+| INV-I | Fold is confluent: any event order, same state | Two orders, two statuses | Permutation property test |
+| INV-J | Re-verification is durable across scans | One re-verified claim re-staled with no new changes | Seeded fault |
+| INV-K | Retraction requires the `TRUTH_HUMAN=1` convention to be set | One retraction accepted without it | Seeded fault — convention-level (an environment variable), not identity-verified; see F4, §4 |
+| INV-L | The drift detector is armed or the suite fails | One green run with the schema unchecked | Armed-detector test |
+| INV-M *(proposed)* | Every `evidence_path` on an accepted claim matches ≥1 tracked file at filing time, or is an explicit glob | One accepted claim whose tripwire can never fire | Not yet shipped |
+
+## Appendix B. Reproduction
+
+All findings and repairs are demonstrated by scripts driving the actual
+CLI in fresh sandbox repositories: `scripts/truth` (CLI, pure core over
+imperative shell), `scripts/check-truth.sh` (prefix-based commit gate),
+`scripts/truth-canary.sh` (19 seeded faults in this repository at time of
+writing — see §2 for why this differs from the pilot's own, separately
+grown canary), `scripts/test-truth-core.py`, `scripts/test-truth-v04.py`,
+and `.truth/schema/claims.schema.json`. Field numbers in §2 are read
+directly from `git log -p .truth/claims.jsonl` in the pilot repository —
+the append-only property doing double duty as a research instrument.
+
+## References
+
+*(Indicative; verify before any external submission.)*
+
+- Lamport, L., Shostak, R., & Pease, M. (1982). The Byzantine Generals
+  Problem. *ACM TOPLAS*, 4(3).
+- Castro, M., & Liskov, B. (1999). Practical Byzantine Fault Tolerance.
+  *OSDI '99*.
+- Popper, K. (1959). *The Logic of Scientific Discovery.*
+- Lehman, M. M. (1980). Programs, Life Cycles, and Laws of Software
+  Evolution. *Proceedings of the IEEE*, 68(9).
+- Claessen, K., & Hughes, J. (2000). QuickCheck: A Lightweight Tool for
+  Random Testing of Haskell Programs. *ICFP '00*.
+- Shapiro, M., Preguiça, N., Baquero, C., & Zawirski, M. (2011).
+  Conflict-free Replicated Data Types. *SSS 2011*.
+- Nakamoto, S. (2008). Bitcoin: A Peer-to-Peer Electronic Cash System.
+- Yin, M., Malkhi, D., Reiter, M., Gueta, G., & Abraham, I. (2019).
+  HotStuff: BFT Consensus with Linearity and Responsiveness. *PODC '19*.
