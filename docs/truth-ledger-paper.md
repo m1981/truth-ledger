@@ -266,6 +266,8 @@ Neither half stands alone. The artifact without the audit is engineering with im
 
 **Efficacy is unmeasured.** Everything demonstrated here concerns *mechanism* — the machine detects the faults it is built to detect. Whether the ledger reduces false-VERIFIED rates in practice requires the control comparison the system itself prescribes (monthly hand-audits against a day-0 baseline) and has not yet been run. This is the difference between "the machine runs" and "the machine helps," and we state it as the largest open claim.
 
+*Post-draft note (2026-07-09): this paper is frozen at the v0.4 audit. Field evidence from the first pilot deployment — including confirmation of §7.2's failure-location prediction, one new defect class (a proposed INV-M), and interim dispatch statistics — accumulates in the living companion `truth-ledger-field-notes.md`.*
+
 **Single-regime evaluation.** The design targets a solo developer with agent sessions; multi-human, high-concurrency regimes exercise the confluence and `O_APPEND` assumptions far harder than this audit did.
 
 **Agent compliance is the weakest link and is behavioral.** The whole layer is discovered through four lines in instruction files; an agent runtime that never loads them bypasses everything. No technical finding in this paper touches that risk.

@@ -1,18 +1,21 @@
 # Truth Ledger — Operations Guide: Triggers, Observability, and Automation
 
-> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: v0.4)
+> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: v0.5.2)
 
 ## 1. The trigger map — every point where the ledger executes
 
-There are exactly seven entry points. Four are human/agent-initiated, three can be fully mechanical.
+There are ten entry points. Five are human/agent-initiated, five can be fully mechanical.
 
 | Trigger | What runs | Initiated by | Automatable? |
 |---|---|---|---|
 | Filing a fact | `truth claim` (intake gates + append) | Agent or human, mid-task | Already agent-driven via the AGENTS.md snippet |
 | Trusting a fact | `truth list --live` | Agent, *before* relying on anything | Agent-driven via snippet |
+| Picking work | `truth ready` (tracker join ∧ premise matrix, ADR-001) | Agent, at session start | Agent-driven via snippet |
+| Working an issue | `truth issue` / `start` / `done --claim` (work kernel, v0.5/ADR-002) | Agent or human, across a task | Agent-driven; `done --claim` files through the same intake gates — **commit the work first**, or the claim trips its own tripwire (see README, Claim discipline) |
 | **Every commit touching the ledger** | `check-truth.sh` via pre-commit hook (INV-A prefix check + schema validation) | **git, automatically** | ✅ Fully |
 | **Every merge/pull** | `invalidate-scan` via post-merge hook (paths, TTL, lost anchors) | **git, automatically** | ✅ Fully |
-| Verification | `dispatch` → fresh session → `verdict --recheck` → judgment | Human routes the context today | ⚠️ Partially (see §3, rung 3) |
+| Spec & doc hygiene | `spec-health.sh` (cited ids judged by the ADR-001 matrix) + `doc-health.sh` (forbidden names, broken links) — v0.5.1/v0.5.2 satellites | Consuming repo's pre-commit on staged specs/markdown; weekly sweep | ✅ Fully |
+| Verification | `dispatch` → fresh session → `verdict --recheck` → judgment | Human or script routes the context | ⚠️ Partially (see §3, rung 3) |
 | Triage | `truth queue` | Human, daily | ✅ The *surfacing*; not the deciding |
 | Health | `doctor` + canary | Human, weekly | ✅ Fully (CI cron) |
 
@@ -26,7 +29,9 @@ The ledger is deliberately quiet, so learn its signatures.
 
 **The post-merge scan** prints `stale: tr-xxxx (paths changed)` lines unless run with `--quiet`. Tuning tip: consider removing `--quiet` from the hook — a fact silently dying on merge is exactly the event a human should glimpse.
 
-**Agent-side triggers** are visible in transcripts: watch for `scripts/truth list --live` early in a session (discovery working) and `truth claim` after verification work (filing discipline working). Their *absence* in transcripts is the leading indicator that a runtime is not loading the snippet — the silent-death failure mode.
+**Agent-side triggers** are visible in transcripts: watch for `scripts/truth ready` or `list --live` early in a session (discovery working), `truth start` when work is claimed, and `truth claim` / `done --claim` after verification work (filing discipline working). Their *absence* in transcripts is the leading indicator that a runtime is not loading the snippet — the silent-death failure mode.
+
+**The satellites** announce themselves the same way the gate does: `spec-health: N failure(s), M warning(s) across K spec(s)` and `doc-health: N failure(s) across K live doc(s)` scrolling by during a commit that stages specs or markdown. A satellite blocking a commit is working as designed — a spec standing on a dead fact or a doc pointing at a moved file is exactly what should not merge.
 
 **Forensics**: the ledger *is* the log. Every record carries `actor`, `session`, and `ts`, so `git log -p .truth/claims.jsonl` gives a complete, tamper-evident audit trail of who triggered what, when — including which invalidations fired on which merge commits.
 
@@ -42,7 +47,7 @@ Work through these in order; each rung removes one manual step.
 2. On every merge to main, run `invalidate-scan` and — the key move — **auto-commit any resulting invalidation records back** with a bot identity (`TRUTH_ACTOR=ci-scanner`). That closes the loop with zero humans: teammate merges, scan fires, stale facts are demoted, and the demotions are themselves ledger history.
 3. A weekly cron running the canary plus `pip install jsonschema && python3 scripts/test-truth-core.py` — the armed drift detector — failing the pipeline loudly.
 
-**Rung 3 — automate the verification dispatch.** Today a human runs `dispatch` and pastes into a fresh session. Mechanize the routing: a scheduled job picks unverified P0/P1 claims (or queue items), feeds `dispatch` output to a fresh agent session via API — the isolation requirement (G11) is *easier* to guarantee programmatically than by human copy-paste discipline, since the script provably sends nothing but the fixed prompt and the record — and lets the verifier's `verdict --recheck` + judgment land as appends. The human courier is replaced while the fresh-context property is kept.
+**Rung 3 — automate the verification dispatch.** Today a human runs `dispatch` and pastes into a fresh session. Mechanize the routing: a scheduled job picks unverified P0/P1 claims (or queue items), feeds `dispatch` output to a fresh agent session via API — the isolation requirement (G11) is *easier* to guarantee programmatically than by human copy-paste discipline, since the script provably sends nothing but the fixed prompt and the record — and lets the verifier's `verdict --recheck` + judgment land as appends. The human courier is replaced while the fresh-context property is kept. *Field note: the pilot runs this rung today — an operator session spawns fresh subagent sessions carrying dispatch-only context; 31 dispatches so far, including two verifiers that independently caught the claim author's scope overreach (see truth-ledger-field-notes.md).*
 
 **Rung 4 — automate the queue's surfacing, not its verdicts.** Pipe `truth queue` into whatever the humans already look at (Slack, PR comments, dashboard), with the age numbers. `doctor` already warns past 14 days; wire that warning to a channel.
 
@@ -60,15 +65,17 @@ Over-automating a trust system quietly destroys it.
 
 Automate every *trigger* and every *courier*; never automate a *judgment*. The end state is a system where humans are consulted exactly three times — to kill a fact, to resolve a disagreement, and to periodically ask whether the green lights mean anything — and everything else fires off git events and cron without anyone remembering to care. Which is the point: vigilance does not scale; hooks do.
 
+Authoring discipline for the claims themselves (scope the text to the evidence; pin health-gate evidence output stable; commit before `done --claim`) lives in the template README's **Claim discipline** section; the field evidence behind those rules is in `truth-ledger-field-notes.md`.
+
 ---
 
 ## 5. Diagrams
 
 Per the layer's own honesty rule: each caption states what the diagram is
 grounded in. D1–D2 are OBSERVED (every arrow is a code path in `scripts/truth`
-v0.4, the hooks, or the workflow YAML, exercised by the canary or the template
-tests). D3 is SPECIFIED (it depicts the shipped workflow YAML, which has not
-run on GitHub infrastructure yet). D4 is a policy map, not code.
+v0.5.2, the hooks, or the workflow YAML, exercised by the canary or the
+template tests). D3 is SPECIFIED (it depicts the shipped workflow YAML, which
+has not run on GitHub infrastructure yet). D4 is a policy map, not code.
 
 ### D1 — The trigger map: who fires what, and what can go wrong
 
@@ -90,9 +97,12 @@ flowchart TB
         LIST["truth list --live<br/>read the fold"]
         VERD["truth verdict<br/>recheck + judgment"]
         QUEUE["truth queue<br/>aged triage list"]
+        READY["truth ready<br/>tracker join ∧ premise matrix"]
+        KERN["truth issue / start / done<br/>work kernel (claim-at-death)"]
         SCAN["invalidate-scan<br/>paths / TTL / anchors"]
         GATE["check-truth.sh<br/>INV-A prefix + INV-B schema"]
-        CAN["truth-canary.sh<br/>19 seeded faults"]
+        SAT["spec-health.sh + doc-health.sh<br/>satellites (consuming repo's gate)"]
+        CAN["truth-canary.sh<br/>48 seeded faults"]
         DOC["truth doctor<br/>wiring check"]
     end
 
@@ -100,6 +110,9 @@ flowchart TB
 
     AG -.->|"files verified facts"| CLAIM --> L
     AG -.->|"BEFORE trusting anything"| LIST
+    AG -.->|"at session start"| READY
+    AG -.->|"across a task<br/>(commit first, then done --claim)"| KERN --> L
+    L --> READY
     L --> LIST
     HU -.->|"routes dispatch to fresh session"| VERD --> L
     HU -.->|"daily ~2 min"| QUEUE
@@ -107,15 +120,18 @@ flowchart TB
 
     GIT ==>|"pre-commit ✂ bypassable via --no-verify"| GATE
     GATE ==>|"blocks bad commits"| L
+    GIT ==>|"pre-commit, staged specs/md"| SAT
+    L --> SAT
     GIT ==>|"post-merge / post-commit ✂ dies on clone unless core.hooksPath"| SCAN
     SCAN ==>|"appends demotions"| L
     CRON ==>|"weekly"| CAN
     HU -.->|"after repo surgery"| DOC
 ```
 
-Caption: OBSERVED — command surface of scripts/truth v0.4 plus both hooks;
-mechanical arrows gated by canary faults A–N; the two ✂ severance points are
-why §3 rung 1 (committed hooks) and rung 2 (CI backstop) exist.
+Caption: OBSERVED — command surface of scripts/truth v0.5.2 plus both hooks
+and both satellites; mechanical arrows gated by canary faults A–N, S1–S3,
+D1–D3; the two ✂ severance points are why §3 rung 1 (committed hooks) and
+rung 2 (CI backstop) exist.
 
 ### D2 — Local flow, solo dev on trunk (no PRs)
 
@@ -150,7 +166,7 @@ sequenceDiagram
             POC-->>D: silence — carry on
         end
     end
-    Note over D,L: weekly (cron or habit): truth-canary.sh — 19/19 or stop<br/>post-merge hook kept anyway: wakes up the day a 2nd machine appears
+    Note over D,L: weekly (cron or habit): truth-canary.sh — 48/48 or stop<br/>post-merge hook kept anyway: wakes up the day a 2nd machine appears
 ```
 
 Caption: OBSERVED — hook shims from §3 wiring; gate behavior exercised by
@@ -193,9 +209,9 @@ flowchart TB
 
     subgraph canary["truth-canary.yml"]
         C1["arm drift detector"]
-        C2["unit + conformance (41)"]
-        C3["v0.4 regressions (12)"]
-        C4["19 seeded faults"]
+        C2["unit + conformance"]
+        C3["v0.4 regressions"]
+        C4["48 seeded faults"]
         C5["queue-age report →<br/>run summary (surface, don't decide)"]
         C1 --> C2 --> C3 --> C4 --> C5
     end
