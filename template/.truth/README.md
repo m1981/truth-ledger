@@ -62,6 +62,28 @@ External trackers still work through the seam (`TRUTH_TRACKER_CMD`,
 `--stdin`); `truth issues --ready-json` emits the same contract, so you
 can run both and diff. Full semantics: `docs/adr/002-native-work-kernel.md`.
 
+## Feature specs (optional satellite, v0.5.1)
+
+Prose documents rot because they restate facts; the fix is one rule: **a
+fact appears in a spec only as a ledger id** (`tr-`/`wk-`), one line of
+courtesy hook text beside it — the id is authoritative, the hook is not.
+Keep specs in `<component>/docs/specs/*.md`: decisions link to ADRs,
+current facts cite `tr-` claims, intended work cites `wk-` issues, and an
+Acceptance section pre-writes the `done --claim` texts (commit the work
+first, then `done --claim` — a completion claim filed before its shipping
+commit trips its own path tripwire).
+
+    bash scripts/spec-health.sh
+
+sweeps every spec and judges each cited id by the ADR-001 matrix
+(stale/diverged/retracted/missing/cancelled fail; `cannot_verify` fails
+only P0; unverified warns). It also warns when a spec's ground truth is
+not a premise of any cited issue — then `truth ready` can't protect it.
+Zero-id specs warn as unwired legacy. Wire it into your pre-commit gate
+for staged spec changes if your repo has one; canary FAULT S1–S3 cover
+the semantics. Projects usually grow a fuller convention doc referenced
+from their agent guide (AGENTS.md).
+
 ## Daily operation
 
 Daily (~2 min): `scripts/truth queue` — empty means carry on.

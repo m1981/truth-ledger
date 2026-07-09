@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.5 -- seeded-fault acceptance suite (seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel).
+# truth-canary.sh v0.5.1 -- seeded-fault acceptance suite (seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + spec-health).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -20,7 +20,8 @@ mkrepo() {
   touch .truth/claims.jsonl
   cp "$HERE/truth" scripts/truth
   cp "$HERE/check-truth.sh" scripts/check-truth.sh
-  chmod +x scripts/truth scripts/check-truth.sh
+  cp "$HERE/spec-health.sh" scripts/spec-health.sh
+  chmod +x scripts/truth scripts/check-truth.sh scripts/spec-health.sh
 }
 T="python3 scripts/truth"
 export TRUTH_ACTOR=canary TRUTH_SESSION=s-canary
@@ -409,6 +410,39 @@ else
   ok "gate blocked the tampered issue record"
 fi
 git checkout -q -- .truth/claims.jsonl
+
+say "FAULT S1 (spec-health): spec citing only live/open ids must pass"
+mkdir -p docs/specs
+printf '# Spec: canary good\ncites %s and %s\n' "$CID_R" "$WK_DEP" > docs/specs/good.md
+if bash scripts/spec-health.sh >/dev/null 2>&1; then
+  ok "healthy spec passed (live claim $CID_R, open issue $WK_DEP)"
+else
+  miss "spec-health failed a spec citing only live/open ids"
+fi
+
+say "FAULT S2 (spec-health): spec standing on a dead fact must fail"
+if ! $T list --stale --json | grep -q "$CID_B"; then
+  miss "fault injection failed: $CID_B is not stale, S2 cannot run armed"
+else
+  printf '# Spec: canary bad\nstands on %s\n' "$CID_B" > docs/specs/bad.md
+  S2_OUT=$(bash scripts/spec-health.sh 2>&1) && S2_RC=0 || S2_RC=$?
+  if [ "$S2_RC" -ne 0 ] && echo "$S2_OUT" | grep -q "FAIL  $CID_B"; then
+    ok "spec on stale $CID_B failed with exit $S2_RC"
+  else
+    miss "spec-health passed a spec standing on stale $CID_B (rc=$S2_RC)"
+  fi
+  rm -f docs/specs/bad.md
+fi
+
+say "FAULT S3 (spec-health): zero-id spec must WARN but not fail"
+printf '# Spec: canary unwired\nprose with no ids\n' > docs/specs/unwired.md
+S3_OUT=$(bash scripts/spec-health.sh 2>&1) && S3_RC=0 || S3_RC=$?
+if [ "$S3_RC" -eq 0 ] && echo "$S3_OUT" | grep -q "WARN  no ledger ids cited"; then
+  ok "unwired spec warned without failing the sweep"
+else
+  miss "unwired spec handling wrong (rc=$S3_RC): $(echo "$S3_OUT" | tail -2)"
+fi
+rm -rf docs/specs
 
 # ---- FAULT N (v0.4): mid-file insertion must block the commit -------------
 say "FAULT N (INV-A strict): mid-file insertion (pure addition) must be blocked"
