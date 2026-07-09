@@ -13,9 +13,10 @@ see §8 item 1.
 
 **How to read this paper.** Section headers are ordered by evidence class,
 not narrative convention: mechanism and measurement first, interpretation
-last. §6 is explicitly optional — skip it if you want the artifact, not the
-theory. §7 applies the artifact's own discipline to this document: a table
-of what would falsify this paper's own claims.
+last. §6.2 is explicitly optional — skip it if you want the artifact, not
+the theory. §6.1 isn't: it's the analysis §2 promises and §10 builds on.
+§7 applies the artifact's own discipline to this document: a table of what
+would falsify this paper's own claims.
 
 ---
 
@@ -30,9 +31,9 @@ a known commit, and any subsequent git event or elapsed TTL that could
 undermine the claim mechanically demotes it. That's the whole idea. Sections
 1–5 are that idea, its measured behavior in one real deployment, and the
 defects an adversarial audit found in it. Section 6 is the theoretical
-vocabulary (Byzantine fault tolerance, falsificationism, entropy) that
-motivated the design — presented after the mechanism, and after the field
-correction to what that vocabulary got wrong.
+vocabulary (Byzantine fault tolerance, entropy) that motivated the design —
+presented after the mechanism, and after the field correction to what that
+vocabulary got wrong.
 
 ---
 
@@ -336,11 +337,12 @@ with, not one it proves.
 
 ---
 
-## 6. Interpretive framings (optional — mechanism doesn't depend on this section)
+## 6. Interpretive framings
 
-This section names the theoretical vocabulary that motivated the design.
-None of it is required to understand or operate the artifact; all of it
-is presented with the correction the field evidence supplied.
+This section names the theoretical vocabulary that motivated the design,
+each corrected against what the field evidence supplied. None of it is
+required to operate the artifact — but §6.1 isn't decoration: it's the
+analysis §2 promises and §10's proposed countermeasure builds on.
 
 ### 6.1 Byzantine fault tolerance — as analogy, corrected
 
@@ -352,11 +354,8 @@ property of a protocol's redundancy. This system borrows that *move* —
 replace "do I trust this claim" with "does the structure guarantee a
 false claim is detected" — and explicitly does not borrow BFT's
 machinery: there is no quorum, no `3f+1` replica bound, no vote. It is not
-a consensus protocol and was never meant to be one — unlike the lineage
-that extended Byzantine agreement to open-membership settings (Nakamoto,
-2008; Yin et al.'s HotStuff, 2019), which this system doesn't need because
-it targets one operator's sessions, not open, mutually distrusting
-replicas.
+a consensus protocol and was never meant to be one: it targets one
+operator's sessions, not open, mutually distrusting replicas.
 
 The original design motivation mapped failure classes directly: crash
 faults to unverified claims, omission faults to silently outdated facts,
@@ -373,21 +372,7 @@ computational agreement. The honest conclusion is that BFT contributed a
 useful design stance and an overclaimed failure taxonomy; the taxonomy
 should be read as a starting enumeration, not a closed one.
 
-### 6.2 Falsificationism — as engineering discipline
-
-Popper's demarcation — a claim is scientific only insofar as it specifies
-what would refute it — is used here as an acceptance criterion, not a
-philosophical commitment: the invariant table (Appendix A) is one row per
-property, naming its falsifier and its gate. §3's method takes the
-further step of attacking the falsifiers themselves, since a weak
-falsifier passing proves nothing. What this bought in practice: a battery
-built from decades-old, individually unremarkable techniques (fault
-injection, property-based testing, capability-based red-teaming) that,
-composed and pointed at a system already built around named refutations,
-found seven real defects including one that falsified a headline
-invariant through its own stated refutation condition.
-
-### 6.3 Entropy — as unformalized metaphor
+### 6.2 Entropy — as unformalized metaphor
 
 At verification, uncertainty about a claim is reduced to near zero and
 the anchor commit timestamps that moment; every subsequent event that
@@ -408,8 +393,14 @@ implying it has.
 
 ## 7. This paper's own claims, and what would falsify them
 
-Applied to this document the discipline it applies to the artifact: each
-claim below is falsifiable by a specific, nameable observation.
+Applied to this document the discipline it applies to the artifact —
+Popper's demarcation, that a claim is scientific only insofar as it
+specifies what would refute it, used here as an acceptance criterion
+rather than a philosophical commitment (the invariant table of Appendix A
+is one row per property, naming its falsifier and its gate; §3's method
+attacks the falsifiers themselves, since a weak one passing proves
+nothing): each claim below is falsifiable by a specific, nameable
+observation.
 
 | Claim | Falsified by |
 |---|---|
@@ -535,7 +526,7 @@ the safe default) instead of running unarmed and silently skipping.
   catching the exact shape both genuine divergences shared.
 - **INV-M's gate** (§4, §8 item 7) — proposed here, not yet shipped as
   code.
-- **Claim half-life measurement** (§6.3) — turning the decay-channel
+- **Claim half-life measurement** (§6.2) — turning the decay-channel
   metaphor into a calibrated one from invalidation-log data, enabling
   data-driven TTL suggestions at intake instead of author guesses.
 - **Formal verification of the fold.** The core is a pure function over a
@@ -598,6 +589,3 @@ the append-only property doing double duty as a research instrument.
   Random Testing of Haskell Programs. *ICFP '00*.
 - Shapiro, M., Preguiça, N., Baquero, C., & Zawirski, M. (2011).
   Conflict-free Replicated Data Types. *SSS 2011*.
-- Nakamoto, S. (2008). Bitcoin: A Peer-to-Peer Electronic Cash System.
-- Yin, M., Malkhi, D., Reiter, M., Gueta, G., & Abraham, I. (2019).
-  HotStuff: BFT Consensus with Linearity and Responsiveness. *PODC '19*.
