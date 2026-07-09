@@ -527,6 +527,12 @@ the safe default) instead of running unarmed and silently skipping.
   universal quantifiers ("only", "no ... anywhere", "the repo") in claim
   text when the evidence command carries path or `--include` filters —
   catching the exact shape both genuine divergences shared.
+- **Signed records** (§8 item 6, Appendix A INV-G) — binding `actor` and
+  `ts` cryptographically would close the backdating/duplicate-id-
+  substitution gap the fold currently accepts undefended (§1 "Fold
+  semantics, precisely"). Deferred behind a growth gate, per the original
+  v0.4 audit's own trigger: build it when the first forged timestamp is
+  found in the wild, not before.
 - **INV-M's gate** (§4, §8 item 7) — proposed here, not yet shipped as
   code.
 - **Claim half-life measurement** (§6.2) — turning the decay-channel
