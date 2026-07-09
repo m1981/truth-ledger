@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.4.1)
+# .truth — append-only claims ledger (v0.5.2)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -82,7 +82,43 @@ not a premise of any cited issue — then `truth ready` can't protect it.
 Zero-id specs warn as unwired legacy. Wire it into your pre-commit gate
 for staged spec changes if your repo has one; canary FAULT S1–S3 cover
 the semantics. Projects usually grow a fuller convention doc referenced
-from their agent guide (AGENTS.md).
+from their agent guide (AGENTS.md). Route every new spec from an entry
+point (component README or agent guide) — spec-health judges the facts a
+spec cites, not whether anyone is ever directed to read it.
+
+## Doc health (optional satellite, v0.5.2)
+
+spec-health protects cited facts; the prose fabric around them rots too.
+The two decay modes measured in the field: renamed things living on in
+docs, and relative links whose targets moved.
+
+    bash scripts/doc-health.sh
+
+sweeps git-tracked markdown (history exempt: archive/, archived/, attic/,
+adr/, freeze/ segments and CHANGELOGs) and fails on broken relative links
+and on any regex listed in the optional `scripts/doc-health.patterns`
+(one per line — put your project's dead names there; no file, no name
+check). Backtick path shorthand is deliberately not checked — endemic and
+legitimate; links are the load-bearing references. Cite rename ADRs from
+live docs by wildcarding the filename (`docs/adr/NNN-*.md`) so the dead
+name never appears. Canary FAULT D1–D3 cover the semantics. Pairs well
+with a standing claim whose evidence is the gate itself (see Claim
+discipline below).
+
+## Claim discipline (earned lessons)
+
+- **Scope the text to the evidence.** Never write a repo-wide clause
+  backed by a package-scoped grep — both genuine diverges in the field
+  trial were exactly this gap. If the command searched `src/pkg/`, the
+  claim says `src/pkg/`, and names known survivors (tests, attic)
+  explicitly.
+- **Pin evidence output stable.** When the evidence is a health gate,
+  wrap it: `bash scripts/doc-health.sh >/dev/null 2>&1 && echo CLEAN`.
+  The raw output embeds counts ("70 live docs") that change with every
+  added file, mechanically diverging the hash while the claim stays true.
+- **Commit first, then `done --claim`.** A completion claim filed before
+  its shipping commit trips its own path tripwire (also noted under
+  Feature specs).
 
 ## Daily operation
 

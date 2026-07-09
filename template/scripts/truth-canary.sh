@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.5.1 -- seeded-fault acceptance suite (seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + spec-health).
+# truth-canary.sh v0.5.2 -- seeded-fault acceptance suite (seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + spec-health + doc-health).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -21,7 +21,8 @@ mkrepo() {
   cp "$HERE/truth" scripts/truth
   cp "$HERE/check-truth.sh" scripts/check-truth.sh
   cp "$HERE/spec-health.sh" scripts/spec-health.sh
-  chmod +x scripts/truth scripts/check-truth.sh scripts/spec-health.sh
+  cp "$HERE/doc-health.sh" scripts/doc-health.sh
+  chmod +x scripts/truth scripts/check-truth.sh scripts/spec-health.sh scripts/doc-health.sh
 }
 T="python3 scripts/truth"
 export TRUTH_ACTOR=canary TRUTH_SESSION=s-canary
@@ -443,6 +444,51 @@ else
   miss "unwired spec handling wrong (rc=$S3_RC): $(echo "$S3_OUT" | tail -2)"
 fi
 rm -rf docs/specs
+
+say "FAULT D1 (doc-health): clean corpus must pass; absent patterns file must only skip check A"
+mkdir -p docs
+printf '# target\n' > docs/target.md
+printf '# live\nsee [target](target.md)\n' > docs/live.md
+git add docs/target.md docs/live.md
+D1_OUT=$(bash scripts/doc-health.sh 2>&1) && D1_RC=0 || D1_RC=$?
+if [ "$D1_RC" -eq 0 ] && echo "$D1_OUT" | grep -q "0 failure(s)" \
+   && echo "$D1_OUT" | grep -q "name-pattern check skipped"; then
+  ok "clean corpus passed, patterns check skipped gracefully"
+else
+  miss "doc-health wrong on clean corpus (rc=$D1_RC): $(echo "$D1_OUT" | tail -2)"
+fi
+
+say "FAULT D2 (doc-health): broken relative link must fail"
+printf '# live2\nsee [gone](no-such-file-xyz.md)\n' > docs/live2.md
+git add docs/live2.md
+if ! grep -q "no-such-file-xyz" docs/live2.md; then
+  miss "fault injection failed: broken link was never seeded"
+else
+  D2_OUT=$(bash scripts/doc-health.sh 2>&1) && D2_RC=0 || D2_RC=$?
+  if [ "$D2_RC" -ne 0 ] && echo "$D2_OUT" | grep -q "broken link 'no-such-file-xyz.md'"; then
+    ok "broken link failed with exit $D2_RC"
+  else
+    miss "doc-health passed a broken link (rc=$D2_RC)"
+  fi
+fi
+git rm -q --cached docs/live2.md && rm -f docs/live2.md
+
+say "FAULT D3 (doc-health): forbidden name pattern must fail when patterns file exists"
+printf '# forbidden names\nold[-_]widget\n' > scripts/doc-health.patterns
+printf '# live3\nthe old-widget component\n' > docs/live3.md
+git add docs/live3.md
+if ! grep -q "old-widget" docs/live3.md; then
+  miss "fault injection failed: forbidden name was never seeded"
+else
+  D3_OUT=$(bash scripts/doc-health.sh 2>&1) && D3_RC=0 || D3_RC=$?
+  if [ "$D3_RC" -ne 0 ] && echo "$D3_OUT" | grep -q "forbidden name 'old-widget'"; then
+    ok "forbidden name failed with exit $D3_RC"
+  else
+    miss "doc-health missed a forbidden name (rc=$D3_RC): $(echo "$D3_OUT" | tail -2)"
+  fi
+fi
+git rm -q --cached docs/live3.md docs/target.md docs/live.md
+rm -f docs/live3.md docs/target.md docs/live.md scripts/doc-health.patterns
 
 # ---- FAULT N (v0.4): mid-file insertion must block the commit -------------
 say "FAULT N (INV-A strict): mid-file insertion (pure addition) must be blocked"
