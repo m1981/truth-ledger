@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.5.3 -- seeded-fault acceptance suite (seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + spec-health + doc-health).
+# truth-canary.sh v0.5.4 -- seeded-fault acceptance suite (seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + spec-health + doc-health).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -95,6 +95,7 @@ fi
 
 say "FAULT O (TL-4): recheck with matching hash must report, not file"
 echo hello > intact.txt
+git add intact.txt   # INV-M (v0.5.4): a literal --paths entry must be tracked at filing time
 CID_O=$($T claim "intact.txt says hello" --class VERIFIED \
         --evidence-cmd "cat intact.txt" --paths "intact.txt" --tier P1)
 N_BEFORE=$(grep -c "" .truth/claims.jsonl)
@@ -150,6 +151,34 @@ if $T claim "the clock ticks" --class VERIFIED \
   miss "intake accepted nondeterministic evidence"
 else
   ok "intake refused nondeterministic evidence"
+fi
+
+say "FAULT T (INV-M): a dead evidence-path tripwire must be refused at intake"
+if $T claim "a and watched are fine" --class VERIFIED \
+     --evidence-cmd "cat watched.txt" --paths "watched.txt fabricated.txt" \
+     --tier P1 2>/dev/null; then
+  miss "intake accepted a space-joined literal (comma forgotten) -- dead tripwire on arrival"
+else
+  ok "intake refused the whitespace-no-comma literal"
+fi
+if $T claim "ghost.sh is fine" --class VERIFIED \
+     --evidence-cmd "echo ok" --paths "ghost.sh" --tier P1 2>/dev/null; then
+  miss "intake accepted a literal matching zero tracked files"
+else
+  ok "intake refused the zero-match literal"
+fi
+if CID_T=$($T claim "watched and fabricated are fine" --class VERIFIED \
+     --evidence-cmd "cat watched.txt fabricated.txt" \
+     --paths "watched.txt,fabricated.txt" --tier P1 --duplicate-ok 2>/dev/null); then
+  ok "comma-separated literals still accepted ($CID_T)"
+else
+  miss "intake wrongly refused legitimate comma-separated paths"
+fi
+if $T claim "future docs stay clean" --class VERIFIED \
+     --evidence-cmd "echo ok" --paths "ghost-dir/*.md" --tier P1 --duplicate-ok >/dev/null 2>&1; then
+  ok "explicit glob matching nothing yet is exempt (legitimate intent)"
+else
+  miss "intake wrongly refused an explicit glob with zero current matches"
 fi
 
 say "FAULT H (G12): a verdict after retraction must not resurrect the claim"

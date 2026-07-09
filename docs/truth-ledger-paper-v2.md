@@ -167,8 +167,8 @@ Measured as of 2026-07-09:
 | Human retractions (`TRUTH_HUMAN=1`) | 6 — all by the human, none by an agent |
 | Concurrent agent sessions writing one ledger | 6 interleaved, zero corruption |
 | Tripwire recall & false-alarm rate (post-commit scan, one real refactor) | 1/1 staled when it should have (recall), 0 false alarms that round (precision signal; both n=1) |
-| Seeded faults, this repo's template canary | 49 (grew from 19 at v0.4 as work kernel, spec-health, and doc-health satellites merged upstream into this same template, then to 49 when F7/ADR-006 landed — no longer frozen; Appendix B) |
-| Seeded faults, the pilot's downstream canary | grew 19 → 42 → 45 → 48 in step with those same merges, matching the template through v0.5.2; the template grew to 49 with F7/ADR-006 (2026-07-09) — pilot sync is pending, so the two counts diverge until the next `copier update` (Appendix B) |
+| Seeded faults, this repo's template canary | 53 (grew from 19 at v0.4 as work kernel, spec-health, and doc-health satellites merged upstream into this same template, then 49 with F7/ADR-006, then 53 when INV-M's intake checks shipped — no longer frozen; Appendix B) |
+| Seeded faults, the pilot's downstream canary | grew 19 → 42 → 45 → 48 → 49 in step with those same merges, matching the template through v0.5.3 (F7/ADR-006 synced 2026-07-09); the template grew to 53 with INV-M (2026-07-09, same day) — pilot sync is pending, so the two counts diverge until the next `copier update` (Appendix B) |
 
 **The dominant real failure mode is scope overreach, not hallucination.**
 Both genuine divergences shared one shape: a *correct* evidence command
@@ -259,7 +259,7 @@ gate covered).
 | F4 | "Retraction is humans-only" enforced nowhere — CLI checked only that a basis was present, never the actor | Medium | Verifier-actor retraction accepted | No | Retraction requires setting `TRUTH_HUMAN=1` — this converts an unenforced norm into a self-attested convention with a syntax, not an identity-checked property; any actor able to set an environment variable can still retract (§8 item 5) |
 | F5 | Evidence-path globs cross directory separators (`src/*.py` matches `src/sub/deep.py`) | Low | Direct check | Partially | Custom glob translation: `*`/`?` stop at `/`, `**` spans |
 | F6 | **Tombstone resurrection by pure append** — a duplicate claim record bearing a retracted id resets status to `unverified`; both shipped gates (diff-deletion heuristic, well-formedness check) pass it | Critical | A retracted P0 claim — text: *"the database is safe to drop"* — resurrected through both gates and `validate` | No — the canary seeded this fault only on the verdict path | Fold ignores duplicate claim ids (first wins); commit gate replaced with a line-prefix check: the staged file must literally extend the committed one — but see §1's "Fold semantics, precisely" for a related, still-open gap this fix does not close |
-| INV-M | **Dead tripwire** — space-separated `--paths` ("a.sh b.sh") silently stores as one literal path matching nothing; the claim is true, the hash matches, the verifier agrees, and the invalidation trigger can never fire | High | Found by inspection in the pilot ledger, not by any gate | No — nothing checks a claim's protection metadata for validity | Proposed, not yet shipped: intake check refusing whitespace-but-no-comma paths and zero-match literals; canary fault seeding a dead tripwire |
+| INV-M | **Dead tripwire** — space-separated `--paths` ("a.sh b.sh") silently stores as one literal path matching nothing; the claim is true, the hash matches, the verifier agrees, and the invalidation trigger can never fire | High | Found by inspection in the pilot ledger, not by any gate | No — nothing checks a claim's protection metadata for validity | Shipped (v0.5.4): intake refuses (a) whitespace-containing path entries with no comma and (b) any literal (non-glob) path matching zero tracked files at filing time; explicit globs (`*`/`?`) are exempt — watching a pattern that's empty for now is legitimate intent, unlike a typo'd literal. Applies to any evidence_class carrying paths, not only VERIFIED, since invalidation itself doesn't discriminate by class. `FAULT T`, self-defense verified; also caught a live fixture bug (an existing canary claim filed on an untracked path) in the process |
 | F7 | **Issue-fold premise-stripping by pure append** — ADR-002's issue fold was last-wins on duplicate `wk-` ids ("update-by-refile"); a raw appended duplicate with `premises: []` silently disarmed an issue's ADR-001 protection. Unlike F6, no backdated timestamp was needed (last-wins means any later real timestamp wins) and no terminal-state coincidence was needed (works on any open issue, not only a retracted one) | High\* | A HELD issue (broken premise, `tr-... (stale)`) flipped to READY after one raw JSONL append, no CLI involved; `truth validate` still passed | No — no canary fault or unit test exercised a duplicate `wk-` append; the one existing unit test on this path (`test_last_issue_payload_wins`) asserted the vulnerable behavior as a feature | `fold_issues` is now first-wins on duplicate ids, identical to `fold()` (ADR-006). The "update-by-refile" rationale it replaced described a verb the shipped CLI never implemented — `truth issue` always mints a fresh id from `hash(payload, ts, actor)`, so no command could legitimately re-file an existing `wk-` id; last-wins was pure attack surface |
 
 \* By this table's own definition of Critical ("a headline invariant
@@ -495,10 +495,7 @@ though item 2 names the largest single *unanswered question*.
    does not prevent backdating, and a backdated duplicate can win claim
    content under first-wins dedup. Deferred behind a growth gate (signed
    records) rather than half-built.
-7. **The dead-tripwire class (INV-M) has a proposed fix, not a shipped
-   one.** Currently mitigated by an operating convention (file a
-   successor claim, retract the original), not a gate.
-8. **Vocabulary debt.** "Diverged" conflates "reality changed" with "the
+7. **Vocabulary debt.** "Diverged" conflates "reality changed" with "the
    measuring command's output format changed." No urgency, but the
    distinction is real and currently unnamed in the status vocabulary.
 
@@ -546,8 +543,6 @@ the safe default) instead of running unarmed and silently skipping.
   semantics, precisely"). Deferred behind a growth gate, per the original
   v0.4 audit's own trigger: build it when the first forged timestamp is
   found in the wild, not before.
-- **INV-M's gate** (§4, §8 item 7) — proposed here, not yet shipped as
-  code.
 - **Claim half-life measurement** (§6.2) — turning the decay-channel
   metaphor into a calibrated one from invalidation-log data, enabling
   data-driven TTL suggestions at intake instead of author guesses.
@@ -582,7 +577,7 @@ the safe default) instead of running unarmed and silently skipping.
 | INV-J | Re-verification is durable across scans | One re-verified claim re-staled with no new changes | Seeded fault |
 | INV-K | Retraction requires the `TRUTH_HUMAN=1` convention to be set | One retraction accepted without it | Seeded fault — convention-level (an environment variable), not identity-verified; see F4, §4 |
 | INV-L | The drift detector is armed or the suite fails | One green run with the schema unchecked | Armed-detector test |
-| INV-M *(proposed)* | Every `evidence_path` on an accepted claim matches ≥1 tracked file at filing time, or is an explicit glob | One accepted claim whose tripwire can never fire | Not yet shipped |
+| INV-M | Every `evidence_path` on an accepted claim matches ≥1 tracked file at filing time, or is an explicit glob | One accepted claim whose tripwire can never fire | Seeded fault (`FAULT T`), shipped v0.5.4 |
 | INV-N | Issue-fold premise protection (ADR-001) cannot be stripped by an appended duplicate `wk-` id | One HELD issue silently flipped to READY | Seeded fault (FAULT R9) — fixed at the fold level (ADR-006): duplicate issue ids are first-wins, identical to INV-G's claims-side mechanism; same open composition-with-forged-timestamps caveat as INV-G, since `ts`/`actor` remain unsigned (§8 item 6) |
 
 ## Appendix B. Reproduction
@@ -590,10 +585,10 @@ the safe default) instead of running unarmed and silently skipping.
 All findings and repairs are demonstrated by scripts driving the actual
 CLI in fresh sandbox repositories: `scripts/truth` (CLI, pure core over
 imperative shell), `scripts/check-truth.sh` (prefix-based commit gate),
-`scripts/truth-canary.sh` (49 seeded faults in this repository at time of
+`scripts/truth-canary.sh` (53 seeded faults in this repository at time of
 writing, grown from 19 at v0.4 as the pilot's work-kernel, spec-health, and
 doc-health satellites merged upstream into this same template, then to 49
-with F7/ADR-006 — see §2),
+with F7/ADR-006, then to 53 with INV-M's intake checks — see §2),
 `scripts/test-truth-core.py`, `scripts/test-truth-v04.py`, and
 `.truth/schema/claims.schema.json`. Field numbers in §2 are read
 directly from `git log -p .truth/claims.jsonl` in the pilot repository —

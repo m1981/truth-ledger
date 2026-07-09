@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
-"""truth v0.5.3 -- append-only claims ledger with a native work kernel.
+"""truth v0.5.4 -- append-only claims ledger with a native work kernel.
+
+v0.5.4 (INV-M, dead-tripwire intake checks): `truth claim` and
+  `done --claim` now refuse two shapes of evidence_path that can never
+  invalidate anything -- a whitespace-containing entry with no comma
+  (`--paths "a.sh b.sh"` silently storing as one nonexistent literal;
+  found by inspection in the pilot ledger, tr-3591aae0) and any literal
+  (non-glob) path matching zero files git currently tracks. Explicit
+  globs (`*`/`?`) are exempt from the second check -- watching a pattern
+  that's empty for now is legitimate intent, a bare typo'd literal is
+  not. Applies to any evidence_class carrying paths, not only VERIFIED,
+  since invalidation itself doesn't discriminate by class either.
 
 v0.5.3 (ADR-006, issue-fold hardening): duplicate issue ids are now
   FIRST-WINS in fold_issues, matching fold()'s claim handling. v0.5's
@@ -307,6 +318,25 @@ def duplicate_conflicts(text, claims):
             and jaccard(text, e["claim"]["payload"].get("text", ""))
             >= DUPLICATE_THRESHOLD]
 
+def malformed_path_list(paths):
+    """INV-M: a path token containing internal whitespace almost always
+    means the caller forgot a comma -- '--paths "a.sh b.sh"' stores as
+    ONE literal ('a.sh b.sh') matching nothing, a dead invalidation
+    tripwire from the moment it's filed (found by inspection in the
+    pilot ledger: tr-3591aae0)."""
+    return [p for p in paths if re.search(r"\s", p)]
+
+def dead_literal_paths(paths, tracked):
+    """INV-M: a literal path (no glob metacharacters) matching zero
+    tracked files can never invalidate anything -- the same dead-tripwire
+    failure, reached a different way. Explicit globs ('*'/'?') are
+    EXEMPT: watching a pattern that matches nothing yet is a legitimate
+    intent (a not-yet-created file under a directory), unlike a plain
+    literal, which has nothing else it could mean."""
+    tracked_set = set(tracked)
+    return [p for p in paths
+            if "*" not in p and "?" not in p and p not in tracked_set]
+
 def verified_intake_error(evidence_cmd, evidence_paths, ttl_days, head):
     if not evidence_cmd:
         return "truth: VERIFIED claims require --evidence-cmd (INV-B)"
@@ -585,6 +615,13 @@ def changed_files_since(anchor):
         return None, r.stderr.strip()
     return r.stdout.splitlines(), None
 
+def tracked_files():
+    """INV-M fact-gathering: the tracked-file universe a literal
+    evidence_path must belong to. Works with zero commits (reads the
+    index, not HEAD)."""
+    r = subprocess.run(["git", "ls-files"], capture_output=True, text=True)
+    return r.stdout.splitlines() if r.returncode == 0 else []
+
 def actor():
     return os.environ.get("TRUTH_ACTOR", os.environ.get("USER", "unknown"))
 
@@ -634,10 +671,10 @@ def load_events(stream=None):
 def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
                         ttl_days, basis, single_run, duplicate_ok, claims):
     """Full claim intake -- G8 duplicate gate, INV-B/INV-C/G1 checks, G6
-    determinism double-run -- WITHOUT appending. Shared by `claim` and
-    `done --claim` so claim-at-death goes through the identical intake,
-    and so `done` can validate everything before it appends anything
-    (ADR-002: both records or neither)."""
+    determinism double-run, INV-M dead-tripwire checks -- WITHOUT
+    appending. Shared by `claim` and `done --claim` so claim-at-death goes
+    through the identical intake, and so `done` can validate everything
+    before it appends anything (ADR-002: both records or neither)."""
     if not duplicate_ok:
         similar = duplicate_conflicts(text, claims)
         if similar:
@@ -646,6 +683,25 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
                      f"{lines}\nRe-file with --duplicate-ok if genuinely distinct.")
 
     paths = [p.strip() for p in paths_csv.split(",")] if paths_csv else []
+    if paths:
+        # INV-M applies to any claim carrying evidence_paths, not only
+        # VERIFIED -- decide_invalidation doesn't gate on evidence_class
+        # either, so an INFERRED/UNVERIFIED claim with paths is exposed to
+        # the identical dead-tripwire failure.
+        malformed = malformed_path_list(paths)
+        if malformed:
+            sys.exit("truth: --paths entry contains whitespace with no comma "
+                     f"(INV-M): {malformed!r} -- did you forget a comma "
+                     "between paths? A space-joined literal can never match "
+                     "a real file.")
+        dead = dead_literal_paths(paths, tracked_files())
+        if dead:
+            sys.exit(f"truth: --paths entry matches zero tracked files "
+                     f"(INV-M): {dead!r} -- a literal that matches nothing "
+                     "is a dead tripwire from the moment it's filed. Fix the "
+                     "path, or use a glob ('*'/'?'/'**') if you're "
+                     "intentionally watching an empty-for-now pattern.")
+
     payload = {"text": text, "evidence_class": evidence_class,
                "cost_tier": tier, "ttl_days": ttl_days,
                "evidence_paths": paths}

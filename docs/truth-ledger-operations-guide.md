@@ -1,6 +1,6 @@
 # Truth Ledger — Operations Guide: Triggers, Observability, and Automation
 
-> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: v0.5.3)
+> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: v0.5.4)
 
 ## 1. The trigger map — every point where the ledger executes
 
@@ -73,7 +73,7 @@ Authoring discipline for the claims themselves (scope the text to the evidence; 
 
 Per the layer's own honesty rule: each caption states what the diagram is
 grounded in. D1–D2 are OBSERVED (every arrow is a code path in `scripts/truth`
-v0.5.3, the hooks, or the workflow YAML, exercised by the canary or the
+v0.5.4, the hooks, or the workflow YAML, exercised by the canary or the
 template tests). D3 is SPECIFIED (it depicts the shipped workflow YAML, which
 has not run on GitHub infrastructure yet). D4 is a policy map, not code.
 
@@ -102,7 +102,7 @@ flowchart TB
         SCAN["invalidate-scan<br/>paths / TTL / anchors"]
         GATE["check-truth.sh<br/>INV-A prefix + INV-B schema"]
         SAT["spec-health.sh + doc-health.sh<br/>satellites (consuming repo's gate)"]
-        CAN["truth-canary.sh<br/>49 seeded faults"]
+        CAN["truth-canary.sh<br/>53 seeded faults"]
         DOC["truth doctor<br/>wiring check"]
     end
 
@@ -128,7 +128,7 @@ flowchart TB
     HU -.->|"after repo surgery"| DOC
 ```
 
-Caption: OBSERVED — command surface of scripts/truth v0.5.3 plus both hooks
+Caption: OBSERVED — command surface of scripts/truth v0.5.4 plus both hooks
 and both satellites; mechanical arrows gated by canary faults A–N, S1–S3,
 D1–D3; the two ✂ severance points are why §3 rung 1 (committed hooks) and
 rung 2 (CI backstop) exist.
@@ -166,7 +166,7 @@ sequenceDiagram
             POC-->>D: silence — carry on
         end
     end
-    Note over D,L: weekly (cron or habit): truth-canary.sh — 49/49 or stop<br/>post-merge hook kept anyway: wakes up the day a 2nd machine appears
+    Note over D,L: weekly (cron or habit): truth-canary.sh — 53/53 or stop<br/>post-merge hook kept anyway: wakes up the day a 2nd machine appears
 ```
 
 Caption: OBSERVED — hook shims from §3 wiring; gate behavior exercised by
@@ -211,7 +211,7 @@ flowchart TB
         C1["arm drift detector"]
         C2["unit + conformance"]
         C3["v0.4 regressions"]
-        C4["49 seeded faults"]
+        C4["53 seeded faults"]
         C5["queue-age report →<br/>run summary (surface, don't decide)"]
         C1 --> C2 --> C3 --> C4 --> C5
     end

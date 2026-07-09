@@ -181,6 +181,28 @@ class TestIntake(unittest.TestCase):
         self.assertIn("G6", tm.determinism_error(("h1", 0), ("h2", 0)))
         self.assertIn("G6", tm.determinism_error(("h", 0), ("h", 1)))
 
+    def test_malformed_path_list(self):
+        """INV-M: '--paths "a.sh b.sh"' with no comma stores as one
+        whitespace-containing literal -- the exact tr-3591aae0 shape."""
+        self.assertEqual(tm.malformed_path_list(["a.sh b.sh"]), ["a.sh b.sh"])
+        self.assertEqual(tm.malformed_path_list(["a.sh", "b.sh"]), [])
+        self.assertEqual(tm.malformed_path_list(["a.sh", "b.sh", "c d.sh"]),
+                         ["c d.sh"])
+        self.assertEqual(tm.malformed_path_list([]), [])
+
+    def test_dead_literal_paths(self):
+        """INV-M: a literal matching zero tracked files is a dead
+        tripwire; explicit globs are exempt even at zero matches."""
+        tracked = ["a.sh", "src/x.py"]
+        self.assertEqual(tm.dead_literal_paths(["a.sh"], tracked), [])
+        self.assertEqual(tm.dead_literal_paths(["missing.sh"], tracked),
+                         ["missing.sh"])
+        self.assertEqual(tm.dead_literal_paths(["docs/*.md"], tracked), [])
+        self.assertEqual(tm.dead_literal_paths(["src/?.py"], tracked), [])
+        self.assertEqual(
+            tm.dead_literal_paths(["a.sh", "missing.sh", "docs/*.md"], tracked),
+            ["missing.sh"])
+
 # ---------------------------------------------------- recheck decisions
 
 class TestRecheck(unittest.TestCase):
