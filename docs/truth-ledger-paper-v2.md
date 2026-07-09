@@ -116,12 +116,13 @@ made concrete for the fold rather than left as a general caveat about
 timestamps.
 
 **Intake gates.** `truth claim` refuses, before anything is written:
-VERIFIED claims with no evidence command; claims with neither paths nor
-TTL; filing in a repository with no commits to anchor to; evidence commands
-whose two intake runs hash differently (nondeterministic, overridable); and
-near-duplicates of active claims by word-level, case-folded token overlap
-≥ 0.6 against claim text (overridable, and always allowed for corrections
-of dead claims).
+VERIFIED claims with no evidence command, with neither paths nor TTL, or
+filed in a repository with no commits to anchor to (these three checks are
+VERIFIED-only; UNVERIFIED and INFERRED claims may omit evidence, paths, and
+TTL entirely); evidence commands whose two intake runs hash differently
+(nondeterministic, overridable); and near-duplicates of active claims by
+word-level, case-folded token overlap ≥ 0.6 against claim text (overridable,
+and always allowed for corrections of dead claims).
 
 **Invalidation.** A scan, wired to post-merge hooks or CI, demotes claims
 whose premises git can check. Anchor-loss after rebase/squash/gc demotes
@@ -166,8 +167,8 @@ Measured as of 2026-07-09:
 | Human retractions (`TRUTH_HUMAN=1`) | 6 — all by the human, none by an agent |
 | Concurrent agent sessions writing one ledger | 6 interleaved, zero corruption |
 | Tripwire recall & false-alarm rate (post-commit scan, one real refactor) | 1/1 staled when it should have (recall), 0 false alarms that round (precision signal; both n=1) |
-| Seeded faults, this repo's template canary | 19 (unchanged since v0.4; the count that gates every commit here) |
-| Seeded faults, the pilot's downstream canary | grew 19 → 42 → 45 → 48 as work kernel, spec-health, and doc-health shipped — a separate suite in a separate repo, not this one's (Appendix B) |
+| Seeded faults, this repo's template canary | 48 (grew from 19 at v0.4 as work kernel, spec-health, and doc-health satellites merged upstream into this same template — no longer frozen; Appendix B) |
+| Seeded faults, the pilot's downstream canary | grew 19 → 42 → 45 → 48 in step with those same merges — the two counts now match because the same satellites landed in both places, not by coincidence (Appendix B) |
 
 **The dominant real failure mode is scope overreach, not hallucination.**
 Both genuine divergences shared one shape: a *correct* evidence command
@@ -260,9 +261,11 @@ gate covered).
 
 **Verification effort at repair time (v0.4):** 41 unit and conformance
 tests green with the schema detector armed; 12 new regression tests added,
-one per finding; 19/19 seeded faults caught, up from an original 14 — the
-original 14 unchanged and still green, which is what demonstrates behavior
-preservation rather than merely new coverage.
+unevenly across findings — three each for F2/F3/F5/F6, with F1 and F4
+covered instead via the conformance corpus and canary; 19/19 seeded faults
+caught, up from an original 14 — the original 14 unchanged and still
+green, which is what demonstrates behavior preservation rather than merely
+new coverage.
 
 **What survived attack** (the negative results, reported because a method
 that only reports hits is not measuring anything): retraction terminality
@@ -567,10 +570,11 @@ the safe default) instead of running unarmed and silently skipping.
 All findings and repairs are demonstrated by scripts driving the actual
 CLI in fresh sandbox repositories: `scripts/truth` (CLI, pure core over
 imperative shell), `scripts/check-truth.sh` (prefix-based commit gate),
-`scripts/truth-canary.sh` (19 seeded faults in this repository at time of
-writing — see §2 for why this differs from the pilot's own, separately
-grown canary), `scripts/test-truth-core.py`, `scripts/test-truth-v04.py`,
-and `.truth/schema/claims.schema.json`. Field numbers in §2 are read
+`scripts/truth-canary.sh` (48 seeded faults in this repository at time of
+writing, grown from 19 at v0.4 as the pilot's work-kernel, spec-health, and
+doc-health satellites merged upstream into this same template — see §2),
+`scripts/test-truth-core.py`, `scripts/test-truth-v04.py`, and
+`.truth/schema/claims.schema.json`. Field numbers in §2 are read
 directly from `git log -p .truth/claims.jsonl` in the pilot repository —
 the append-only property doing double duty as a research instrument.
 

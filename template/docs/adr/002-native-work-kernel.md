@@ -132,8 +132,10 @@ known cliff is accepted and documented now.
 
 **Canary (gating, before merge).** New seeded faults, at minimum: agent
 `cancelled` without `TRUTH_HUMAN=1` must be refused; `ready` must HOLD an
-issue whose premise is diverged and pass one whose premise is live;
-dep-blocked issues must not appear; a dependency cycle must be rejected at
+issue whose premise is stale and pass one whose premise is live
+(diverged-premise blocking is covered by the ADR-001 conformance matrix at
+unit-test level, not by a dedicated seeded fault); dep-blocked issues must
+not appear; a dependency cycle must be rejected at
 filing; direct edit of an issue record must trip the INV-A gate;
 `issues --ready-json` piped through `truth ready --stdin` must produce the
 identical join as the native path (the seam and the kernel may never

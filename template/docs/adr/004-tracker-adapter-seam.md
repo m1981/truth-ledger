@@ -30,7 +30,10 @@ with an `id` (plus optional `title`), resolved in precedence order:
 
 1. a pipe: `<tracker-cmd> | truth ready --stdin`
 2. the environment: `TRUTH_TRACKER_CMD="<cmd printing the array>"`
-3. the default Beads adapter (`bd ready --json`, normalized)
+3. the default Beads adapter (`bd ready --json`, raw array only — a `bd`
+   version emitting anything other than a bare JSON array hard-fails here;
+   normalization requires pointing `TRUTH_TRACKER_CMD` at
+   `scripts/truth-bd-adapter.sh`, i.e. via path 2, not this default)
 
 A missing or failing tracker does not produce a traceback and does not
 disable the ledger: `ready` exits with guidance, and the layer **degrades
