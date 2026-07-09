@@ -31,7 +31,9 @@ readiness-join semantics.
     scripts/check-truth.sh             pre-commit/CI gate: strict append-only + schema
     scripts/truth-canary.sh            19 seeded faults (run weekly)
     prompts/truth-verifier.md          fixed verifier prompt (use `truth dispatch`)
-    docs/adr/001-*.md                  premise-validity decision
+    docs/adr/                          decision records: 001 premise validity,
+                                       002 work kernel, 003 satellite placement,
+                                       004 tracker seam, 005 pre-edit whisper (proposed)
 
 ## Install (day 1)
 
