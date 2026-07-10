@@ -1,7 +1,7 @@
 # An Append-Only Truth Ledger for Agentic Software Development: Design, Adversarial Falsification, and Repair
 
 **Status:** FROZEN at the v0.4 audit — superseded by
-[truth-ledger-paper-v2.md](truth-ledger-paper-v2.md), which merges this
+[truth-ledger-paper-v2.md](../truth-ledger-paper-v2.md), which merges this
 audit with pilot field evidence into one living document. Kept verbatim
 for the record; do not update. · **Artifact version audited:** truth
 v0.2/v0.3 · **Repaired version:** truth v0.4

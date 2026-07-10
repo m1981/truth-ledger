@@ -3,7 +3,7 @@
 > Reader: anyone who has read the paper (truth-ledger-paper.md) and wants to know what happened when the artifact met a real repository | Enables: judging which of the paper's claims now carry field evidence, and which new defect classes the pilot surfaced | Update-trigger: each verification round, hand-audit, or newly confirmed defect class in the pilot
 
 **Status:** FROZEN 2026-07-09 — superseded by
-[truth-ledger-paper-v2.md](truth-ledger-paper-v2.md), which absorbed this
+[truth-ledger-paper-v2.md](../truth-ledger-paper-v2.md), which absorbed this
 document's field evidence into the single living paper. This document no
 longer accumulates anything; it is kept verbatim for the record, and its
 counts and version references are those of its freeze date. (At freeze:

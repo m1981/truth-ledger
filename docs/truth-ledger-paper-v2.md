@@ -3,7 +3,8 @@
 **Status:** v2. Merges the frozen v0.4 audit with pilot field evidence through
 2026-07-09 into one living document, superseding the earlier split between
 `truth-ledger-paper.md` (audit, frozen at v0.4) and
-`truth-ledger-field-notes.md` (deployment, living). Artifact version audited:
+`truth-ledger-field-notes.md` (deployment, formerly living) — both now
+retired to `docs/archive/`. Artifact version audited:
 v0.4. Artifact version deployed in the pilot: v0.5.3 (the template has
 since moved to v0.5.5; pilot sync pending, §2). Pilot: one multi-component
 kitchen-manufacturing monorepo (domain core, catalog service, ERP, CAM, two

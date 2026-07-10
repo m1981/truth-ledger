@@ -92,7 +92,7 @@ made mechanical instead of vigilance-dependent.
 | `.github/workflows/` | PR gate · post-merge scan with bot commit-back · weekly seeded-fault canary |
 | `prompts/truth-verifier.md` | fixed prompt for independent verification (isolation is scripted) |
 | `docs/adr/001` | the readiness semantics: which premises block work, by cost tier |
-| `scripts/truth-canary.sh` | the seeded-fault suite — run weekly; it prints its own count; all CAUGHT, or stop trusting green |
+| `scripts/truth-canary.sh` | the seeded-fault suite — run weekly; it prints its own count; all CAUGHT, or stop trusting green (standing fact: tr-3a31bfcf in this repo's own ledger) |
 
 ## The non-interference contract (why scaffolding can't hurt you)
 
@@ -108,15 +108,39 @@ N5 is the only clause verified by running something; N1–N4 hold because
 copier is never told about the things they protect. What the tool cannot
 see, it cannot touch.
 
-## Docs
+## This repo eats its own cooking
 
+The template repo runs its own ledger: `.truth/claims.jsonl` at the root,
+gated by the same committed hooks (`.githooks/`, activated via
+`core.hooksPath`). Load-bearing facts about this repo appear in its prose
+as claim ids (e.g. tr-3a31bfcf above), filed with real evidence commands
+and independently verified by fresh dispatch-only sessions — never as
+restated counts, which this repo's own audit history shows always rot.
+`bash scripts/fact-health.sh` sweeps the live docs and judges every cited
+id by ledger status (meta-repo satellite; deliberately not shipped by the
+template, per ADR-003's placement test).
+
+## Docs — one home per fact
+
+Each fact class has exactly one normative home; everything else links.
+
+- [The paper](docs/truth-ledger-paper-v2.md) — the living spec (§1 is the
+  mechanism's normative home), field evidence, audit findings, honest
+  limits, invariant table
 - [Operations guide](docs/truth-ledger-operations-guide.md) — every trigger,
   how to spot it firing, the automation ladder, and the three judgments
   that must stay human (with diagrams)
-- [`.truth/README.md`](template/.truth/README.md) — the layer's own manual,
-  installed into every child repo
-- [ADR-001](template/docs/adr/001-premise-validity-semantics.md) — premise
-  validity semantics for `truth ready`
+- [Tutorial](docs/truth-ledger-tutorial.md) — the guided explanation, from
+  war story to theory
+- [`.truth/README.md`](template/.truth/README.md) — the layer's operational
+  manual and CLI contract, installed into every child repo
+- [ADRs](template/docs/adr/) — decision records (001 premise validity
+  … 006 issue-fold first-wins); amendments land as status-block pointers,
+  never body edits
+- [Beads integration](template/docs/beads-integration-guide.md) — external
+  tracker wiring (single source; the `docs/` copy is a pointer stub)
+- `docs/archive/` — superseded documents, frozen verbatim with
+  supersession banners
 
 ## Requirements
 
@@ -129,6 +153,7 @@ external tracker? The seam is tracker-agnostic (v0.4.1): any tracker via
 `TRUTH_TRACKER_CMD="<cmd printing a JSON array of {id, title}>"` or a pipe
 (`my-tracker export | scripts/truth ready --stdin`), with Beads as the
 fallback default (`bd ready --json`) — note the native kernel outranks
-that default the moment any issue record exists. With neither kernel
+that default the moment any issue record exists (standing fact:
+tr-dca73f8a). With neither kernel
 records nor a tracker, the ledger still works standalone — a dashboard
 (`queue`, `list --live`) instead of a gate.
