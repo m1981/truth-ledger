@@ -541,6 +541,60 @@ class TestIssuePremiseMerge(unittest.TestCase):
                                    {"w": ["tr-000000c1"]})
         self.assertEqual(merged["w"], ["tr-000000c1"])
 
+# ------------------------------------------------- impact query (ADR-005)
+
+class TestImpact(unittest.TestCase):
+    def _world(self):
+        evs = events(
+            rec("claim", verified_p(evidence_paths=["src/**"]),
+                rid="tr-000000a1"),
+            rec("verdict", {"claim": "tr-000000a1", "verdict": "agree",
+                            "basis": "b"}, rid="tr-000000a2",
+                ts="2026-07-01T01:00:00+00:00"),
+            issue_rec(rid="wk-000000b1", premises=["tr-000000a1"]),
+            rec("premise", {"issue": "bd-x1", "claim": "tr-000000a1"},
+                rid="tr-000000a3"),
+            rec("claim", claim_p(text="retired fact",
+                                 evidence_paths=["src/**"]),
+                rid="tr-000000c9"),
+            rec("verdict", {"claim": "tr-000000c9", "verdict": "retracted",
+                            "basis": "dead"}, rid="tr-000000ca",
+                ts="2026-07-01T01:00:00+00:00"))
+        claims, premises = tm.fold(evs)
+        issues = tm.fold_issues(evs)
+        premises = tm.merge_premises(premises, tm.issue_premises(issues))
+        return claims, issues, premises
+
+    def test_watched_path_reported_with_holds(self):
+        claims, issues, premises = self._world()
+        rows = tm.impact_report(["src/deep/x.py"], claims, issues, premises)
+        self.assertEqual([r["claim"] for r in rows], ["tr-000000a1"])
+        self.assertEqual(rows[0]["holds"], ["bd-x1", "wk-000000b1"])
+        self.assertEqual(rows[0]["touched"], ["src/deep/x.py"])
+
+    def test_unwatched_path_is_silent(self):
+        claims, issues, premises = self._world()
+        self.assertEqual(
+            tm.impact_report(["docs/readme.md"], claims, issues, premises),
+            [])
+
+    def test_dead_claims_never_whisper(self):
+        """The retracted claim also watches src/** but must not appear:
+        impact predicts stalings, and dead claims cannot stale."""
+        claims, issues, premises = self._world()
+        rows = tm.impact_report(["src/x.py"], claims, issues, premises)
+        self.assertNotIn("tr-000000c9", [r["claim"] for r in rows])
+
+    def test_closed_wk_hold_dropped_external_kept(self):
+        claims, issues, premises = self._world()
+        evs = events(
+            issue_rec(rid="wk-000000b1", premises=["tr-000000a1"]),
+            issue_ev("closed", ref="wk-000000b1", basis="done",
+                     ts="2026-07-01T02:00:00+00:00"))
+        issues = tm.fold_issues(evs)
+        rows = tm.impact_report(["src/x.py"], claims, issues, premises)
+        self.assertEqual(rows[0]["holds"], ["bd-x1"])
+
 # ------------------------------------------ schema conformance (shared corpus)
 
 # Each fixture: (name, record, expected_valid). This corpus is the single

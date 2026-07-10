@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.5.5)
+# .truth — append-only claims ledger (v0.5.7)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -69,7 +69,8 @@ hash identically; `--single-run` overrides). INFERRED requires `--basis`.
     docs/adr/                          decision records: 001 premise validity,
                                        002 work kernel, 003 satellite placement,
                                        004 tracker seam, 005 pre-edit whisper
-                                       (proposed), 006 issue-fold first-wins
+                                       (accepted in trial), 006 issue-fold
+                                       first-wins
 
 ## Install (day 1)
 
@@ -144,6 +145,22 @@ live docs by wildcarding the filename (`docs/adr/NNN-*.md`) so the dead
 name never appears. Canary FAULT D1–D3 cover the semantics. Pairs well
 with a standing claim whose evidence is the gate itself (see Claim
 discipline below).
+
+## Pre-edit whisper (ADR-005, v0.5.7 — verb template-side, hook consumer-side)
+
+    scripts/truth impact <path>...      # what knowledge does editing endanger?
+
+Read-only fold query: for each repo-root-relative path, the
+live/unverified claims watching it (the same matcher `invalidate-scan`
+uses — one matcher, by decree) and the open work premised on them. Exit
+0 = silence (nothing watched; the fatigue budget is a canary-gated
+property, FAULT W2), exit 3 = report on stdout, `--json` for harnesses.
+Output is prediction, never judgment: the verb files nothing — appends
+remain the scan's and the verifiers' job. The whisper HOOK (PreToolUse
+in an agent harness; a deny list for frozen paths; per-session dedup) is
+consumer policy and deliberately not shipped (ADR-003 rule 2) — wire it
+per ADR-005's Decision, and watch its adoption gate: whispers that
+change agent behavior, without fatigue.
 
 ## Claim discipline (earned lessons)
 

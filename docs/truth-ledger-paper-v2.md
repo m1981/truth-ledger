@@ -6,7 +6,7 @@
 `truth-ledger-field-notes.md` (deployment, formerly living) — both now
 retired to `docs/archive/`. Artifact version audited:
 v0.4. Artifact version deployed in the pilot: v0.5.3 (the template has
-since moved to v0.5.5; pilot sync pending, §2). Pilot: one multi-component
+since moved to v0.5.7; pilot sync pending, §2). Pilot: one multi-component
 kitchen-manufacturing monorepo (domain core, catalog service, ERP, CAM, two
 adapters), one solo developer, LLM agent sessions doing the implementation
 work, day-0 2026-07-08. All quantitative claims in §2 are self-reported by
@@ -176,8 +176,8 @@ Measured as of 2026-07-09:
 | Human retractions (`TRUTH_HUMAN=1`) | 6 — all by the human, none by an agent |
 | Concurrent agent sessions writing one ledger | 6 interleaved, zero corruption |
 | Tripwire recall & false-alarm rate (post-commit scan, one real refactor) | 1/1 staled when it should have (recall), 0 false alarms that round (precision signal; both n=1) |
-| Seeded faults, this repo's template canary | 54 (grew from 19 at v0.4 as work kernel, spec-health, and doc-health satellites merged upstream into this same template, then 49 with F7/ADR-006, then 53 when INV-M's intake checks shipped, then 54 when FAULT S4 gated spec-health's degradation path — no longer frozen; Appendix B) |
-| Seeded faults, the pilot's downstream canary | grew 19 → 42 → 45 → 48 → 49 in step with those same merges, matching the template through v0.5.3 (F7/ADR-006 synced 2026-07-09); the template has since grown to 53 (INV-M, 2026-07-09) and 54 (F8/S4, 2026-07-10) — pilot sync is pending, so the two counts diverge until the next `copier update` (Appendix B) |
+| Seeded faults, this repo's template canary | 58 (grew from 19 at v0.4 as work kernel, spec-health, and doc-health satellites merged upstream into this same template, then 49 with F7/ADR-006, 53 with INV-M's intake checks, 54 with FAULT S4, and 58 with the impact verb's W-faults (ADR-005 trial) — no longer frozen; Appendix B) |
+| Seeded faults, the pilot's downstream canary | grew 19 → 42 → 45 → 48 → 49 in step with those same merges, matching the template through v0.5.3 (F7/ADR-006 synced 2026-07-09); the template has since grown further (53 INV-M, 54 F8/S4, 58 ADR-005 W-faults, 2026-07-09/10) — pilot sync is pending, so the two counts diverge until the next `copier update` (Appendix B) |
 
 **The dominant real failure mode is scope overreach, not hallucination.**
 Both genuine divergences shared one shape: a *correct* evidence command
@@ -604,11 +604,11 @@ the safe default) instead of running unarmed and silently skipping.
 All findings and repairs are demonstrated by scripts driving the actual
 CLI in fresh sandbox repositories: `scripts/truth` (CLI, pure core over
 imperative shell), `scripts/check-truth.sh` (prefix-based commit gate),
-`scripts/truth-canary.sh` (54 seeded faults in this repository at time of
+`scripts/truth-canary.sh` (58 seeded faults in this repository at time of
 writing, grown from 19 at v0.4 as the pilot's work-kernel, spec-health, and
 doc-health satellites merged upstream into this same template, then to 49
-with F7/ADR-006, to 53 with INV-M's intake checks, and to 54 with F8/S4
-— see §2),
+with F7/ADR-006, 53 with INV-M's intake checks, 54 with F8/S4, and 58
+with ADR-005's impact-verb W-faults — see §2),
 `scripts/test-truth-core.py`, `scripts/test-truth-v04.py`, and
 `.truth/schema/claims.schema.json`. Field numbers in §2 are read
 directly from `git log -p .truth/claims.jsonl` in the pilot repository —

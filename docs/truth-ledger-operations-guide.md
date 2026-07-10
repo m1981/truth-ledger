@@ -1,10 +1,10 @@
 # Truth Ledger — Operations Guide: Triggers, Observability, and Automation
 
-> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: v0.5.5)
+> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: v0.5.7)
 
 ## 1. The trigger map — every point where the ledger executes
 
-There are ten entry points. Five are human/agent-initiated, five can be fully mechanical.
+There are eleven entry points. Five are human/agent-initiated, six can be fully mechanical.
 
 | Trigger | What runs | Initiated by | Automatable? |
 |---|---|---|---|
@@ -14,6 +14,7 @@ There are ten entry points. Five are human/agent-initiated, five can be fully me
 | Working an issue | `truth issue` / `start` / `done --claim` (work kernel, v0.5/ADR-002) | Agent or human, across a task | Agent-driven; `done --claim` files through the same intake gates — **commit the work first**, or the claim trips its own tripwire (see README, Claim discipline) |
 | **Every commit touching the ledger** | `check-truth.sh` via pre-commit hook (INV-A prefix check + schema validation) | **git, automatically** | ✅ Fully |
 | **Every merge/pull** | `invalidate-scan` via post-merge hook (paths, TTL, lost anchors) | **git, automatically** | ✅ Fully |
+| Pre-edit intent (where wired) | `truth impact` via a PreToolUse whisper hook (ADR-005; deny stage for frozen paths, whisper stage injects the prediction) | **the agent harness, automatically, at edit intent** | ✅ Fully — but consumer-side: the verb ships in the template (v0.5.7, FAULTS W1–W4), the hook and deny list deliberately do not (ADR-003 rule 2) |
 | Spec & doc hygiene | `spec-health.sh` (cited ids judged by the ADR-001 matrix) + `doc-health.sh` (forbidden names, broken links) — v0.5.1/v0.5.2 satellites | Consuming repo's pre-commit on staged specs/markdown; weekly sweep | ✅ Fully |
 | Verification | `dispatch` → fresh session → `verdict --recheck` → judgment | Human or script routes the context | ⚠️ Partially (see §3, rung 3) |
 | Triage | `truth queue` | Human, daily | ✅ The *surfacing*; not the deciding |
@@ -73,7 +74,7 @@ Authoring discipline for the claims themselves (scope the text to the evidence; 
 
 Per the layer's own honesty rule: each caption states what the diagram is
 grounded in. D1–D2 are OBSERVED (every arrow is a code path in `scripts/truth`
-v0.5.5, the hooks, or the workflow YAML, exercised by the canary or the
+v0.5.7, the hooks, or the workflow YAML, exercised by the canary or the
 template tests). D3 is SPECIFIED (it depicts the shipped workflow YAML, which
 has not run on GitHub infrastructure yet). D4 is a policy map, not code.
 
@@ -128,10 +129,10 @@ flowchart TB
     HU -.->|"after repo surgery"| DOC
 ```
 
-Caption: OBSERVED — command surface of scripts/truth v0.5.5 plus both hooks
+Caption: OBSERVED — command surface of scripts/truth v0.5.7 plus both hooks
 and both satellites; mechanical arrows gated by canary faults A–N, S1–S4,
-D1–D3; the two ✂ severance points are why §3 rung 1 (committed hooks) and
-rung 2 (CI backstop) exist.
+D1–D3, W1–W4; the two ✂ severance points are why §3 rung 1 (committed
+hooks) and rung 2 (CI backstop) exist.
 
 ### D2 — Local flow, solo dev on trunk (no PRs)
 
