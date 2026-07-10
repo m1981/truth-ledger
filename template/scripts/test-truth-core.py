@@ -190,6 +190,17 @@ class TestIntake(unittest.TestCase):
                          ["c d.sh"])
         self.assertEqual(tm.malformed_path_list([]), [])
 
+    def test_split_csv_drops_empty_entries(self):
+        """v0.5.6: a trailing or doubled comma must never surface as a
+        refusal of the literal '' (the pre-fix behavior was fails-closed
+        but cryptic: dead_literal_paths reported [''])."""
+        self.assertEqual(tm.split_csv("a.sh,"), ["a.sh"])
+        self.assertEqual(tm.split_csv("a.sh,,b.sh"), ["a.sh", "b.sh"])
+        self.assertEqual(tm.split_csv(" a.sh , b.sh "), ["a.sh", "b.sh"])
+        self.assertEqual(tm.split_csv(","), [])
+        self.assertEqual(tm.split_csv(""), [])
+        self.assertEqual(tm.split_csv(None), [])
+
     def test_dead_literal_paths(self):
         """INV-M: a literal matching zero tracked files is a dead
         tripwire; explicit globs are exempt even at zero matches."""
@@ -429,6 +440,26 @@ class TestFoldIssues(unittest.TestCase):
         self.assertEqual(
             issues["wk-00000001"]["issue"]["payload"]["premises"],
             ["tr-000000c1"])
+
+    def test_confluence_all_permutations_with_duplicate_id(self):
+        """v0.5.6: coverage symmetry with the claims fold — first-wins
+        under a duplicate wk- id must be confluent across every arrival
+        order, not just the two fixed orders the ADR-006 tests exercise."""
+        import itertools
+        evs = [issue_rec(premises=["tr-000000c1"],
+                         ts="2026-07-01T00:00:00+00:00"),
+               issue_rec(premises=[], title="forged",
+                         ts="2099-01-01T00:00:00+00:00"),
+               issue_ev("claimed", ts="2026-07-02T00:00:00+00:00")]
+        states = set()
+        for perm in itertools.permutations(evs):
+            issues = tm.fold_issues(list(enumerate(perm, 1)))
+            e = issues["wk-00000001"]
+            states.add((e["status"],
+                        tuple(e["issue"]["payload"]["premises"]),
+                        e["issue"]["payload"]["title"]))
+        self.assertEqual(states,
+                         {("claimed", ("tr-000000c1",), "do the thing")})
 
     def test_confluence_file_order_irrelevant(self):
         a = issue_rec(ts="2026-07-01T00:00:00+00:00")

@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""truth v0.5.5 -- append-only claims ledger with a native work kernel.
+"""truth v0.5.6 -- append-only claims ledger with a native work kernel.
+
+v0.5.6 (review residuals): CSV parsing for --paths and --deps drops
+  empty entries (a trailing comma used to surface as a refusal of the
+  literal '' -- fails-closed but cryptic); the INV-M zero-match refusal
+  now also names --ttl-days as the escape for facts about files git
+  does not track; fold_issues' first-wins rule gains permutation
+  confluence coverage matching the claims fold's.
 
 v0.5.5 (audit parity): `validate` now rejects claim records with no
   `text` -- the stdlib mirror had drifted from claims.schema.json's
@@ -164,6 +171,13 @@ def parse_ts(s):
         return datetime.fromisoformat(s)
     except (ValueError, TypeError):
         return None
+
+def split_csv(csv):
+    """CSV flag values (--paths, --deps): split, strip, drop empties, so
+    a trailing or doubled comma never surfaces as a refusal of ''."""
+    if not csv:
+        return []
+    return [p.strip() for p in csv.split(",") if p.strip()]
 
 # --------------------------------------------------- record construction
 
@@ -699,7 +713,7 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
             sys.exit("truth: refusing near-duplicate of active claim(s) (G8):\n"
                      f"{lines}\nRe-file with --duplicate-ok if genuinely distinct.")
 
-    paths = [p.strip() for p in paths_csv.split(",")] if paths_csv else []
+    paths = split_csv(paths_csv)
     if paths:
         # INV-M applies to any claim carrying evidence_paths, not only
         # VERIFIED -- decide_invalidation doesn't gate on evidence_class
@@ -716,8 +730,11 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
             sys.exit(f"truth: --paths entry matches zero tracked files "
                      f"(INV-M): {dead!r} -- a literal that matches nothing "
                      "is a dead tripwire from the moment it's filed. Fix the "
-                     "path, or use a glob ('*'/'?'/'**') if you're "
-                     "intentionally watching an empty-for-now pattern.")
+                     "path; use a glob ('*'/'?'/'**') if you're intentionally "
+                     "watching an empty-for-now pattern; or, for a fact about "
+                     "a file git does not track, use --ttl-days instead "
+                     "(untracked files never appear in diffs, so a path can "
+                     "never invalidate them).")
 
     payload = {"text": text, "evidence_class": evidence_class,
                "cost_tier": tier, "ttl_days": ttl_days,
@@ -862,7 +879,7 @@ def cmd_issue(a):
     events = load_events()
     issues = fold_issues(events)
     claims, _ = fold(events)
-    deps = [d.strip() for d in a.deps.split(",")] if a.deps else []
+    deps = split_csv(a.deps)
     unknown_deps = [d for d in deps if d not in issues]
     if unknown_deps:
         # Deps must reference existing wk- issues. Because an issue cannot

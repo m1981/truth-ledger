@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.5.4 -- seeded-fault acceptance suite (seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + spec-health + doc-health).
+# truth-canary.sh v0.5.6 -- seeded-fault acceptance suite (seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + spec-health/doc-health incl. degradation paths).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -453,7 +453,7 @@ open(".truth/claims.jsonl", "a").write(json.dumps(rec, sort_keys=True) + "\n")
 PYEOF
 if ! grep -q '"session": "s-evil"' .truth/claims.jsonl; then
   miss "fault injection failed: duplicate issue record was never appended"
-elif PATH="/usr/bin:/bin" $T ready | grep -q "^HELD $WK_STALE"; then
+elif PY3="$(command -v python3)" && PATH="/usr/bin:/bin" "$PY3" scripts/truth ready | grep -q "^HELD $WK_STALE"; then
   ok "duplicate-id append ignored; $WK_STALE still HELD (premises intact)"
 else
   miss "duplicate-id append stripped $WK_STALE's premises -- it is now ready"
