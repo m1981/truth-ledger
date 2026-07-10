@@ -525,6 +525,11 @@ CORPUS = [
      rec("claim", claim_p(evidence_class="INFERRED", basis="convention")), True),
     ("inferred missing basis",
      rec("claim", claim_p(evidence_class="INFERRED")), False),
+    # v0.5.5: the mirror had drifted from the schema on exactly these two --
+    # a record with no text passed validate while the schema rejected it.
+    ("claim empty text", rec("claim", claim_p(text="")), False),
+    ("claim missing text",
+     rec("claim", {k: v for k, v in claim_p().items() if k != "text"}), False),
     ("bad tier", rec("claim", claim_p(cost_tier="P9")), False),
     ("bad class", rec("claim", claim_p(evidence_class="GUESSED")), False),
     ("bad envelope id", rec("claim", claim_p(), rid="claim-1"), False),

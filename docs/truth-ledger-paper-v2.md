@@ -167,8 +167,8 @@ Measured as of 2026-07-09:
 | Human retractions (`TRUTH_HUMAN=1`) | 6 — all by the human, none by an agent |
 | Concurrent agent sessions writing one ledger | 6 interleaved, zero corruption |
 | Tripwire recall & false-alarm rate (post-commit scan, one real refactor) | 1/1 staled when it should have (recall), 0 false alarms that round (precision signal; both n=1) |
-| Seeded faults, this repo's template canary | 53 (grew from 19 at v0.4 as work kernel, spec-health, and doc-health satellites merged upstream into this same template, then 49 with F7/ADR-006, then 53 when INV-M's intake checks shipped — no longer frozen; Appendix B) |
-| Seeded faults, the pilot's downstream canary | grew 19 → 42 → 45 → 48 → 49 in step with those same merges, matching the template through v0.5.3 (F7/ADR-006 synced 2026-07-09); the template grew to 53 with INV-M (2026-07-09, same day) — pilot sync is pending, so the two counts diverge until the next `copier update` (Appendix B) |
+| Seeded faults, this repo's template canary | 54 (grew from 19 at v0.4 as work kernel, spec-health, and doc-health satellites merged upstream into this same template, then 49 with F7/ADR-006, then 53 when INV-M's intake checks shipped, then 54 when FAULT S4 gated spec-health's degradation path — no longer frozen; Appendix B) |
+| Seeded faults, the pilot's downstream canary | grew 19 → 42 → 45 → 48 → 49 in step with those same merges, matching the template through v0.5.3 (F7/ADR-006 synced 2026-07-09); the template has since grown to 53 (INV-M, 2026-07-09) and 54 (F8/S4, 2026-07-10) — pilot sync is pending, so the two counts diverge until the next `copier update` (Appendix B) |
 
 **The dominant real failure mode is scope overreach, not hallucination.**
 Both genuine divergences shared one shape: a *correct* evidence command
@@ -239,11 +239,13 @@ land.
 
 ## 4. Findings and repairs
 
-Eight defects, six from the original audit (v0.2/v0.3 → v0.4) and two
+Nine defects, six from the original audit (v0.2/v0.3 → v0.4) and three
 found later by inspection — one during pilot deployment (v0.5.x), one
-during a later documentation-accuracy pass that re-derived an ADR's
-rationale against the shipped CLI rather than trusting the ADR's prose
-(v0.5.3). Each row: what broke, how it was demonstrated, whether the
+during a documentation-accuracy pass that re-derived an ADR's rationale
+against the shipped CLI rather than trusting the ADR's prose (v0.5.3),
+and one during a four-agent cross-corpus audit that probed the stdlib
+validate mirror against the JSON Schema live rather than trusting the
+conformance suite's green run (v0.5.5). Each row: what broke, how it was demonstrated, whether the
 shipped test suite would have caught it, and the fix.
 
 Severity scale: Low (cosmetic/documented risk) < Medium (wrong status
@@ -261,6 +263,7 @@ gate covered).
 | F6 | **Tombstone resurrection by pure append** — a duplicate claim record bearing a retracted id resets status to `unverified`; both shipped gates (diff-deletion heuristic, well-formedness check) pass it | Critical | A retracted P0 claim — text: *"the database is safe to drop"* — resurrected through both gates and `validate` | No — the canary seeded this fault only on the verdict path | Fold ignores duplicate claim ids (first wins); commit gate replaced with a line-prefix check: the staged file must literally extend the committed one — but see §1's "Fold semantics, precisely" for a related, still-open gap this fix does not close |
 | INV-M | **Dead tripwire** — space-separated `--paths` ("a.sh b.sh") silently stores as one literal path matching nothing; the claim is true, the hash matches, the verifier agrees, and the invalidation trigger can never fire | High | Found by inspection in the pilot ledger, not by any gate | No — nothing checks a claim's protection metadata for validity | Shipped (v0.5.4): intake refuses (a) whitespace-containing path entries with no comma and (b) any literal (non-glob) path matching zero tracked files at filing time; explicit globs (`*`/`?`) are exempt — watching a pattern that's empty for now is legitimate intent, unlike a typo'd literal. Applies to any evidence_class carrying paths, not only VERIFIED, since invalidation itself doesn't discriminate by class. `FAULT T`, self-defense verified; also caught a live fixture bug (an existing canary claim filed on an untracked path) in the process |
 | F7 | **Issue-fold premise-stripping by pure append** — ADR-002's issue fold was last-wins on duplicate `wk-` ids ("update-by-refile"); a raw appended duplicate with `premises: []` silently disarmed an issue's ADR-001 protection. Unlike F6, no backdated timestamp was needed (last-wins means any later real timestamp wins) and no terminal-state coincidence was needed (works on any open issue, not only a retracted one) | High\* | A HELD issue (broken premise, `tr-... (stale)`) flipped to READY after one raw JSONL append, no CLI involved; `truth validate` still passed | No — no canary fault or unit test exercised a duplicate `wk-` append; the one existing unit test on this path (`test_last_issue_payload_wins`) asserted the vulnerable behavior as a feature | `fold_issues` is now first-wins on duplicate ids, identical to `fold()` (ADR-006). The "update-by-refile" rationale it replaced described a verb the shipped CLI never implemented — `truth issue` always mints a fresh id from `hash(payload, ts, actor)`, so no command could legitimately re-file an existing `wk-` id; last-wins was pure attack surface |
+| F8 | **Schema-mirror drift, recurrence of F1's class** — `validate`'s stdlib mirror accepted a claim record with no `text`, which `claims.schema.json` requires at minLength 1; `truth claim ""` filed a record the schema rejects and the INV-B commit gate would then block — a CLI contradicting its own gate | Low | Live probe: a payload of only `evidence_class`/`cost_tier` returned `validate: 1 record(s) OK` | No — the shared conformance corpus (F1's own fix) carried no missing-text fixture | Shipped (v0.5.5): mirror rejects missing/empty claim text; intake refuses empty text; two corpus fixtures added. The second recurrence of this class upgrades "keep the corpus exhaustive" from advice to structural future work (§10) |
 
 \* By this table's own definition of Critical ("a headline invariant
 falsified by an attack no gate covered"), F7 reads Critical: the ADR-001
@@ -546,6 +549,13 @@ the safe default) instead of running unarmed and silently skipping.
 - **Claim half-life measurement** (§6.2) — turning the decay-channel
   metaphor into a calibrated one from invalidation-log data, enabling
   data-driven TTL suggestions at intake instead of author guesses.
+- **Generate the validate mirror from the schema.** F1 and F8 are one
+  defect class occurring twice: two hand-maintained copies of the record
+  contract (stdlib mirror, JSON Schema) drifting apart. The conformance
+  corpus is a sample, and samples miss; a build step deriving the mirror
+  (or a corpus mechanically enumerated from the schema's constraints)
+  would close the class instead of the instance. Second recurrence is
+  the trigger this item was waiting for.
 - **Formal verification of the fold.** The core is a pure function over a
   small event alphabet — a natural target for exhaustive model checking
   (TLA+/Alloy) of confluence and terminality, replacing the permutation
@@ -585,10 +595,11 @@ the safe default) instead of running unarmed and silently skipping.
 All findings and repairs are demonstrated by scripts driving the actual
 CLI in fresh sandbox repositories: `scripts/truth` (CLI, pure core over
 imperative shell), `scripts/check-truth.sh` (prefix-based commit gate),
-`scripts/truth-canary.sh` (53 seeded faults in this repository at time of
+`scripts/truth-canary.sh` (54 seeded faults in this repository at time of
 writing, grown from 19 at v0.4 as the pilot's work-kernel, spec-health, and
 doc-health satellites merged upstream into this same template, then to 49
-with F7/ADR-006, then to 53 with INV-M's intake checks — see §2),
+with F7/ADR-006, to 53 with INV-M's intake checks, and to 54 with F8/S4
+— see §2),
 `scripts/test-truth-core.py`, `scripts/test-truth-v04.py`, and
 `.truth/schema/claims.schema.json`. Field numbers in §2 are read
 directly from `git log -p .truth/claims.jsonl` in the pilot repository —

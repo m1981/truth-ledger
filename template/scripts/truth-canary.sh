@@ -493,6 +493,32 @@ else
 fi
 rm -rf docs/specs
 
+say "FAULT S4 (spec-health, ADR-003): issues-side degradation must announce and continue, not crash"
+mkdir -p docs/specs
+printf '# Spec: canary degraded\ncites %s and %s\n' "$CID_R" "$WK_DEP" > docs/specs/degraded.md
+mv scripts/truth scripts/truth.real
+cat > scripts/truth <<'SH'
+#!/usr/bin/env bash
+[ "${1:-}" = "issues" ] && { echo "truth: simulated issues failure" >&2; exit 1; }
+exec python3 "$(dirname "$0")/truth.real" "$@"
+SH
+chmod +x scripts/truth
+if scripts/truth issues --json >/dev/null 2>&1; then
+  miss "fault injection failed: wrapped truth still serves issues --json"
+else
+  S4_OUT=$(bash scripts/spec-health.sh 2>&1) && S4_RC=0 || S4_RC=$?
+  if echo "$S4_OUT" | grep -q "treating issue records as absent" \
+     && echo "$S4_OUT" | grep -q "ok    $CID_R" \
+     && echo "$S4_OUT" | grep -q "FAIL  $WK_DEP  missing" \
+     && echo "$S4_OUT" | grep -q "spec-health: .* failure(s)"; then
+    ok "degraded sweep announced on stderr, still judged claims, wk- reported missing (rc=$S4_RC)"
+  else
+    miss "spec-health degradation wrong (rc=$S4_RC): $(echo "$S4_OUT" | tail -3)"
+  fi
+fi
+mv -f scripts/truth.real scripts/truth
+rm -rf docs/specs
+
 say "FAULT D1 (doc-health): clean corpus must pass; absent patterns file must only skip check A"
 mkdir -p docs
 printf '# target\n' > docs/target.md

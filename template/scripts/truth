@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""truth v0.5.4 -- append-only claims ledger with a native work kernel.
+"""truth v0.5.5 -- append-only claims ledger with a native work kernel.
+
+v0.5.5 (audit parity): `validate` now rejects claim records with no
+  `text` -- the stdlib mirror had drifted from claims.schema.json's
+  required/minLength-1 rule (F1's defect class, caught by a fresh
+  audit; the shared conformance corpus had no missing-text fixture).
+  Intake refuses empty claim text for the same reason: `truth claim ""`
+  used to file a record the schema rejects, which the INV-B commit gate
+  would then block -- a CLI that contradicts its own gate. Canary FAULT
+  S4 gates spec-health's issues-side degradation path (ADR-003 birth
+  law: no satellite path exists ungated, including the graceful ones).
 
 v0.5.4 (INV-M, dead-tripwire intake checks): `truth claim` and
   `done --claim` now refuse two shapes of evidence_path that can never
@@ -526,6 +536,9 @@ def validate_events(events):
         if kind not in KINDS:
             errors.append(f"line {n}: unknown kind '{kind}'")
         elif kind == "claim":
+            if not p.get("text"):
+                errors.append(f"line {n}: claim missing text (schema requires "
+                              "minLength 1)")
             if p.get("evidence_class") not in EVIDENCE_CLASSES:
                 errors.append(f"line {n}: bad evidence_class")
             if p.get("cost_tier") not in TIERS:
@@ -675,6 +688,10 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
     appending. Shared by `claim` and `done --claim` so claim-at-death goes
     through the identical intake, and so `done` can validate everything
     before it appends anything (ADR-002: both records or neither)."""
+    if not text or not text.strip():
+        sys.exit("truth: claim text must be non-empty -- an assertion with "
+                 "no sentence cannot be verified, diverged from, or cited "
+                 "(schema: text minLength 1)")
     if not duplicate_ok:
         similar = duplicate_conflicts(text, claims)
         if similar:
