@@ -85,7 +85,7 @@ truth list --live
 # 2. When you verify something — write it down with its recipe
 truth claim "<fact>" --class VERIFIED \
   --evidence-cmd "<the command you ran>" \
-  --paths "<files it depends on>" --tier P1
+  --paths "<glob,glob — comma-separated>" --tier P1
 
 # 3. When you check someone else's claim — record your judgment
 truth verdict <id> agree --basis "re-ran the grep, still 0 matches"
@@ -198,7 +198,7 @@ Two branches, two agents, both file verdicts on the same claim, then the branche
 
 ### 5.1 Intake gates: refusal is a feature
 
-`truth claim` refuses to even *record*: a VERIFIED claim with no evidence command; one with neither paths nor TTL (uninvalidatable — a fact nothing can ever demote is a lie waiting to mature); one in a repo with no commits (nothing to anchor to); an evidence command whose two intake runs hash differently (nondeterministic — your recipe would diverge tomorrow by luck); a near-duplicate of an active claim (file a verdict on the original instead). A refused claim leaves no trace. An accepted one is immutable. The gate is where quality is cheapest.
+`truth claim` refuses to even *record*: a VERIFIED claim with no evidence command; one with neither paths nor TTL (uninvalidatable — a fact nothing can ever demote is a lie waiting to mature); one in a repo with no commits (nothing to anchor to); an evidence command whose two intake runs hash differently (nondeterministic — your recipe would diverge tomorrow by luck); a near-duplicate of an active claim (file a verdict on the original instead); a **dead tripwire** — a `--paths` entry containing whitespace with no comma (you forgot the comma; the space-joined literal matches no real file), or a literal path matching zero tracked files (explicit globs are exempt: watching an empty-for-now pattern is legitimate intent, a typo'd literal is not); and empty claim text. A refused claim leaves no trace. An accepted one is immutable. The gate is where quality is cheapest.
 
 ### 5.2 The invariant table: promises with named breakers
 
@@ -206,7 +206,7 @@ The system maintains a table of every promise it makes — append-only, TTLs exp
 
 ### 5.3 The canary: seeded lies, weekly
 
-Once a week, a script builds sandbox repos and deliberately commits nineteen faults — a tampered ledger line, a touched evidence path, rotted evidence, an expired TTL, an erased anchor, a resurrection attempt, a mid-file forgery, an issue standing on a stale premise... Every seeded lie must be CAUGHT. One miss and the run fails loudly: *the immune system has a hole* — stop trusting green checkmarks until it's fixed. This inverts normal testing: instead of confirming the happy path works, it confirms **the lies you know about get caught**, which is the only evidence that means anything for a trust system.
+Once a week, a script builds sandbox repos and deliberately commits dozens of seeded faults (it prints its own count — the suite grows with every mechanism) — a tampered ledger line, a touched evidence path, rotted evidence, an expired TTL, an erased anchor, a resurrection attempt, a mid-file forgery, an issue standing on a stale premise... Every seeded lie must be CAUGHT. One miss and the run fails loudly: *the immune system has a hole* — stop trusting green checkmarks until it's fixed. This inverts normal testing: instead of confirming the happy path works, it confirms **the lies you know about get caught**, which is the only evidence that means anything for a trust system.
 
 ### 5.4 Doctor vs. canary
 
@@ -273,7 +273,7 @@ Lamport, Shostak & Pease, *The Byzantine Generals Problem* (1982) — read the f
 | Command | When |
 |---|---|
 | `truth list --live` | Before relying on any repo fact |
-| `truth claim "<fact>" --class VERIFIED --evidence-cmd "<cmd>" --paths "<globs>" --tier P1` | You verified something in-repo |
+| `truth claim "<fact>" --class VERIFIED --evidence-cmd "<cmd>" --paths "<glob,glob>" --tier P1` | You verified something in-repo (paths are comma-separated) |
 | `... --class VERIFIED --evidence-cmd "<cmd>" --ttl-days N` | You verified an outside-world fact |
 | `... --class INFERRED --basis "<why>"` / `--class UNVERIFIED` | You reasoned / you're just flagging |
 | `truth verdict <id> --recheck` | Mechanical recheck (hashes) |
@@ -309,7 +309,9 @@ stateDiagram-v2
 
 ## Appendix B — FAQ
 
-**Why was my claim refused?** The gate caught one of: VERIFIED without an evidence command; without paths *or* TTL (nothing could ever demote it); a repo with no commits; a nondeterministic evidence command (two runs hashed differently — add `--single-run` only if you accept false divergences); or a near-duplicate of an active claim (verdict the original, or `--duplicate-ok` if genuinely distinct). Refusal at intake is the system working — a claim that can't be invalidated is a lie maturing.
+**Why was my claim refused?** The gate caught one of: VERIFIED without an evidence command; without paths *or* TTL (nothing could ever demote it); a repo with no commits; a nondeterministic evidence command (two runs hashed differently — add `--single-run` only if you accept false divergences); a near-duplicate of an active claim (verdict the original, or `--duplicate-ok` if genuinely distinct); a dead-tripwire path (INV-M) — `--paths "a.sh b.sh"` means you forgot the comma, and a literal path matching zero tracked files can never fire; or empty claim text. Refusal at intake is the system working — a claim that can't be invalidated is a lie maturing.
+
+**It says my `--paths` entry "contains whitespace with no comma".** `--paths` takes one quoted, comma-separated list: `--paths "src/auth/**,scripts/deploy.sh"`. A space-separated list stores as a single literal path that matches nothing — a tripwire that can never fire — so intake refuses it outright (INV-M, v0.5.4).
 
 **Why did my claim go stale again right after I re-verified it?** In old versions (≤ v0.3), it would have — the anchor was frozen at filing, a real defect fixed in v0.4. Now an `agree` verdict advances the anchor to the current commit. If you still see re-staling: either the paths genuinely changed *again* after your verdict, or you're on an old version — check the docstring.
 
@@ -319,7 +321,7 @@ stateDiagram-v2
 
 **`truth ready` says HELD — but I checked, the premise is fine!** Then say so on the record: re-verify the premise claim (`verdict <id> agree --basis ...`) and `ready` will release the issue. HELD isn't the system claiming the fact is false — it's the system refusing to let work proceed on a fact *nobody has re-checked since the ground moved*.
 
-**Do I need Beads/a work tracker?** No — the ledger stands alone as claims + verdicts + queue. The tracker adds one thing: `truth ready`, the join that mechanically holds work on broken premises. Without it, you degrade gracefully from a gate to a dashboard. And "a work tracker" means *any* tracker: the join reads a JSON array of `{id, title}` issues — Beads by default, anything else via `TRUTH_TRACKER_CMD="your-cmd"` or a pipe: `your-tracker export --json | truth ready --stdin`.
+**Do I need Beads/a work tracker?** No — and since v0.5 you don't even need one for `truth ready`: the ledger ships a native work kernel (`truth issue --premise` / `start` / `done --claim`), so work items can live in the same ledger as facts and the broken-premise gate works with zero external tools. Prefer an external tracker? The join reads a JSON array of `{id, title}` issues from `TRUTH_TRACKER_CMD="your-cmd"` or a pipe (`your-tracker export --json | truth ready --stdin`), with Beads (`bd ready --json`) as the fallback default — note the native kernel outranks that default as soon as any issue record exists. With neither, the ledger still stands alone as claims + verdicts + queue: a dashboard instead of a gate.
 
 **The evidence command works in my shell but the recheck says cannot_verify.** Exit 127: the verifier's environment can't find the command. That's classified as an *environment* problem, not a reality problem — deliberately distinct from diverge. Fix the environment or record evidence using the boring universal vocabulary: grep, find, ls, test runs.
 
@@ -359,7 +361,7 @@ stateDiagram-v2
 
 **Invariant** — A promise the system makes about itself, stated *with* the observation that would break it. "The ledger is append-only — falsified by one mutated historical line." No named breaker, no real promise.
 
-**Canary** — Nineteen deliberate lies seeded into sandbox repos every week. Every lie must be caught. The day one isn't, the immune system has a hole and you stop trusting green checkmarks until it's fixed.
+**Canary** — Dozens of deliberate lies seeded into sandbox repos every week (the suite prints its own count and grows with every mechanism). Every lie must be caught. The day one isn't, the immune system has a hole and you stop trusting green checkmarks until it's fixed.
 
 **Doctor** — Checks *your* wiring, not the tool. The canary proves the scripts can catch faults in a sandbox; doctor proves your actual repo would.
 

@@ -2,7 +2,7 @@
 
 This project keeps a truth ledger. Before relying on a repository fact,
 check it: `scripts/truth list --live`. When you verify a fact, file it:
-`scripts/truth claim "<fact>" --class VERIFIED --evidence-cmd "<cmd>" --paths "<globs>" --tier P1`
+`scripts/truth claim "<fact>" --class VERIFIED --evidence-cmd "<cmd>" --paths "<glob,glob>" --tier P1`
 Facts about the world outside the repo: add `--ttl-days N` instead of --paths.
 Never edit .truth/claims.jsonl directly; status changes are new records.
 

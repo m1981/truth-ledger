@@ -1,6 +1,6 @@
 # Truth Ledger — Operations Guide: Triggers, Observability, and Automation
 
-> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: v0.5.4)
+> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: v0.5.5)
 
 ## 1. The trigger map — every point where the ledger executes
 
@@ -25,7 +25,7 @@ The two bolded rows are the system's heartbeat — they make knowledge decay *me
 
 The ledger is deliberately quiet, so learn its signatures.
 
-**The pre-commit gate** announces itself on stderr during any commit that stages the ledger: `validate: N record(s) OK` scrolling by during `git commit` *is* the gate passing. A blocked commit prints `check-truth: INV-A violation` or `INV-B violation` and the commit dies.
+**The pre-commit gate** announces itself during any commit that stages the ledger: `validate: N record(s) OK` (stdout) scrolling by during `git commit` *is* the gate passing. A blocked commit prints `check-truth: INV-A violation` or `INV-B violation` on stderr and the commit dies.
 
 **The post-merge scan** prints `stale: tr-xxxx (paths changed)` lines unless run with `--quiet`. Tuning tip: consider removing `--quiet` from the hook — a fact silently dying on merge is exactly the event a human should glimpse.
 
@@ -39,7 +39,7 @@ The ledger is deliberately quiet, so learn its signatures.
 
 Work through these in order; each rung removes one manual step.
 
-**Rung 1 — hooks that survive clones.** Local `.git/hooks` die on every clone, so shims-in-hooks protects one machine. Promote to a committed hooks dir: move the two shims into `.githooks/`, commit them, and have the bootstrap run `git config core.hooksPath .githooks`. One config line per clone instead of per-hook copying — and the hooks themselves now update through normal file diffs.
+**Rung 1 — hooks that survive clones.** Local `.git/hooks` die on every clone, so shims-in-hooks protects one machine. Promote to the committed hooks dir the template already ships: `.githooks/` (pre-commit, post-commit, post-merge — all three executable), activated by one line per clone, `git config core.hooksPath .githooks`. Note the two wirings are exclusive: `install-hooks.sh` refuses to write `.git/hooks` shims when `core.hooksPath` is set, precisely so dead files never impersonate a gate. The committed hooks update through normal file diffs.
 
 **Rung 2 — CI as the enforcement backstop.** Hooks are bypassable (`--no-verify`) and clone-fragile; CI is neither. Three jobs:
 
@@ -73,7 +73,7 @@ Authoring discipline for the claims themselves (scope the text to the evidence; 
 
 Per the layer's own honesty rule: each caption states what the diagram is
 grounded in. D1–D2 are OBSERVED (every arrow is a code path in `scripts/truth`
-v0.5.4, the hooks, or the workflow YAML, exercised by the canary or the
+v0.5.5, the hooks, or the workflow YAML, exercised by the canary or the
 template tests). D3 is SPECIFIED (it depicts the shipped workflow YAML, which
 has not run on GitHub infrastructure yet). D4 is a policy map, not code.
 
@@ -102,7 +102,7 @@ flowchart TB
         SCAN["invalidate-scan<br/>paths / TTL / anchors"]
         GATE["check-truth.sh<br/>INV-A prefix + INV-B schema"]
         SAT["spec-health.sh + doc-health.sh<br/>satellites (consuming repo's gate)"]
-        CAN["truth-canary.sh<br/>53 seeded faults"]
+        CAN["truth-canary.sh<br/>seeded-fault suite (prints its own count)"]
         DOC["truth doctor<br/>wiring check"]
     end
 
@@ -128,8 +128,8 @@ flowchart TB
     HU -.->|"after repo surgery"| DOC
 ```
 
-Caption: OBSERVED — command surface of scripts/truth v0.5.4 plus both hooks
-and both satellites; mechanical arrows gated by canary faults A–N, S1–S3,
+Caption: OBSERVED — command surface of scripts/truth v0.5.5 plus both hooks
+and both satellites; mechanical arrows gated by canary faults A–N, S1–S4,
 D1–D3; the two ✂ severance points are why §3 rung 1 (committed hooks) and
 rung 2 (CI backstop) exist.
 
@@ -166,7 +166,7 @@ sequenceDiagram
             POC-->>D: silence — carry on
         end
     end
-    Note over D,L: weekly (cron or habit): truth-canary.sh — 53/53 or stop<br/>post-merge hook kept anyway: wakes up the day a 2nd machine appears
+    Note over D,L: weekly (cron or habit): truth-canary.sh — every fault CAUGHT or stop<br/>post-merge hook kept anyway: wakes up the day a 2nd machine appears
 ```
 
 Caption: OBSERVED — hook shims from §3 wiring; gate behavior exercised by
@@ -211,7 +211,7 @@ flowchart TB
         C1["arm drift detector"]
         C2["unit + conformance"]
         C3["v0.4 regressions"]
-        C4["53 seeded faults"]
+        C4["seeded faults — all must be CAUGHT"]
         C5["queue-age report →<br/>run summary (surface, don't decide)"]
         C1 --> C2 --> C3 --> C4 --> C5
     end

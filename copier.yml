@@ -1,7 +1,9 @@
 # truth-ledger copier template — minimal by design.
 #
-# NON-INTERFERENCE CONTRACT (each clause is testable; see tests/ in the
-# template repo history):
+# NON-INTERFERENCE CONTRACT. N5 is verified by execution (the fail-closed
+# canary task below); N1–N4 are structural — enforced by what copier is
+# never told about (the ledger is not a template file) and by the guards
+# on each task, not by a separate test suite:
 #
 #   N1  .truth/claims.jsonl is NOT a template file. Copier never creates
 #       it from the template, never diffs it, never rewrites it on
@@ -17,16 +19,20 @@
 #       logic (check-truth.sh) updates through normal file diffs.
 #   N4  AGENTS.md is _skip_if_exists: an existing discovery file is never
 #       clobbered; the operator merges the snippet by hand.
-#   N5  The scaffold self-test FAILS CLOSED: if the 19-fault canary does
-#       not fully pass in the freshly scaffolded project, the task exits
-#       non-zero and copier aborts loudly. A safety check whose failure
-#       mode is a print statement is a norm, not a property.
+#   N5  The scaffold self-test FAILS CLOSED: if the seeded-fault canary
+#       does not fully pass in the freshly scaffolded project, the task
+#       exits non-zero and copier aborts loudly. A safety check whose
+#       failure mode is a print statement is a norm, not a property.
 #
 # Zero questions on purpose: the ledger is repo-shape-agnostic, so there
 # is nothing to ask. Fewer variants, nothing to rot, nothing for a
 # variant-matrix CI to cover.
 
-_min_copier_version: "9.0.0"
+# 9.6.0 minimum: N5's `when` clause reads `_copier_operation`, introduced
+# in copier 9.6.0. On older copiers the variable is undefined, the clause
+# renders falsy, and the fail-closed canary silently never runs — the
+# exact fail-open anti-pattern N5 exists to prevent.
+_min_copier_version: "9.6.0"
 _subdirectory: template
 _answers_file: .copier-answers.truth-ledger.yml
 
@@ -34,11 +40,11 @@ _skip_if_exists:
   - AGENTS.md          # N4: never clobber an existing discovery file
 
 _message_after_copy: |
-  truth-ledger scaffolded and canary-verified (19/19).
+  truth-ledger scaffolded and canary-verified (every seeded fault caught).
 
   Remaining manual steps (deliberately not automated):
     1. If this repo has no .git yet:  git init && bash scripts/install-hooks.sh
-    2. Copy the 4-line snippet from AGENTS.md into every instruction file
+    2. Copy the snippet from AGENTS.md into every instruction file
        your agent runtimes load (CLAUDE.md, .cursorrules, ...).
     3. pip install jsonschema   (the drift detector must run ARMED in CI)
     4. scripts/truth doctor     (after your first commit — it checks that
@@ -57,7 +63,7 @@ _tasks:
   - command: "grep -qxF '.truth/claims.jsonl merge=union' .gitattributes 2>/dev/null || printf '%s\\n' '.truth/claims.jsonl merge=union' >> .gitattributes"
 
   # Permissions must survive updates (a pulled-in file diff resets them).
-  - command: "chmod +x scripts/truth scripts/check-truth.sh scripts/truth-canary.sh scripts/install-hooks.sh"
+  - command: "chmod +x scripts/truth scripts/check-truth.sh scripts/truth-canary.sh scripts/install-hooks.sh scripts/spec-health.sh scripts/doc-health.sh scripts/truth-bd-adapter.sh"
 
   # N3 — hooks only where a repo already exists, shims only, no commits.
   # On update, install-hooks.sh is safe to re-run (idempotent overwrite of

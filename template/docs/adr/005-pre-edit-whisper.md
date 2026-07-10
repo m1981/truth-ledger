@@ -111,7 +111,9 @@ trigger.
 
 Implement in the pilot repository first (spec per its convention, `wk-`
 issue, Acceptance pre-written with the W-fault names). Upstream the verb
-as v0.5.3 — with the W-faults in the shared canary — only after pilot
+as a subsequent minor version (v0.5.3, the number this gate originally
+reserved, was consumed by ADR-006's issue-fold hardening before this ADR
+was adopted) — with the W-faults in the shared canary — only after pilot
 sessions demonstrate signal (whispers that changed an agent's action)
 without fatigue (whisper count per session staying low). If the fatigue
 budget fails in practice, the fallback is narrowing the whisper to P0/P1

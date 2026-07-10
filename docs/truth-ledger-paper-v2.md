@@ -4,7 +4,8 @@
 2026-07-09 into one living document, superseding the earlier split between
 `truth-ledger-paper.md` (audit, frozen at v0.4) and
 `truth-ledger-field-notes.md` (deployment, living). Artifact version audited:
-v0.4. Artifact version deployed: v0.5.2. Pilot: one multi-component
+v0.4. Artifact version deployed in the pilot: v0.5.3 (the template has
+since moved to v0.5.5; pilot sync pending, §2). Pilot: one multi-component
 kitchen-manufacturing monorepo (domain core, catalog service, ERP, CAM, two
 adapters), one solo developer, LLM agent sessions doing the implementation
 work, day-0 2026-07-08. All quantitative claims in §2 are self-reported by
@@ -116,13 +117,20 @@ made concrete for the fold rather than left as a general caveat about
 timestamps.
 
 **Intake gates.** `truth claim` refuses, before anything is written:
-VERIFIED claims with no evidence command, with neither paths nor TTL, or
-filed in a repository with no commits to anchor to (these three checks are
-VERIFIED-only; UNVERIFIED and INFERRED claims may omit evidence, paths, and
-TTL entirely); evidence commands whose two intake runs hash differently
-(nondeterministic, overridable); and near-duplicates of active claims by
-word-level, case-folded token overlap ≥ 0.6 against claim text (overridable,
-and always allowed for corrections of dead claims).
+empty claim text (v0.5.5 — an assertion with no sentence cannot be
+verified, diverged from, or cited); near-duplicates of active claims by
+word-level, case-folded token overlap ≥ 0.6 against claim text
+(overridable, and always allowed for corrections of dead claims);
+dead-tripwire evidence paths (INV-M, v0.5.4 — a whitespace-containing
+entry with no comma, or a literal path matching zero tracked files;
+explicit globs exempt; applies to *any* evidence class carrying paths,
+and has no override); VERIFIED claims with no evidence command, with
+neither paths nor TTL, or filed in a repository with no commits to anchor
+to (these three checks are VERIFIED-only; UNVERIFIED and INFERRED claims
+may omit evidence, paths, and TTL); INFERRED claims with no `--basis`;
+and evidence commands whose two intake runs hash differently
+(nondeterministic, overridable). The list is stated here in refusal
+order, which is observable when one claim trips several gates.
 
 **Invalidation.** A scan, wired to post-merge hooks or CI, demotes claims
 whose premises git can check. Anchor-loss after rebase/squash/gc demotes

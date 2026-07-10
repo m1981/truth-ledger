@@ -1,6 +1,10 @@
 # An Append-Only Truth Ledger for Agentic Software Development: Design, Adversarial Falsification, and Repair
 
-**Status:** Draft for internal review · **Artifact version audited:** truth v0.2/v0.3 · **Repaired version:** truth v0.4
+**Status:** FROZEN at the v0.4 audit — superseded by
+[truth-ledger-paper-v2.md](truth-ledger-paper-v2.md), which merges this
+audit with pilot field evidence into one living document. Kept verbatim
+for the record; do not update. · **Artifact version audited:** truth
+v0.2/v0.3 · **Repaired version:** truth v0.4
 
 ---
 
@@ -266,7 +270,7 @@ Neither half stands alone. The artifact without the audit is engineering with im
 
 **Efficacy is unmeasured.** Everything demonstrated here concerns *mechanism* — the machine detects the faults it is built to detect. Whether the ledger reduces false-VERIFIED rates in practice requires the control comparison the system itself prescribes (monthly hand-audits against a day-0 baseline) and has not yet been run. This is the difference between "the machine runs" and "the machine helps," and we state it as the largest open claim.
 
-*Post-draft note (2026-07-09): this paper is frozen at the v0.4 audit. Field evidence from the first pilot deployment — including confirmation of §7.2's failure-location prediction, one new defect class (a proposed INV-M), and interim dispatch statistics — accumulates in the living companion `truth-ledger-field-notes.md`.*
+*Post-draft note (2026-07-09, amended 2026-07-10): this paper is frozen at the v0.4 audit. Field evidence from the first pilot deployment initially accumulated in `truth-ledger-field-notes.md`; both that document and this one are now superseded by `truth-ledger-paper-v2.md`, the single living successor.*
 
 **Single-regime evaluation.** The design targets a solo developer with agent sessions; multi-human, high-concurrency regimes exercise the confluence and `O_APPEND` assumptions far harder than this audit did.
 

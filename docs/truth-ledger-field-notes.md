@@ -2,10 +2,13 @@
 
 > Reader: anyone who has read the paper (truth-ledger-paper.md) and wants to know what happened when the artifact met a real repository | Enables: judging which of the paper's claims now carry field evidence, and which new defect classes the pilot surfaced | Update-trigger: each verification round, hand-audit, or newly confirmed defect class in the pilot
 
-**Status:** Living companion to the paper. The paper is a frozen audit
-snapshot (v0.2/v0.3 audited, v0.4 repaired); this document accumulates what
-deployment keeps teaching. Artifact version in the field: **v0.5.2**
-(work kernel, spec-health, doc-health; canary at 48 seeded faults).
+**Status:** FROZEN 2026-07-09 — superseded by
+[truth-ledger-paper-v2.md](truth-ledger-paper-v2.md), which absorbed this
+document's field evidence into the single living paper. This document no
+longer accumulates anything; it is kept verbatim for the record, and its
+counts and version references are those of its freeze date. (At freeze:
+artifact v0.5.2 in the field — work kernel, spec-health, doc-health;
+canary then at 48 seeded faults.)
 
 **Setting.** One pilot repository: a multi-component kitchen-manufacturing
 monorepo (domain core, catalog service, ERP, CAM, two adapters), operated by
