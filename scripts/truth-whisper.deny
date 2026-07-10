@@ -1,0 +1,6 @@
+# Pre-edit deny list (ADR-005 deny stage; consumer policy, untemplated —
+# the template deliberately never ships this file, ADR-003 rule 2).
+# One Python regex per line, matched with re.match against the
+# repo-root-relative path. Editing tools are BLOCKED on matches.
+docs/archive/
+\.truth/claims\.jsonl$

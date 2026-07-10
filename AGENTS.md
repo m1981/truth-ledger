@@ -17,5 +17,12 @@ Meta-repo conventions, on top of the standard layer:
 - Accepted ADRs are immutable in body; corrections land as
   `Amended by:` lines in the status block (see ADR-002, ADR-004).
 - `docs/archive/` is frozen verbatim; never update it.
+- A pre-edit whisper hook is wired (`.claude/settings.json` → PreToolUse
+  → `scripts/truth-whisper.py`, ADR-005 trial): editing a path the
+  ledger watches injects the mechanical prediction of what your commit
+  will stale; `docs/archive/` and `.truth/claims.jsonl` are deny-listed
+  (edit tools blocked — the ledger changes only through the CLI). The
+  whisper count per session lives in `.git/truth-whisper.seen`; that is
+  the ADR-005 adoption-gate metric.
 
 See `template/.truth/README.md` for the layer's full documentation.
