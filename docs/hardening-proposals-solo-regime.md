@@ -1,10 +1,11 @@
 # Hardening proposals for the solo-developer regime
 
-**Status:** Proposed (2026-07-11, external review by Claude); implemented
-2026-07-12 as CLI v0.6.0, pending author review and acceptance. Accepted
-items should still be split out as `template/docs/adr/007+` per the
-pilot's convention — this document remains the review artifact, not the
-decision record.
+**Status:** Accepted (2026-07-12, operator) and implemented as CLI
+v0.6.0. The decision records now live where they belong:
+`template/docs/adr/007-quantifier-scope-gate.md` through
+`012-divergence-subtype.md` — those are authoritative from here on;
+this document remains the review artifact (full traceability, threat
+model, and the FS-1/2/3/4 feature specs, which are not ADR-shaped).
 
 **Implementation status (2026-07-12, v0.6.0).** Everything below except
 FS-3's cache body is implemented template-side and canary-gated:
@@ -284,18 +285,21 @@ Screening at recheck is not redundant — the ledger may carry records
 that predate the screen or were appended raw; recheck screens against
 the current policy, not the filing-time one.
 
-**Mechanism.** Split the command string on the shell composition
-operators `;`, `&&`, `||`, `|` (shlex-aware tokenization, stdlib).
-The command passes iff:
+**Mechanism.** Tokenize the command QUOTE-AWARE (shlex punctuation
+mode, stdlib) — the very first real ledger commands proved a naive
+operator split wrong twice: a `grep -oE '…|…'` regex carries pipes
+inside quotes (arguments, not separators), and `>/dev/null 2>&1` is
+read-only by definition. The command passes iff:
 
-1. every segment's first token appears in the allowlist file
+1. every segment's program token appears in the allowlist file
    `.truth/evidence-allow` (one name per line, comments with `#`), and is
    a bare name, not a path (`./grep` is an attacker-supplied binary
    wearing an allowlisted name);
-2. no segment contains output redirection (`>`, `>>`) or command
-   substitution (`$(`, backtick). Input redirection (`<`) is read-only
-   and allowed — the §9 pin-the-output convention (`… | wc -l`,
-   `… && echo CLEAN`) must keep working.
+2. no command substitution (`$(`, backtick), no subshells; output
+   redirection only to `/dev/null` or an fd dup (`2>&1`); input
+   redirection (`<`) is read-only and allowed — the §9 pin-the-output
+   convention (`… | wc -l`, `… >/dev/null && echo CLEAN`) must keep
+   working.
 
 The shipped default allowlist is read-only by construction — see
 `template/.truth/evidence-allow` for the authoritative list (restating

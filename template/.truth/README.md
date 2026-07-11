@@ -57,9 +57,11 @@ dead-tripwire paths — a whitespace-containing entry with no comma, or a
 literal path matching zero tracked files (INV-M, v0.5.4; explicit globs
 exempt; applies to every evidence class carrying paths); then, for
 VERIFIED: missing evidence command, neither paths nor TTL, no commit to
-anchor to, the evidence-command safety screen (ADR-009, v0.6 — every
+anchor to, the evidence-command safety screen (ADR-009, v0.6 — quote-aware: every
 pipeline segment's program must be a bare name in
-`.truth/evidence-allow`, no output redirection, no command substitution;
+`.truth/evidence-allow`; no command substitution; output redirection
+only to `/dev/null` or an fd dup (`2>&1`), so the pin-the-output
+convention keeps working;
 `--evidence-unsafe-ok` files anyway with `evidence.screened=false`, and
 recheck then refuses to execute the command, ever — verification becomes
 manual), and a nondeterministic evidence command (two intake runs must
@@ -109,7 +111,12 @@ the snapshot cache is deliberately unbuilt until that warning fires).
                                        002 work kernel, 003 satellite placement,
                                        004 tracker seam, 005 pre-edit whisper
                                        (accepted in trial), 006 issue-fold
-                                       first-wins
+                                       first-wins, and the v0.6 solo-regime
+                                       hardening set: 007 quantifier-scope
+                                       gate, 008 order coherence, 009
+                                       evidence-command screen, 010 session
+                                       separation, 011 tombstones-need-a-
+                                       terminal, 012 divergence subtype
 
 ## Install (day 1)
 

@@ -493,13 +493,20 @@ def quantifier_scope_conflict(text, evidence_cmd):
         return None
     return (q, s)
 
+_SCREEN_SEPARATORS = frozenset((";", "|", "||", "&&", "&"))
+_SCREEN_PUNCT = frozenset("();<>|&")
+
 def screen_evidence_command(cmd, allowlist):
     """ADR-009: evidence commands re-execute later in a *verifier's*
     session (recheck) -- deferred code execution across the trust seam
-    G11 protects. Static screen: split on shell composition operators;
-    every segment's program must be a bare name on the allowlist; no
-    output redirection, no command substitution. Input redirection (<)
-    is read-only and allowed. Returns an error string or None."""
+    G11 protects. Static screen over a QUOTE-AWARE token stream (shlex
+    punctuation mode -- a '|' inside a quoted grep regex is an argument,
+    not a pipe; the first real ledger command proved the naive split
+    wrong): every segment's program must be a bare name on the
+    allowlist; no command substitution; output redirection only to the
+    bit bucket ('>/dev/null') or an fd dup ('2>&1') -- the pin-the-
+    output convention depends on those. Input redirection (<) is
+    read-only and allowed. Returns an error string or None."""
     if allowlist is None:
         return ("no evidence-command allowlist at " + EVIDENCE_ALLOW_REL +
                 " -- the safety screen fails closed (ADR-009). Create it "
@@ -508,27 +515,50 @@ def screen_evidence_command(cmd, allowlist):
     if "$(" in cmd or "`" in cmd:
         return ("command substitution ('$(' or backtick) is not "
                 "screenable (ADR-009)")
-    if ">" in cmd:
-        return ("output redirection ('>'/'>>') is refused -- evidence "
-                "commands must be read-only (ADR-009)")
-    for seg in re.split(r"\|\||&&|;|\|", cmd):
-        seg = seg.strip()
-        if not seg:
-            return "empty command segment (dangling operator) (ADR-009)"
-        try:
-            first = shlex.split(seg)[0]
-        except (ValueError, IndexError):
-            return f"unparseable command segment {seg!r} (ADR-009)"
-        if "/" in first:
-            return (f"program {first!r} is a path, not a bare command "
-                    "name -- repo-local executables are not screenable "
-                    "(ADR-009)")
-        if first not in allowlist:
-            return (f"'{first}' is not in {EVIDENCE_ALLOW_REL} (ADR-009). "
-                    "Add it there if it is read-only and you accept it "
-                    "re-running inside verifier sessions, or file with "
-                    "--evidence-unsafe-ok (recheck will then refuse to "
-                    "execute it).")
+    lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
+    try:
+        toks = list(lex)
+    except ValueError as e:
+        return f"unparseable command ({e}) (ADR-009)"
+    if not toks:
+        return "empty command (ADR-009)"
+    expecting_program = True
+    redir = None  # 'in' | 'out' when the next token is a redirection target
+    for tok in toks:
+        if redir:
+            if redir == "out" and tok != "/dev/null" and not tok.isdigit():
+                return (f"output redirection to {tok!r} is refused -- "
+                        "evidence commands must be read-only; '/dev/null' "
+                        "and fd dups ('2>&1') are the only allowed sinks "
+                        "(ADR-009)")
+            redir = None
+            continue
+        if tok in _SCREEN_SEPARATORS:
+            expecting_program = True
+            continue
+        if tok and set(tok) <= _SCREEN_PUNCT:
+            if tok.startswith("<"):
+                redir = "in"    # reads are fine, any source
+            elif tok.startswith(">"):
+                redir = "out"   # writes only to /dev/null or an fd
+            else:
+                return f"unscreenable shell construct {tok!r} (ADR-009)"
+            continue
+        if expecting_program:
+            if "/" in tok:
+                return (f"program {tok!r} is a path, not a bare command "
+                        "name -- repo-local executables are not "
+                        "screenable (ADR-009)")
+            if tok not in allowlist:
+                return (f"'{tok}' is not in {EVIDENCE_ALLOW_REL} (ADR-009). "
+                        "Add it there if it is read-only and you accept it "
+                        "re-running inside verifier sessions, or file with "
+                        "--evidence-unsafe-ok (recheck will then refuse to "
+                        "execute it).")
+            expecting_program = False
+    if expecting_program or redir:
+        return "dangling operator at end of command (ADR-009)"
     return None
 
 def order_check(events):

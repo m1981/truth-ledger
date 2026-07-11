@@ -301,6 +301,27 @@ class TestEvidenceScreen(unittest.TestCase):
     def test_dangling_operator_refused(self):
         self.assertIsNotNone(tm.screen_evidence_command("grep x f.txt &&", ALLOW))
 
+    def test_quoted_pipe_is_an_argument_not_a_separator(self):
+        """The first real ledger command (tr-dca73f8a): a grep -oE regex
+        with '|' alternations inside single quotes. A naive operator
+        split shreds it; the quote-aware screen must pass it."""
+        self.assertIsNone(tm.screen_evidence_command(
+            "grep -oE 'getattr\\(a|os\\.environ|bd ready' f.py", ALLOW))
+
+    def test_dev_null_and_fd_dup_sinks_allowed(self):
+        """The pin-the-output convention's canonical shape (tr-3a31bfcf):
+        redirecting TO the bit bucket is read-only by definition."""
+        self.assertIsNone(tm.screen_evidence_command(
+            "grep -q x f.txt > /dev/null 2>&1 && echo CLEAN", ALLOW))
+
+    def test_real_file_sink_still_refused(self):
+        self.assertIn("read-only", tm.screen_evidence_command(
+            "echo pwned > /dev/null && echo more > f.txt", ALLOW))
+
+    def test_subshell_refused(self):
+        self.assertIn("unscreenable", tm.screen_evidence_command(
+            "(grep x f.txt)", ALLOW))
+
 # --------------------------------------------- order coherence (ADR-008)
 
 class TestOrderCheck(unittest.TestCase):

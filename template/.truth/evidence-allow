@@ -3,10 +3,12 @@
 # Evidence commands re-execute later inside VERIFIER sessions (recheck),
 # so everything here must be read-only: it will run with whatever the
 # repository can read, in a session that did not write it. The screen
-# also refuses output redirection ('>'), command substitution ('$()',
-# backticks), and path-form programs ('./x', '/usr/bin/x') regardless of
-# this list. Pipelines of allowlisted commands pass; input redirection
-# ('<') is read-only and passes.
+# also refuses output redirection (except to /dev/null or an fd dup
+# like 2>&1), command substitution ('$()', backticks), subshells, and
+# path-form programs ('./x', '/usr/bin/x') regardless of this list.
+# The screen is quote-aware: a '|' inside a quoted regex is an argument.
+# Pipelines of allowlisted commands pass; input redirection ('<') is
+# read-only and passes.
 #
 # Test runners (pytest, npm test, cargo test, make) are deliberately NOT
 # shipped here: a test runner executes repository code, which is exactly
