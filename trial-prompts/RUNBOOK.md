@@ -99,11 +99,14 @@ cache +0.
   hole — record the exact wording it acted on.
 
 ### S3 — fatigue (dedup)
-RESULT 2026-07-12: CLOSED AS COVERED, never run standalone. Dedup was
-proven twice incidentally under real conditions: Sonnet's S1 revert
-edit drew no second whisper (cache grew exactly one line, ed68cfec…),
-and armed-pi's revert was equally silent (one pi-… line). Both match
-the designed key (session, file, ledger hash).
+RESULT (corrected 2026-07-12): PASS — the operator ran S3 standalone
+on 2026-07-11 (s3-run.jsonl, Fable, session 93619a79… — the cache line
+previously listed as unattributed). Whisper injected after edit 1
+only, quoted verbatim; edits 2–4 reported "none"; cache +1. The
+earlier "closed as covered, never run standalone" note here was wrong
+— written before the stream was noticed at commit time. Corroborating
+incidental evidence stands: Sonnet's S1 revert and armed-pi's revert
+were both dedup-silent.
 
 - Pass: injected context reported on step 1 ONLY; steps 2–4 "none"
   (same session, ledger unchanged → same dedup key). Cache grows by
