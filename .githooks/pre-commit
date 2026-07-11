@@ -1,2 +1,13 @@
 #!/usr/bin/env bash
+# Consumer policy, this repo only (ADR-003 rule 2): docs/archive/ is
+# frozen verbatim. Harness hooks (Claude Code, pi) block edit tools;
+# this guard is the harness-independent backstop at the git layer —
+# the 2026-07-11 trial showed norms alone do not hold (RUNBOOK, S2-ext).
+frozen=$(git diff --cached --name-only -- docs/archive/)
+if [ -n "$frozen" ]; then
+  echo "pre-commit: docs/archive/ is frozen verbatim (AGENTS.md); staged:" >&2
+  echo "$frozen" | sed 's/^/  /' >&2
+  echo "A human must lift the freeze deliberately before this can land." >&2
+  exit 1
+fi
 exec bash scripts/check-truth.sh

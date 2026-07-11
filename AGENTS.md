@@ -23,6 +23,9 @@ Meta-repo conventions, on top of the standard layer:
   will stale; `docs/archive/` and `.truth/claims.jsonl` are deny-listed
   (edit tools blocked — the ledger changes only through the CLI). The
   whisper count per session lives in `.git/truth-whisper.seen`; that is
-  the ADR-005 adoption-gate metric.
+  the ADR-005 adoption-gate metric. The same two stages are enforced
+  for the pi harness via `.pi/extensions/truth-whisper.ts` (same deny
+  list, same metric file), and `docs/archive/` is additionally guarded
+  harness-independently at pre-commit (`.githooks/pre-commit`).
 
 See `template/.truth/README.md` for the layer's full documentation.
