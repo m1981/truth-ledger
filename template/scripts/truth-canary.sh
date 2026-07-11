@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.6.0 -- seeded-fault acceptance suite (seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1).
+# truth-canary.sh v0.6.2 -- seeded-fault acceptance suite (seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -188,6 +188,22 @@ if $T claim "watched.txt never went missing" --class VERIFIED \
 else
   miss "gate misfired with no scoping signal in the command"
 fi
+say "FAULT Q5 (ADR-007, F3): a ripgrep -t type filter is a scope signal (no slash)"
+if $T claim "no occurrences remain anywhere in the codebase" --class VERIFIED \
+     --evidence-cmd "grep -t txt -rc hello ." --paths "watched.txt" \
+     --tier P1 2>/dev/null; then
+  miss "intake accepted a universal quantifier over a -t-scoped command (F3 evasion)"
+else
+  ok "-t type-filter scope signal caught under a universal quantifier"
+fi
+say "FAULT Q6 (ADR-007, F3): a glob-metacharacter positional is a scope signal"
+if $T claim "X appears everywhere in the code" --class VERIFIED \
+     --evidence-cmd "grep -c hello watched.*" --paths "watched.txt" \
+     --tier P1 2>/dev/null; then
+  miss "intake accepted a universal quantifier over a glob-scoped command (F3 evasion)"
+else
+  ok "glob-metacharacter positional scope signal caught under a universal quantifier"
+fi
 
 say "FAULT E1 (ADR-009): a non-allowlisted program in the evidence command must be refused"
 if $T claim "the network is reachable" --class VERIFIED \
@@ -231,6 +247,15 @@ else
   ok "missing allowlist failed closed with guidance"
 fi
 mv evidence-allow.e4.bak .truth/evidence-allow
+say "FAULT E5 (ADR-009, F1): an allowlisted program's exec/write flag must be refused"
+echo "sort" >> .truth/evidence-allow  # ensure the program is allowlisted
+if $T claim "the log is sorted into place" --class VERIFIED \
+     --evidence-cmd "sort -o /tmp/pwn watched.txt" --paths "watched.txt" \
+     --tier P2 --duplicate-ok >/dev/null 2>&1; then
+  miss "screen accepted 'sort -o' -- an allowlisted program's file-write flag (F1 channel)"
+else
+  ok "allowlisted program's exec/write flag refused (sort -o)"
+fi
 
 say "FAULT T (INV-M): a dead evidence-path tripwire must be refused at intake"
 if $T claim "a and watched are fine" --class VERIFIED \
@@ -401,6 +426,48 @@ else
   miss "validate rejected a union-merge-duplicated identical line"
 fi
 mv claims.b2.bak .truth/claims.jsonl
+
+say "FAULT B3 (ADR-008, F2): a backdated duplicate with a tz-NAIVE ts must fail validate"
+cp .truth/claims.jsonl claims.b3.bak
+python3 - "$CID_H" <<'PYEOF'
+import json, sys
+# naive ts (no offset) string-sorts before the tz-aware genuine record;
+# the pre-F2 parsed comparison abstained on the tz mismatch and passed it
+rec={"id":sys.argv[1],"kind":"claim","actor":"agent-x","session":"s-evil",
+     "ts":"2026-01-01T00:00:00",
+     "payload":{"text":"substitution via naive-ts backdated duplicate","evidence_class":"UNVERIFIED",
+                "cost_tier":"P0","ttl_days":None,"evidence_paths":[]}}
+open(".truth/claims.jsonl","a").write(json.dumps(rec,sort_keys=True)+"\n")
+PYEOF
+if ! grep -q "naive-ts backdated" .truth/claims.jsonl; then
+  miss "fault injection failed: naive-ts duplicate was never appended"
+elif $T validate >/dev/null 2>&1; then
+  miss "validate passed a naive-ts backdated duplicate (F2 evasion still open)"
+else
+  ok "validate failed the naive-ts backdated duplicate (F2 closed)"
+fi
+mv claims.b3.bak .truth/claims.jsonl
+
+say "FAULT B4 (ADR-008, F2): a backdated duplicate with an UNPARSEABLE ts must fail validate"
+cp .truth/claims.jsonl claims.b4.bak
+python3 - "$CID_H" <<'PYEOF'
+import json, sys
+# junk ts made parse_ts return None, so the pre-F2 comparison abstained;
+# by raw string it still sorts before any ISO ts and wins the fold
+rec={"id":sys.argv[1],"kind":"claim","actor":"agent-x","session":"s-evil",
+     "ts":"1",
+     "payload":{"text":"substitution via junk-ts backdated duplicate","evidence_class":"UNVERIFIED",
+                "cost_tier":"P0","ttl_days":None,"evidence_paths":[]}}
+open(".truth/claims.jsonl","a").write(json.dumps(rec,sort_keys=True)+"\n")
+PYEOF
+if ! grep -q "junk-ts backdated" .truth/claims.jsonl; then
+  miss "fault injection failed: junk-ts duplicate was never appended"
+elif $T validate >/dev/null 2>&1; then
+  miss "validate passed a junk-ts backdated duplicate (F2 evasion still open)"
+else
+  ok "validate failed the junk-ts backdated duplicate (F2 closed)"
+fi
+mv claims.b4.bak .truth/claims.jsonl
 
 # ---- FAULT L (v0.4): re-verification must survive the next scan ----------
 say "FAULT L: re-verified claim must stay live across a subsequent scan"

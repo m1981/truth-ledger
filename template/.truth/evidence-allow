@@ -14,7 +14,13 @@
 # shipped here: a test runner executes repository code, which is exactly
 # the arbitrary-execution channel being screened. Add yours below as a
 # conscious, committed policy decision if you accept that trade.
-git
+#
+# git is deliberately NOT shipped (removed v0.6.2, F1): `git -c
+# <k>=!cmd ... <alias>` runs an arbitrary shell, and pagers/--exec-path
+# are further exec channels the bare-name screen cannot bound. Add it
+# consciously if you accept that; even then PROGRAM_ARG_DENY blocks the
+# worst flags. find and sort ARE shipped but their write/exec flags
+# (find -exec/-fprintf, sort -o) are refused by that same table.
 grep
 rg
 ls

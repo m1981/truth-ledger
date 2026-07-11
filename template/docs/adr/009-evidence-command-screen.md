@@ -5,6 +5,14 @@ Status: Accepted (2026-07-12, operator) — proposed 2026-07-11 in
 screen made quote-aware the same day after the first two real ledger
 commands exposed false-positive classes (see Decision). Canary faults
 E1–E4.
+Amended by: note (2026-07-12, F1) — an independent Fable review found
+the screen bare-name only: allowlisted programs whose own flags open an
+exec or file-write channel (find -exec/-fprintf, sort -o, git -c
+<k>=!cmd) passed screening and would detonate on recheck — contradicting
+this ADR's "read-only by construction" claim. v0.6.2 adds a per-program
+argument-deny table and drops git from the shipped default allowlist
+(its exec surface is unbounded); find and sort stay, their write/exec
+flags refused (canary E5).
 Date: 2026-07-11
 Supersedes: —
 

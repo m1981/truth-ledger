@@ -3,6 +3,13 @@
 Status: Accepted (2026-07-12, operator) — proposed 2026-07-11 in
 `docs/hardening-proposals-solo-regime.md` (external review, Claude),
 implemented in CLI v0.6.0 the same day. Canary faults Q1–Q4.
+Amended by: note (2026-07-12, F3) — an independent Fable review found
+the shipped scope-signal narrower than this ADR's proposal: it missed
+ripgrep's `-t` type filter and glob-metacharacter positionals, and the
+quantifier lexicon lacked everywhere/always/each. v0.6.2 adds these
+(canary Q5, Q6). Residual, documented in code: a bare tracked-subdir
+positional with no slash or glob still evades, because resolving it
+needs a git oracle the pure core deliberately cannot reach.
 Date: 2026-07-11
 Supersedes: — (mechanizes the paper's §9 operating convention 1)
 

