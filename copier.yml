@@ -38,6 +38,10 @@ _answers_file: .copier-answers.truth-ledger.yml
 
 _skip_if_exists:
   - AGENTS.md          # N4: never clobber an existing discovery file
+  # ADR-009: the evidence allowlist is consumer POLICY (which commands
+  # may re-run inside verifier sessions); an update must never revert a
+  # consumer's conscious additions or removals.
+  - .truth/evidence-allow
 
 _message_after_copy: |
   truth-ledger scaffolded and canary-verified (every seeded fault caught).

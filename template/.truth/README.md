@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.5.7)
+# .truth — append-only claims ledger (v0.6.0)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -48,17 +48,56 @@ its effective anchor, so re-verified claims stay live across scans.
 
 Intake gates, in refusal order: empty claim text (v0.5.5); near-duplicate
 of an active claim (≥0.6 token overlap; `--duplicate-ok` overrides);
+quantifier–scope mismatch (ADR-007, v0.6) — a universally quantified
+claim text ("only", "no … anywhere", "the repo") over a scoped evidence
+command (`--include`, path arguments, `cd`) is refused unless
+`--scope-ok "<one sentence>"` states why the scope covers the
+quantifier (stored as `scope_basis`, attackable by verifiers);
 dead-tripwire paths — a whitespace-containing entry with no comma, or a
 literal path matching zero tracked files (INV-M, v0.5.4; explicit globs
 exempt; applies to every evidence class carrying paths); then, for
 VERIFIED: missing evidence command, neither paths nor TTL, no commit to
-anchor to, and a nondeterministic evidence command (two intake runs must
+anchor to, the evidence-command safety screen (ADR-009, v0.6 — every
+pipeline segment's program must be a bare name in
+`.truth/evidence-allow`, no output redirection, no command substitution;
+`--evidence-unsafe-ok` files anyway with `evidence.screened=false`, and
+recheck then refuses to execute the command, ever — verification becomes
+manual), and a nondeterministic evidence command (two intake runs must
 hash identically; `--single-run` overrides). INFERRED requires `--basis`.
+
+## v0.6 solo-regime hardening (docs/hardening-proposals-solo-regime.md)
+
+Beyond the two intake gates above: `validate` (and therefore the commit
+gate) fails on a backdated duplicate-id append — the canonical-order
+substitution the fold's first-wins dedup composed with timestamp forgery
+(ADR-008) — and warns on clock regression beyond 300s; identical
+duplicated lines (git union-merge shape) still pass. `verdict <id>
+agree` from the claim's own session is refused (ADR-010; self-diverge
+and self-cannot_verify stay allowed — they run against interest;
+`TRUTH_SELF_VERDICT=1` is the human override, self-attested like
+TRUTH_HUMAN). Tombstones (claim retraction, issue cancel) now require
+TRUTH_HUMAN=1 **plus** either an interactive typed-id confirmation at a
+real terminal or, for headless human use, `TRUTH_HUMAN_ACK=<exact-id>` —
+an acknowledgment that must name the specific record it kills, so a
+lingering export cannot authorize arbitrary tombstones (ADR-011).
+`verdict <id> diverge --mechanical` records that the measuring recipe
+changed rather than the fact (ADR-012; status unchanged, queue and
+stats display it). `truth stats [--json] [--since ts]` reports status/
+tier counts, verdict rates split by subtype, per-tier claim half-life
+(live→stale), and queue aging — the mechanical half of the monthly
+audit; once ≥5 half-life observations exist for a tier, filing a
+TTL'd claim prints the observed median beside the author's choice
+(suggestion only). `doctor` additionally checks the evidence allowlist
+exists and warns when load+fold exceeds 200ms (the FS-3 scale gate —
+the snapshot cache is deliberately unbuilt until that warning fires).
 
 ## Layout
 
     .truth/claims.jsonl                the ledger (append-only, event-sourced)
     .truth/schema/claims.schema.json   the formal contract (survives fires)
+    .truth/evidence-allow              ADR-009 allowlist: which programs may
+                                       re-run inside verifier sessions
+                                       (consumer policy; updates never revert it)
     scripts/truth                      the CLI: pure core over imperative shell
     scripts/test-truth-core.py         unit + schema-conformance tests (ms)
     scripts/test-truth-v04.py          v0.4 regression tests (confluence, anchors, globs)

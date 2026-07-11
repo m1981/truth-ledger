@@ -1,0 +1,46 @@
+# Evidence-command allowlist (ADR-009). One bare command name per line.
+#
+# Evidence commands re-execute later inside VERIFIER sessions (recheck),
+# so everything here must be read-only: it will run with whatever the
+# repository can read, in a session that did not write it. The screen
+# also refuses output redirection ('>'), command substitution ('$()',
+# backticks), and path-form programs ('./x', '/usr/bin/x') regardless of
+# this list. Pipelines of allowlisted commands pass; input redirection
+# ('<') is read-only and passes.
+#
+# Test runners (pytest, npm test, cargo test, make) are deliberately NOT
+# shipped here: a test runner executes repository code, which is exactly
+# the arbitrary-execution channel being screened. Add yours below as a
+# conscious, committed policy decision if you accept that trade.
+git
+grep
+rg
+ls
+cat
+head
+tail
+wc
+find
+sort
+uniq
+cut
+tr
+diff
+comm
+echo
+printf
+test
+[
+date
+basename
+dirname
+realpath
+stat
+file
+sha256sum
+shasum
+md5sum
+jq
+# sed and awk are NOT shipped: `sed -i` and awk output redirection write
+# files without a '>' the screen could see. Add them only if your
+# conventions forbid those forms.
