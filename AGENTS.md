@@ -5,6 +5,10 @@ Before relying on a repository fact, check it: `scripts/truth list --live`.
 When you verify a fact, file it:
 `scripts/truth claim "<fact>" --class VERIFIED --evidence-cmd "<cmd>" --paths "<glob,glob>" --tier P1`
 Facts about the world outside the repo: add `--ttl-days N` instead of --paths.
+Work items live in the same ledger (ADR-002): pick work with
+`scripts/truth ready` (only premise-valid items show), close with
+`scripts/truth done <wk-id> --claim "<fact>"` (claim-at-death). Verbs and
+the tracker seam are documented in template/.truth/README.md — cite, don't restate.
 Never edit .truth/claims.jsonl directly; status changes are new records.
 
 Meta-repo conventions, on top of the standard layer:
