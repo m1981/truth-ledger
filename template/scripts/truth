@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""truth v0.6.2 -- append-only claims ledger with a native work kernel.
+"""truth v0.6.3 -- append-only claims ledger with a native work kernel.
+
+v0.6.3 (wk-968bc087): `doctor` warns when the ledger holds work-kernel
+  issue records but no discovery file names `truth ready` -- G2's
+  invisibility failure, work-kernel edition, found when this template's
+  own meta-repo documented the fact verbs but not the work verbs (the
+  claim guarding against a recurrence is tr-f8d1d042 in that ledger).
+  WARN, not FAIL: a facts-only ledger is legitimate; facts plus
+  invisible work is not. Canary TL-2.
 
 v0.6.2 (review findings F1-F5, independent Fable review of v0.6.0/v0.6.1):
   * F1 ADR-009: the evidence screen was bare-name only, so allowlisted
@@ -1762,12 +1770,33 @@ def cmd_doctor(a):
         fail("discovery", "no instruction file mentions scripts/truth -- the "
              f"layer is invisible to agents (G2). Checked: {', '.join(DISCOVERY_FILES)}")
 
-    claims, premises = fold(load_events()) if os.path.exists(lp) else ({}, {})
+    events_d = load_events() if os.path.exists(lp) else []
+    claims, premises = fold(events_d)
     dangling = [f"{i}->{c}" for i, cs in premises.items() for c in cs if c not in claims]
     if dangling:
         warn("premise integrity", f"dangling premise(s): {', '.join(dangling)}")
     elif premises:
         ok("premise integrity")
+
+    # wk-968bc087: G2's invisibility failure, work-kernel edition. A
+    # facts-only ledger is legitimate, so this is a WARN, not a FAIL --
+    # but wk- records with no instruction file naming `truth ready`
+    # means agents can discover the facts and never the work standing
+    # on them.
+    if any(ev.get("kind") == "issue" for _, ev in events_d):
+        names_ready = [f for f in DISCOVERY_FILES
+                       if os.path.exists(os.path.join(root, f))
+                       and "truth ready" in open(os.path.join(root, f),
+                                                 encoding="utf-8",
+                                                 errors="replace").read()]
+        if names_ready:
+            ok("work-kernel discovery",
+               f"`truth ready` named in {', '.join(names_ready)}")
+        else:
+            warn("work-kernel discovery",
+                 "wk- issue records exist but no instruction file names "
+                 "`truth ready` -- the work kernel is invisible to agents "
+                 f"(G2). Checked: {', '.join(DISCOVERY_FILES)}")
 
     old = [r_ for r_ in queue_rows(claims, now_dt())
            if r_["age_days"] is not None and r_["age_days"] > QUEUE_AGE_WARN_DAYS]
