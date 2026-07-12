@@ -21,6 +21,15 @@ Meta-repo conventions, on top of the standard layer:
 - Accepted ADRs are immutable in body; corrections land as
   `Amended by:` lines in the status block (see ADR-002, ADR-004).
 - `docs/archive/` is frozen verbatim; never update it.
+- The P0 canary claim's evidence command (`bash …truth-canary.sh`) is
+  deliberately NOT allowlisted (ADR-009's test-runner rule), so
+  `verdict --recheck` refuses to execute it: verifiers run the suite
+  manually and judge the ALL-CAUGHT sentinel by hand. Accepted
+  ceremony, decided 2026-07-13 — do not "fix" it by allowlisting
+  `bash`, which would gut the evidence screen.
+- `scripts/truth` is a SYMLINK to `template/scripts/truth`: watch the
+  real path in evidence_paths (a watch on the symlink can never fire —
+  git only sees the link itself, which never changes).
 - A pre-edit whisper hook is wired (`.claude/settings.json` → PreToolUse
   → `scripts/truth-whisper.py`, ADR-005 trial): editing a path the
   ledger watches injects the mechanical prediction of what your commit

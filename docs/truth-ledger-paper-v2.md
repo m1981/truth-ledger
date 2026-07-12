@@ -214,6 +214,14 @@ enforcement to the actually-active hook manager rather than trusting a
 vestigial config path, unprompted skepticism about a norm dressed as an
 enforced property — the same pattern F4 names in §4.
 
+**A second deployment exists (2026-07-12).** A distinct agent in a
+distinct repository (`temporal-go-agent-sdk`) reproduced the failure
+taxonomy above: one genuine divergence — again the quantifier/scope
+shape — one mechanical divergence (ADR-012's class), zero fabrications.
+Same operator, so §8 item 1 extends to it unchanged: corroboration,
+not independent replication. Its findings and their adopted remedies
+are in `docs/field-notes-sdk-session.md` (one produced ADR-013).
+
 **The repairs held under real concurrency.** Re-verified claims stayed
 live across subsequent scans (no re-staling loop); human-gated retraction
 was exercised six times, always correctly; near-duplicate intake fired
