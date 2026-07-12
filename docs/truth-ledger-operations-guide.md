@@ -15,6 +15,7 @@ The table below is the full trigger surface — some rows human/agent-initiated,
 | **Every commit touching the ledger** | `check-truth.sh` via pre-commit hook (INV-A prefix check + schema validation) | **git, automatically** | ✅ Fully |
 | **Every merge/pull** | `invalidate-scan` via post-merge hook (paths, TTL, lost anchors) | **git, automatically** | ✅ Fully |
 | Pre-edit intent (where wired) | `truth impact` via a PreToolUse whisper hook (ADR-005; deny stage for frozen paths, whisper stage injects the prediction) | **the agent harness, automatically, at edit intent** | ✅ Fully — but consumer-side: the verb ships in the template (v0.5.7, FAULTS W1–W4), the hook and deny list deliberately do not (ADR-003 rule 2) |
+| Session birth (where wired) | `truth-session-digest.py` via a SessionStart hook (FS-4, v0.6): one bounded block — queue, top live P0/P1 claims, the check-facts line — so read-only sessions discover the ledger without loading instruction files | **the agent harness, automatically, at session start** | ✅ Fully — same consumer-side placement as the whisper (ADR-003 rule 2); empty ledger or queue injects nothing |
 | Spec & doc hygiene | `spec-health.sh` (cited ids judged by the ADR-001 matrix) + `doc-health.sh` (forbidden names, broken links) — v0.5.1/v0.5.2 satellites | Consuming repo's pre-commit on staged specs/markdown; weekly sweep | ✅ Fully |
 | Verification | `dispatch` → fresh session → `verdict --recheck` → judgment | Human or script routes the context | ⚠️ Partially (see §3, rung 3) |
 | Triage | `truth queue` | Human, daily | ✅ The *surfacing*; not the deciding |
@@ -29,7 +30,9 @@ The ledger is deliberately quiet, so learn its signatures.
 
 **The pre-commit gate** announces itself during any commit that stages the ledger: `validate: N record(s) OK` (stdout) scrolling by during `git commit` *is* the gate passing. A blocked commit prints `check-truth: INV-A violation` or `INV-B violation` on stderr and the commit dies.
 
-**The post-merge scan** prints `stale: tr-xxxx (paths changed)` lines unless run with `--quiet`. Tuning tip: consider removing `--quiet` from the hook — a fact silently dying on merge is exactly the event a human should glimpse.
+**The post-merge scan** prints `stale: tr-xxxx (paths changed)` lines unless run with `--quiet`. The committed `.githooks/` hooks already run un-quieted; the `--quiet` variant appears in `install-hooks.sh`'s hook-manager guidance — if you wired the scan through a hook manager from that snippet, consider dropping the flag: a fact silently dying on merge is exactly the event a human should glimpse.
+
+**The session digest** (where the FS-4 SessionStart hook is wired) is the block of `LIVE tr-xxxx …` lines at the top of an agent session — discovery working before the agent has read a single file. Its absence at session birth in a hook-capable harness means the wiring is dead, not the ledger empty (an empty ledger injects nothing, but so does a missing hook — `doctor` tells the two apart).
 
 **Agent-side triggers** are visible in transcripts: watch for `scripts/truth ready` or `list --live` early in a session (discovery working), `truth start` when work is claimed, and `truth claim` / `done --claim` after verification work (filing discipline working). Their *absence* in transcripts is the leading indicator that a runtime is not loading the snippet — the silent-death failure mode.
 
@@ -132,16 +135,21 @@ flowchart TB
     HU -.->|"after repo surgery"| DOC
     AG ==>|"at edit intent ✂ consumer-side:<br/>fires only where the PreToolUse hook is wired"| IMP
     L --> IMP
+    AG ==>|"at session birth ✂ consumer-side:<br/>fires only where the SessionStart hook is wired"| DIG["truth-session-digest.py<br/>session-birth discovery (FS-4)"]
+    L --> DIG
     HU -.->|"monthly: the audit's mechanical half"| STATS
     L --> STATS
 ```
 
 Caption: OBSERVED — the full command surface of scripts/truth v0.6.2 plus
-both hooks and both satellites; every mechanical arrow is canary-gated (the
-suite names its own faults and prints its own count — run it rather than
-trusting a list restated here); the ✂ severance points are why §3 rung 1
-(committed hooks) and rung 2 (CI backstop) exist, and why the impact arrow
-is consumer-side (ADR-003 rule 2).
+both hooks, both satellites, and the FS-4 digest; every mechanical arrow is
+canary-gated (the suite names its own faults and prints its own count — run
+it rather than trusting a list restated here) except the digest, which is
+consumer-side and fixture-tested rather than canary-gated (FS-4's
+acceptance fixtures); the
+✂ severance points are why §3 rung 1 (committed hooks) and rung 2 (CI
+backstop) exist, and why the impact and digest arrows are consumer-side
+(ADR-003 rule 2).
 
 ### D2 — Local flow, solo dev on trunk (no PRs)
 
@@ -270,5 +278,6 @@ flowchart LR
     M4 -. "measures the mechanism,<br/>never the benefit" .-> H3
 ```
 
-Caption: policy map of §4, not code — the boundary is enforced for H1 (v0.4,
-canary FAULT M), detected for H2 (queue), and purely disciplinary for H3.
+Caption: policy map of §4, not code — the boundary is enforced for H1
+(v0.4 FAULT M, hardened v0.6 by ADR-011's confirmation ladder, canary
+FAULTS H1–H3), detected for H2 (queue), and purely disciplinary for H3.
