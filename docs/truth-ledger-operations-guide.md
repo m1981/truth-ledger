@@ -1,10 +1,10 @@
 # Truth Ledger — Operations Guide: Triggers, Observability, and Automation
 
-> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: v0.5.7)
+> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: v0.6.2)
 
 ## 1. The trigger map — every point where the ledger executes
 
-There are eleven entry points. Five are human/agent-initiated, six can be fully mechanical.
+The table below is the full trigger surface — some rows human/agent-initiated, the rest fully mechanical (the Automatable? column says which).
 
 | Trigger | What runs | Initiated by | Automatable? |
 |---|---|---|---|
@@ -18,6 +18,7 @@ There are eleven entry points. Five are human/agent-initiated, six can be fully 
 | Spec & doc hygiene | `spec-health.sh` (cited ids judged by the ADR-001 matrix) + `doc-health.sh` (forbidden names, broken links) — v0.5.1/v0.5.2 satellites | Consuming repo's pre-commit on staged specs/markdown; weekly sweep | ✅ Fully |
 | Verification | `dispatch` → fresh session → `verdict --recheck` → judgment | Human or script routes the context | ⚠️ Partially (see §3, rung 3) |
 | Triage | `truth queue` | Human, daily | ✅ The *surfacing*; not the deciding |
+| Efficacy metrics | `truth stats [--json] [--since ts]` (status/tier counts, verdict rates by subtype, per-tier claim half-life, queue aging — the mechanical half of the monthly audit, v0.6/FS-1) | Human, monthly (or CI report) | ✅ The *measuring*; the hand-audit judgment stays human (§4) |
 | Health | `doctor` + canary | Human, weekly | ✅ Fully (CI cron) |
 
 The two bolded rows are the system's heartbeat — they make knowledge decay *mechanical* instead of vigilance-dependent. If those two hooks are not firing, you do not have a truth ledger; you have a diary.
@@ -56,7 +57,7 @@ Work through these in order; each rung removes one manual step.
 
 Over-automating a trust system quietly destroys it.
 
-**Retraction** is enforced-human by design (`TRUTH_HUMAN=1`): the one irreversible act. v0.4 made "humans only" a property precisely so no automation pathway can tombstone a claim. Never set that variable in any script — a bot with `TRUTH_HUMAN=1` is the enforcement deleted.
+**Retraction** is enforced-human by design: the one irreversible act. v0.4 made "humans only" a property, and v0.6 (ADR-011) hardened it — a tombstone needs `TRUTH_HUMAN=1` **plus** an interactive typed-id confirmation at a real terminal, or `TRUTH_HUMAN_ACK=<exact-id>` for headless human use; `TRUTH_HUMAN=1` alone is refused headless. Never export either variable in a standing script or agent environment — an ambient acknowledgment is the enforcement deleted.
 
 **Divergence triage**: automation can *detect* that verifier and author disagree; deciding who is right is a judgment about reality, and auto-resolving it (e.g., "recheck agrees, so overwrite the diverge") would just re-encode the author's priors.
 
@@ -74,7 +75,7 @@ Authoring discipline for the claims themselves (scope the text to the evidence; 
 
 Per the layer's own honesty rule: each caption states what the diagram is
 grounded in. D1–D2 are OBSERVED (every arrow is a code path in `scripts/truth`
-v0.5.7, the hooks, or the workflow YAML, exercised by the canary or the
+v0.6.2, the hooks, or the workflow YAML, exercised by the canary or the
 template tests). D3 is SPECIFIED (it depicts the shipped workflow YAML, which
 has not run on GitHub infrastructure yet). D4 is a policy map, not code.
 
@@ -105,6 +106,8 @@ flowchart TB
         SAT["spec-health.sh + doc-health.sh<br/>satellites (consuming repo's gate)"]
         CAN["truth-canary.sh<br/>seeded-fault suite (prints its own count)"]
         DOC["truth doctor<br/>wiring check"]
+        IMP["truth impact<br/>pre-edit whisper query (ADR-005)"]
+        STATS["truth stats<br/>efficacy metrics (FS-1)"]
     end
 
     L[("claims.jsonl")]
@@ -127,12 +130,18 @@ flowchart TB
     SCAN ==>|"appends demotions"| L
     CRON ==>|"weekly"| CAN
     HU -.->|"after repo surgery"| DOC
+    AG ==>|"at edit intent ✂ consumer-side:<br/>fires only where the PreToolUse hook is wired"| IMP
+    L --> IMP
+    HU -.->|"monthly: the audit's mechanical half"| STATS
+    L --> STATS
 ```
 
-Caption: OBSERVED — command surface of scripts/truth v0.5.7 plus both hooks
-and both satellites; mechanical arrows gated by canary faults A–N, S1–S4,
-D1–D3, W1–W4; the two ✂ severance points are why §3 rung 1 (committed
-hooks) and rung 2 (CI backstop) exist.
+Caption: OBSERVED — the full command surface of scripts/truth v0.6.2 plus
+both hooks and both satellites; every mechanical arrow is canary-gated (the
+suite names its own faults and prints its own count — run it rather than
+trusting a list restated here); the ✂ severance points are why §3 rung 1
+(committed hooks) and rung 2 (CI backstop) exist, and why the impact arrow
+is consumer-side (ADR-003 rule 2).
 
 ### D2 — Local flow, solo dev on trunk (no PRs)
 
@@ -252,7 +261,7 @@ flowchart LR
     end
 
     subgraph human["humans own this (judgments)"]
-        H1["RETRACTION — TRUTH_HUMAN=1<br/>never set in any script:<br/>a bot with it = enforcement deleted"]
+        H1["RETRACTION — TRUTH_HUMAN=1 + typed-id<br/>confirmation (ADR-011; headless:<br/>TRUTH_HUMAN_ACK=&lt;id&gt;) — never in a script:<br/>ambient ack = enforcement deleted"]
         H2["DIVERGENCE TRIAGE —<br/>who is right about reality;<br/>auto-resolving re-encodes author priors"]
         H3["MONTHLY HAND-AUDIT vs day-0 baseline —<br/>the only check that green lights MEAN anything"]
     end

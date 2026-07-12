@@ -29,10 +29,11 @@ Concretely: on Monday, the agent's finding becomes one command —
 ```bash
 truth claim "no call sites remain for legacyAuth()" \
   --class VERIFIED --evidence-cmd "grep -rn legacyAuth src/" \
-  --paths "src/**" --tier P0
+  --paths "src/**" --tier P0 \
+  --scope-ok "all runtime code lives under src/; nothing outside it can call legacyAuth()"
 ```
 
-— a sentence with a *recipe* (the exact grep, a hash of its empty output, the commit it ran at) and a *tripwire* (the paths it depends on). Tuesday's hotfix touches `src/`; the post-merge scan sees the tripwire and demotes the claim to **stale** — mechanically, with no human vigilance involved. Friday's agent, before trusting anything, runs `truth list --live` — and Monday's fact simply isn't in the list anymore. Better: the removal task was *premised on* that claim, so `truth ready` shows it as **HELD** before any agent even picks it up.
+— a sentence with a *recipe* (the exact grep, a hash of its empty output, the commit it ran at) and a *tripwire* (the paths it depends on). That last flag is a gate you just hit without noticing: a universally quantified claim ("**no** call sites") backed by a command scoped to `src/` is the exact shape of real verified-but-wrong claims, so intake refuses the pair unless you state, on the record, why the scope covers the quantifier (the quantifier–scope gate, Part 5.1). Tuesday's hotfix touches `src/`; the post-merge scan sees the tripwire and demotes the claim to **stale** — mechanically, with no human vigilance involved. Friday's agent, before trusting anything, runs `truth list --live` — and Monday's fact simply isn't in the list anymore. Better: the removal task was *premised on* that claim, so `truth ready` shows it as **HELD** before any agent even picks it up.
 
 Saturday belongs to nobody.
 
@@ -198,7 +199,7 @@ Two branches, two agents, both file verdicts on the same claim, then the branche
 
 ### 5.1 Intake gates: refusal is a feature
 
-`truth claim` refuses to even *record*: a VERIFIED claim with no evidence command; one with neither paths nor TTL (uninvalidatable — a fact nothing can ever demote is a lie waiting to mature); one in a repo with no commits (nothing to anchor to); an evidence command whose two intake runs hash differently (nondeterministic — your recipe would diverge tomorrow by luck); a near-duplicate of an active claim (file a verdict on the original instead); a **dead tripwire** — a `--paths` entry containing whitespace with no comma (you forgot the comma; the space-joined literal matches no real file), or a literal path matching zero tracked files (explicit globs are exempt: watching an empty-for-now pattern is legitimate intent, a typo'd literal is not); and empty claim text. A refused claim leaves no trace. An accepted one is immutable. The gate is where quality is cheapest.
+`truth claim` refuses to even *record*: a VERIFIED claim with no evidence command; one with neither paths nor TTL (uninvalidatable — a fact nothing can ever demote is a lie waiting to mature); one in a repo with no commits (nothing to anchor to); an evidence command whose two intake runs hash differently (nondeterministic — your recipe would diverge tomorrow by luck); a near-duplicate of an active claim (file a verdict on the original instead); a **universally quantified claim over a scoped command** — "no call sites *anywhere*" backed by a grep of one directory — unless `--scope-ok "<one sentence>"` states why the scope covers the quantifier, on the record where a verifier can attack it (the quantifier–scope gate, ADR-007); an **evidence command that isn't read-only** — the recipe re-executes later inside a verifier session, so every program in it must appear in the committed allowlist `.truth/evidence-allow` (ADR-009; test runners deliberately aren't shipped there — they execute repository code; `--evidence-unsafe-ok` files anyway, and recheck then refuses to ever execute that command); a **dead tripwire** — a `--paths` entry containing whitespace with no comma (you forgot the comma; the space-joined literal matches no real file), or a literal path matching zero tracked files (explicit globs are exempt: watching an empty-for-now pattern is legitimate intent, a typo'd literal is not); and empty claim text. A refused claim leaves no trace. An accepted one is immutable. The gate is where quality is cheapest.
 
 ### 5.2 The invariant table: promises with named breakers
 
@@ -234,7 +235,7 @@ Unverified premises pass with a warning by design (blocking everything would mak
 
 ### 6.4 Timestamps are trusted, not proven
 
-Whoever appends a record chooses its timestamp, and event order derives from timestamps. So a determined forger can backdate. The gate makes such appends permanent and attributable in git history — you can't do it *quietly* — but cryptographic proof would need signed records, deliberately not built until a real forgery justifies it. Accepted risk, stated out loud, which is the only honest way to have risks.
+Whoever appends a record chooses its timestamp, and event order derives from timestamps. So a determined forger can backdate. The worst composition of that — backdating a *duplicate* of an existing id so it sorts first and silently substitutes the claim's content — is now detected at commit time (since v0.6, ADR-008): within one repository, file order is append order, so a record that sorts before an earlier line with its own id fails validation. What remains accepted is the residue: forging the timestamp on a *fresh* id. The gate makes even that permanent and attributable in git history — you can't do it *quietly* — but cryptographic proof would need signed records, deliberately not built until a real forgery justifies it. Accepted risk, stated out loud, which is the only honest way to have risks.
 
 ### 6.5 Green checkmarks mean nothing without the monthly hand-audit
 
@@ -278,10 +279,12 @@ Lamport, Shostak & Pease, *The Byzantine Generals Problem* (1982) — read the f
 | `... --class INFERRED --basis "<why>"` / `--class UNVERIFIED` | You reasoned / you're just flagging |
 | `truth verdict <id> --recheck` | Mechanical recheck (hashes) |
 | `truth verdict <id> agree\|diverge\|cannot_verify --basis "<what you did>"` | Your judgment, with receipts |
-| `TRUTH_HUMAN=1 truth verdict <id> retracted --basis "<why>"` | Kill a claim forever (humans) |
+| `TRUTH_HUMAN=1 truth verdict <id> retracted --basis "<why>"` — then type the id back when prompted (headless human use: add `TRUTH_HUMAN_ACK=<id>`) | Kill a claim forever (humans, at a terminal — ADR-011) |
 | `truth premise <issue> <claim-id>` | Tie work to a fact |
 | `truth ready` | Which work is epistemically safe to start |
 | `truth queue` | Daily: what needs a human (empty = carry on) |
+| `truth impact <path>...` | Before editing: what knowledge would this edit endanger? (read-only) |
+| `truth stats` | Monthly: status/tier counts, verdict rates, claim half-life, queue aging |
 | `truth doctor` | After any repo surgery |
 
 **Statuses**: `unverified` (filed, unjudged) → `live` (confirmed) → `stale` (ground moved) / `diverged` (checker disagrees — the process *working*) / `cannot_verify` (honest shrug) → `retracted` (tombstone, terminal).
@@ -300,7 +303,7 @@ stateDiagram-v2
     stale --> live: agree (re-verified, anchor advances)
     unverified --> cannot_verify: cannot_verify
     cannot_verify --> live: agree
-    live --> retracted: retracted (human, TRUTH_HUMAN=1)
+    live --> retracted: retracted (human at a terminal, ADR-011)
     unverified --> retracted: retracted (human)
     retracted --> [*]: terminal
 ```
@@ -309,15 +312,15 @@ stateDiagram-v2
 
 ## Appendix B — FAQ
 
-**Why was my claim refused?** The gate caught one of: VERIFIED without an evidence command; without paths *or* TTL (nothing could ever demote it); a repo with no commits; a nondeterministic evidence command (two runs hashed differently — add `--single-run` only if you accept false divergences); a near-duplicate of an active claim (verdict the original, or `--duplicate-ok` if genuinely distinct); a dead-tripwire path (INV-M) — `--paths "a.sh b.sh"` means you forgot the comma, and a literal path matching zero tracked files can never fire; or empty claim text. Refusal at intake is the system working — a claim that can't be invalidated is a lie maturing.
+**Why was my claim refused?** The gate caught one of: VERIFIED without an evidence command; without paths *or* TTL (nothing could ever demote it); a repo with no commits; a nondeterministic evidence command (two runs hashed differently — add `--single-run` only if you accept false divergences); a near-duplicate of an active claim (verdict the original, or `--duplicate-ok` if genuinely distinct); a universally quantified claim text over a scoped evidence command (ADR-007 — state why the scope covers the quantifier with `--scope-ok "<one sentence>"`); an evidence command using a program not in `.truth/evidence-allow` (ADR-009 — it would re-execute in a verifier session; use an allowlisted read-only command, consciously extend the allowlist, or `--evidence-unsafe-ok` and accept manual-only verification); a dead-tripwire path (INV-M) — `--paths "a.sh b.sh"` means you forgot the comma, and a literal path matching zero tracked files can never fire; or empty claim text. Refusal at intake is the system working — a claim that can't be invalidated is a lie maturing.
 
 **It says my `--paths` entry "contains whitespace with no comma".** `--paths` takes one quoted, comma-separated list: `--paths "src/auth/**,scripts/deploy.sh"`. A space-separated list stores as a single literal path that matches nothing — a tripwire that can never fire — so intake refuses it outright (INV-M, v0.5.4).
 
 **Why did my claim go stale again right after I re-verified it?** In old versions (≤ v0.3), it would have — the anchor was frozen at filing, a real defect fixed in v0.4. Now an `agree` verdict advances the anchor to the current commit. If you still see re-staling: either the paths genuinely changed *again* after your verdict, or you're on an old version — check the docstring.
 
-**Can I delete a wrong claim?** No — and you don't need to. If it's wrong, file `diverge` with your evidence. If it should be dead forever, a human retracts it (`TRUTH_HUMAN=1`). The wrongness stays in history *on purpose*: "we believed X and were wrong" is itself valuable knowledge, and editable history is worthless history.
+**Can I delete a wrong claim?** No — and you don't need to. If it's wrong, file `diverge` with your evidence. If it should be dead forever, a human retracts it at their own terminal (`TRUTH_HUMAN=1` plus typing the id back when prompted; `TRUTH_HUMAN_ACK=<id>` for headless human use — ADR-011). The wrongness stays in history *on purpose*: "we believed X and were wrong" is itself valuable knowledge, and editable history is worthless history.
 
-**My verdict was refused — "retraction is a human decision."** Correct behavior. Verifiers diverge; humans tombstone. If you're a human at a keyboard, set `TRUTH_HUMAN=1`. If you're an agent reading this: file the diverge and say why it should die; the queue will bring a human.
+**My verdict was refused — "retraction is a human decision."** Correct behavior. Verifiers diverge; humans tombstone. If you're a human at a keyboard, re-run in your own terminal with `TRUTH_HUMAN=1` and type the claim's id back at the confirmation prompt (headless: `TRUTH_HUMAN_ACK=<exact-id>` too — `TRUTH_HUMAN=1` alone is refused without a terminal, ADR-011). If you're an agent reading this: file the diverge and say why it should die; the queue will bring a human.
 
 **`truth ready` says HELD — but I checked, the premise is fine!** Then say so on the record: re-verify the premise claim (`verdict <id> agree --basis ...`) and `ready` will release the issue. HELD isn't the system claiming the fact is false — it's the system refusing to let work proceed on a fact *nobody has re-checked since the ground moved*.
 

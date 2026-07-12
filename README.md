@@ -70,7 +70,7 @@ copier has nothing to diff it against — see clause N1 below.
 ```bash
 # an agent verifies a fact and files it — one command, with a recipe + tripwire
 scripts/truth claim "no call sites remain for legacyAuth()" \
-  --class VERIFIED --evidence-cmd "grep -rn legacyAuth src/" \
+  --class VERIFIED --evidence-cmd "grep -rn legacyAuth ." \
   --paths "src/**" --tier P0
 
 scripts/truth list --live      # what can be trusted right now
@@ -88,6 +88,7 @@ made mechanical instead of vigilance-dependent.
 |---|---|
 | `.truth/claims.jsonl` | the ledger — append-only, event-sourced, merge-safe (`merge=union`) |
 | `scripts/truth` | the CLI — intake gates, fold, invalidation scan, verifier dispatch |
+| `.truth/evidence-allow` | the ADR-009 allowlist: which programs evidence commands may run when verifiers re-execute them — consumer policy, edited consciously, never reverted by updates |
 | `.githooks/` | pre-commit gate (append-only + schema) · post-commit/post-merge scan |
 | `.github/workflows/` | PR gate · post-merge scan with bot commit-back · weekly seeded-fault canary |
 | `prompts/truth-verifier.md` | fixed prompt for independent verification (isolation is scripted) |
@@ -135,7 +136,7 @@ Each fact class has exactly one normative home; everything else links.
 - [`.truth/README.md`](template/.truth/README.md) — the layer's operational
   manual and CLI contract, installed into every child repo
 - [ADRs](template/docs/adr/) — decision records (001 premise validity
-  … 006 issue-fold first-wins); amendments land as status-block pointers,
+  … 012 divergence subtype); amendments land as status-block pointers,
   never body edits
 - [Beads integration](template/docs/beads-integration-guide.md) — external
   tracker wiring (single source; the `docs/` copy is a pointer stub)

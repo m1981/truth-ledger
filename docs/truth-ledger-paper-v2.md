@@ -6,7 +6,10 @@
 `truth-ledger-field-notes.md` (deployment, formerly living) — both now
 retired to `docs/archive/`. Artifact version audited:
 v0.4. Artifact version deployed in the pilot: v0.5.3 (the template has
-since moved to v0.5.7; pilot sync pending, §2). Pilot: one multi-component
+since moved to v0.6.2, including the v0.6 solo-regime hardening batch —
+ADR-007 through ADR-012 plus FS-1/FS-2, which converts several of this
+paper's "accepted" and "future work" items below into shipped
+mechanisms, noted inline where they land; pilot sync pending, §2). Pilot: one multi-component
 kitchen-manufacturing monorepo (domain core, catalog service, ERP, CAM, two
 adapters), one solo developer, LLM agent sessions doing the implementation
 work, day-0 2026-07-08. All quantitative claims in §2 are self-reported by
@@ -43,9 +46,10 @@ vocabulary got wrong.
 
 **Storage.** A single append-only JSONL file, `.truth/claims.jsonl`, beside
 a work tracker it never writes to. A dependency-free Python CLI
-(`scripts/truth`, 1,213 lines as of v0.5.2 — it was ~750 at the v0.4 audit
-scope §3–§4 cover; the growth is the work kernel and satellite mechanisms
-of §5), two shell gates (`check-truth.sh`, a commit-time prefix check, and
+(`scripts/truth` — roughly 750 lines at the v0.4 audit scope §3–§4 cover,
+and grown severalfold since as the work kernel, the §5 satellites, and
+the v0.6 hardening landed; the file states its own current size and
+version), two shell gates (`check-truth.sh`, a commit-time prefix check, and
 a post-merge invalidation-scan hook), a fixed verifier prompt, a JSON
 Schema. Concurrent writers are assumed, not incidental: multiple appends
 racing to the same file rely on POSIX `O_APPEND` atomicity for
@@ -104,33 +108,45 @@ claim record to establish a given id fixes that claim's text and evidence
 capsule; any later claim record bearing the same id is ignored for content
 (§4, F6) — its append is permitted (the log is append-only, not
 edit-only) but has no effect on derived state. Composing this with the
-accepted timestamp-forgery threat (§8 item 6) yields one open, undefended
+accepted timestamp-forgery threat (§8 item 6) yields one composition
 gap, stated plainly rather than left implicit: an appender who backdates a
 duplicate-id claim record to sort *before* the genuine one in canonical
 order becomes "first," silently substituting its text and evidence
 capsule under an id that may already carry a live verdict. Verdicts and
 invalidations still apply correctly to whichever content wins — no
-verdict is lost or misattributed — but the claim's *substance* is not
+verdict is lost or misattributed — but the claim's *substance* was not
 protected against this specific composition of two individually-documented
-behaviors. This is accepted and now documented, not prevented or
-detected; it is the same class of residual threat as §8 item 6 generally,
-made concrete for the fold rather than left as a general caveat about
-timestamps.
+behaviors. As of v0.6 this composition is **detected at commit**
+(ADR-008): within one repository's history, file order is append order —
+a guarantee the INV-A prefix gate already provides — so `truth validate`
+(and therefore the commit gate) fails any record whose envelope id
+duplicates an earlier line's with a strictly earlier `ts`. Identical
+duplicated lines (git's union-merge shape) still pass. The residual that
+remains accepted, not detected, is timestamp forgery on a *fresh*
+(non-duplicate) id — §8 item 6.
 
 **Intake gates.** `truth claim` refuses, before anything is written:
 empty claim text (v0.5.5 — an assertion with no sentence cannot be
 verified, diverged from, or cited); near-duplicates of active claims by
 word-level, case-folded token overlap ≥ 0.6 against claim text
 (overridable, and always allowed for corrections of dead claims);
+a universally quantified claim text over a scoped evidence command
+(ADR-007, v0.6 — the §2 dominant-failure countermeasure §10 once listed
+as unbuilt; refused unless `--scope-ok "<one sentence>"` states why the
+scope covers the quantifier, stored as an attackable `scope_basis`);
 dead-tripwire evidence paths (INV-M, v0.5.4 — a whitespace-containing
 entry with no comma, or a literal path matching zero tracked files;
 explicit globs exempt; applies to *any* evidence class carrying paths,
 and has no override); VERIFIED claims with no evidence command, with
 neither paths nor TTL, or filed in a repository with no commits to anchor
 to (these three checks are VERIFIED-only; UNVERIFIED and INFERRED claims
-may omit evidence, paths, and TTL); INFERRED claims with no `--basis`;
-and evidence commands whose two intake runs hash differently
-(nondeterministic, overridable). The list is stated here in refusal
+may omit evidence, paths, and TTL); evidence commands failing the
+read-only safety screen against the committed `.truth/evidence-allow`
+allowlist (ADR-009, v0.6 — the command re-executes later inside verifier
+sessions; `--evidence-unsafe-ok` files with `screened=false` and recheck
+then refuses to ever execute it); evidence commands whose two intake
+runs hash differently (nondeterministic, overridable); and INFERRED
+claims with no `--basis`. The list is stated here in refusal
 order, which is observable when one claim trips several gates.
 
 **Invalidation.** A scan, wired to post-merge hooks or CI, demotes claims
@@ -176,8 +192,8 @@ Measured as of 2026-07-09:
 | Human retractions (`TRUTH_HUMAN=1`) | 6 — all by the human, none by an agent |
 | Concurrent agent sessions writing one ledger | 6 interleaved, zero corruption |
 | Tripwire recall & false-alarm rate (post-commit scan, one real refactor) | 1/1 staled when it should have (recall), 0 false alarms that round (precision signal; both n=1) |
-| Seeded faults, this repo's template canary | 58 (grew from 19 at v0.4 as work kernel, spec-health, and doc-health satellites merged upstream into this same template, then 49 with F7/ADR-006, 53 with INV-M's intake checks, 54 with FAULT S4, and 58 with the impact verb's W-faults (ADR-005 trial) — no longer frozen; Appendix B) |
-| Seeded faults, the pilot's downstream canary | grew 19 → 42 → 45 → 48 → 49 in step with those same merges, matching the template through v0.5.3 (F7/ADR-006 synced 2026-07-09); the template has since grown further (53 INV-M, 54 F8/S4, 58 ADR-005 W-faults, 2026-07-09/10) — pilot sync is pending, so the two counts diverge until the next `copier update` (Appendix B) |
+| Seeded faults, this repo's template canary | the suite prints its own count — no number restated here, since the suite has grown with every mechanism since v0.4's 19 (work kernel, spec-health/doc-health satellites, F7/ADR-006, INV-M, S4, the impact verb's W-faults, and the v0.6 hardening batch's Q/B/E/V/H/M faults) and is no longer frozen; Appendix B |
+| Seeded faults, the pilot's downstream canary | grew 19 → 42 → 45 → 48 → 49 in step with the pre-v0.5.4 merges, matching the template through v0.5.3 (F7/ADR-006 synced 2026-07-09); the template has grown well past that since — pilot sync is pending, so the two suites diverge until the next `copier update` (Appendix B) |
 
 **The dominant real failure mode is scope overreach, not hallucination.**
 Both genuine divergences shared one shape: a *correct* evidence command
@@ -267,9 +283,9 @@ gate covered).
 | F1 | Schema stale against code on two features (`retracted` verdicts, TTL-only claims); drift detector fails open (silently skips) without an optional dependency | High | Real CLI produced a ledger the schema rejected; suite reported `OK (skipped=2)` without `jsonschema` | Only if the optional dependency was installed | Schema updated; missing dependency is now a **test failure** unless explicitly waived — the detector fails closed (blocks) instead of open (skips) |
 | F2 | Re-verified claims re-stale every scan — anchor frozen at filing, never advanced | High | stale → agree → live → next scan, zero new edits → stale again | No | `agree` verdicts on path-anchored claims advance an **effective anchor**; scan diffs from it |
 | F3 | Fold not confluent under union merge — `{agree, diverge}` folds to `live` or `diverged` depending on merge direction | Medium | Exhaustive permutation check | No | Fold sorts events into total order `(timestamp, id)` before replay — the standard CRDT last-writer-wins move (Shapiro et al., 2011) |
-| F4 | "Retraction is humans-only" enforced nowhere — CLI checked only that a basis was present, never the actor | Medium | Verifier-actor retraction accepted | No | Retraction requires setting `TRUTH_HUMAN=1` — this converts an unenforced norm into a self-attested convention with a syntax, not an identity-checked property; any actor able to set an environment variable can still retract (§8 item 5) |
+| F4 | "Retraction is humans-only" enforced nowhere — CLI checked only that a basis was present, never the actor | Medium | Verifier-actor retraction accepted | No | v0.4: retraction requires setting `TRUTH_HUMAN=1` — a self-attested convention with a syntax, not an identity-checked property; any actor able to set an environment variable could still retract. Hardened in v0.6 (ADR-011): the variable alone is refused — a tombstone additionally needs an interactive typed-id confirmation at a real terminal, or `TRUTH_HUMAN_ACK=<exact-id>` for headless human use, closing the one-export bypass the refusal message itself used to teach (§8 item 5) |
 | F5 | Evidence-path globs cross directory separators (`src/*.py` matches `src/sub/deep.py`) | Low | Direct check | Partially | Custom glob translation: `*`/`?` stop at `/`, `**` spans |
-| F6 | **Tombstone resurrection by pure append** — a duplicate claim record bearing a retracted id resets status to `unverified`; both shipped gates (diff-deletion heuristic, well-formedness check) pass it | Critical | A retracted P0 claim — text: *"the database is safe to drop"* — resurrected through both gates and `validate` | No — the canary seeded this fault only on the verdict path | Fold ignores duplicate claim ids (first wins); commit gate replaced with a line-prefix check: the staged file must literally extend the committed one — but see §1's "Fold semantics, precisely" for a related, still-open gap this fix does not close |
+| F6 | **Tombstone resurrection by pure append** — a duplicate claim record bearing a retracted id resets status to `unverified`; both shipped gates (diff-deletion heuristic, well-formedness check) pass it | Critical | A retracted P0 claim — text: *"the database is safe to drop"* — resurrected through both gates and `validate` | No — the canary seeded this fault only on the verdict path | Fold ignores duplicate claim ids (first wins); commit gate replaced with a line-prefix check: the staged file must literally extend the committed one — see §1's "Fold semantics, precisely" for a related composition gap this fix did not close, since detected at commit by ADR-008 (v0.6) |
 | INV-M | **Dead tripwire** — space-separated `--paths` ("a.sh b.sh") silently stores as one literal path matching nothing; the claim is true, the hash matches, the verifier agrees, and the invalidation trigger can never fire | High | Found by inspection in the pilot ledger, not by any gate | No — nothing checks a claim's protection metadata for validity | Shipped (v0.5.4): intake refuses (a) whitespace-containing path entries with no comma and (b) any literal (non-glob) path matching zero tracked files at filing time; explicit globs (`*`/`?`) are exempt — watching a pattern that's empty for now is legitimate intent, unlike a typo'd literal. Applies to any evidence_class carrying paths, not only VERIFIED, since invalidation itself doesn't discriminate by class. `FAULT T`, self-defense verified; also caught a live fixture bug (an existing canary claim filed on an untracked path) in the process |
 | F7 | **Issue-fold premise-stripping by pure append** — ADR-002's issue fold was last-wins on duplicate `wk-` ids ("update-by-refile"); a raw appended duplicate with `premises: []` silently disarmed an issue's ADR-001 protection. Unlike F6, no backdated timestamp was needed (last-wins means any later real timestamp wins) and no terminal-state coincidence was needed (works on any open issue, not only a retracted one) | High\* | A HELD issue (broken premise, `tr-... (stale)`) flipped to READY after one raw JSONL append, no CLI involved; `truth validate` still passed | No — no canary fault or unit test exercised a duplicate `wk-` append; the one existing unit test on this path (`test_last_issue_payload_wins`) asserted the vulnerable behavior as a feature | `fold_issues` is now first-wins on duplicate ids, identical to `fold()` (ADR-006). The "update-by-refile" rationale it replaced described a verb the shipped CLI never implemented — `truth issue` always mints a fresh id from `hash(payload, ts, actor)`, so no command could legitimately re-file an existing `wk-` id; last-wins was pure attack surface |
 | F8 | **Schema-mirror drift, recurrence of F1's class** — `validate`'s stdlib mirror accepted a claim record with no `text`, which `claims.schema.json` requires at minLength 1; `truth claim ""` filed a record the schema rejects and the INV-B commit gate would then block — a CLI contradicting its own gate | Low | Live probe: a payload of only `evidence_class`/`cost_tier` returned `validate: 1 record(s) OK` | No — the shared conformance corpus (F1's own fix) carried no missing-text fixture | Shipped (v0.5.5): mirror rejects missing/empty claim text; intake refuses empty text; two corpus fixtures added. The second recurrence of this class upgrades "keep the corpus exhaustive" from advice to structural future work (§10) |
@@ -413,9 +429,13 @@ This is a framing, not a formalism: no entropy is computed anywhere in
 the system or in this paper. The field data in §2 (dispatch counts,
 divergence rates) is exactly the raw material a real calculation would
 need — an estimated claim half-life per cost tier, from which intake
-could suggest TTLs instead of relying on author guesses — but that
-calculation has not been done, and this section should not be read as
-implying it has.
+could suggest TTLs instead of relying on author guesses. As of v0.6
+that calculation exists mechanically (FS-1): `truth stats` reports
+per-tier live→stale half-life from the ledger's own history, and once a
+tier has ≥5 observations, filing a TTL'd claim prints the observed
+median beside the author's choice — a suggestion, never a substitute.
+Whether the suggestion is *calibrated* remains unmeasured; this section
+still should not be read as a formalized result.
 
 ---
 
@@ -500,16 +520,25 @@ though item 2 names the largest single *unanswered question*.
    that never loads them bypasses everything. Held so far in the pilot —
    but the pilot's operator is also the layer's author, so discovery by
    unbriefed agents in unrelated repositories is untested.
-6. **Timestamp forgery is accepted, not solved — including its
-   composition with duplicate-id dedup** (§1, "Fold semantics,
-   precisely"). An appender chooses its own `ts`; the line-prefix gate
-   makes forged appends permanent and attributable in git history but
-   does not prevent backdating, and a backdated duplicate can win claim
-   content under first-wins dedup. Deferred behind a growth gate (signed
-   records) rather than half-built.
-7. **Vocabulary debt.** "Diverged" conflates "reality changed" with "the
-   measuring command's output format changed." No urgency, but the
-   distinction is real and currently unnamed in the status vocabulary.
+6. **Timestamp forgery is accepted, not solved — but its worst
+   composition is now detected.** An appender chooses its own `ts`; the
+   line-prefix gate makes forged appends permanent and attributable in
+   git history but does not prevent backdating. The composition with
+   duplicate-id dedup — a backdated duplicate winning claim content
+   under first-wins — is detected at commit since v0.6 (ADR-008; §1,
+   "Fold semantics, precisely"): file order is append order, so a
+   backdated duplicate id fails `validate`. The residual accepted risk
+   is timestamp forgery on a fresh, non-duplicate id. Cryptographic
+   prevention stays deferred behind a growth gate (signed records)
+   rather than half-built.
+7. **Vocabulary debt — named since v0.6.** "Diverged" conflated
+   "reality changed" with "the measuring command's output format
+   changed." ADR-012 names the second: `verdict <id> diverge
+   --mechanical` records a recipe-change divergence as a subtype
+   (status unchanged; queue and `truth stats` report the two rates
+   separately). What remains open is whether authors and verifiers
+   apply the distinction consistently — vocabulary shipped, calibration
+   unmeasured.
 
 ---
 
@@ -519,11 +548,14 @@ The friction budget is stated as a design constraint, not a marketing
 claim: one command to file a claim, four lines of instruction-file text
 for an agent to discover the layer exists. In practice, three operating
 conventions earned in the pilot are worth adopting alongside the code
-itself, since none of them are yet enforced mechanically:
+itself — the first is mechanically enforced at intake since v0.6, the
+other two remain discipline:
 
 - **Never write a repo-wide clause backed by a package-scoped command.**
   Name the by-design survivors explicitly instead of relying on a
-  quantifier the evidence command doesn't actually check.
+  quantifier the evidence command doesn't actually check. (Since v0.6
+  intake refuses this shape outright unless `--scope-ok` states the
+  justification on the record — ADR-007, §1 Intake gates.)
 - **Commit the work, then file the completion claim** — not the reverse;
   a claim filed before its own shipping commit can be staled by that
   commit within seconds.
@@ -543,28 +575,40 @@ the safe default) instead of running unarmed and silently skipping.
 - **The efficacy trial** — see §8 item 2 for the gap; the concrete design
   is: longitudinal false-VERIFIED rate, with and without the ledger,
   across repositories and agent runtimes.
-- **A scoping-fault countermeasure beyond discipline.** §2's dominant
-  finding currently has only an operating convention (§9) as a defense. A
-  concrete, not-yet-built next step: an intake heuristic flagging
-  universal quantifiers ("only", "no ... anywhere", "the repo") in claim
-  text when the evidence command carries path or `--include` filters —
-  catching the exact shape both genuine divergences shared.
+- **A scoping-fault countermeasure beyond discipline — shipped (v0.6,
+  ADR-007).** §2's dominant finding had only an operating convention
+  (§9) as a defense; the intake heuristic this item proposed — flag
+  universal quantifiers ("only", "no ... anywhere", "the repo") in
+  claim text when the evidence command carries path or `--include`
+  filters — is now the quantifier–scope gate (§1 Intake gates). What
+  remains future work is measuring its false-positive rate and whether
+  `--scope-ok` justifications rot into ritual.
 - **Signed records** (§8 item 6, Appendix A INV-G) — binding `actor` and
-  `ts` cryptographically would close the backdating/duplicate-id-
-  substitution gap the fold currently accepts undefended (§1 "Fold
-  semantics, precisely"). Deferred behind a growth gate, per the original
-  v0.4 audit's own trigger: build it when the first forged timestamp is
-  found in the wild, not before.
-- **Claim half-life measurement** (§6.2) — turning the decay-channel
-  metaphor into a calibrated one from invalidation-log data, enabling
-  data-driven TTL suggestions at intake instead of author guesses.
-- **Generate the validate mirror from the schema.** F1 and F8 are one
-  defect class occurring twice: two hand-maintained copies of the record
-  contract (stdlib mirror, JSON Schema) drifting apart. The conformance
-  corpus is a sample, and samples miss; a build step deriving the mirror
-  (or a corpus mechanically enumerated from the schema's constraints)
-  would close the class instead of the instance. Second recurrence is
-  the trigger this item was waiting for.
+  `ts` cryptographically would close what ADR-008's commit-time
+  detection (v0.6) cannot: backdating on a fresh id, and any forgery in
+  a history the local prefix gate never saw. The duplicate-id
+  substitution gap itself is no longer undefended — it is detected at
+  commit (§1 "Fold semantics, precisely"). Signing stays deferred
+  behind a growth gate, per the original v0.4 audit's own trigger:
+  build it when the first forged timestamp is found in the wild, not
+  before.
+- **Claim half-life measurement — shipped mechanically (v0.6, FS-1;
+  §6.2).** `truth stats` computes per-tier half-life from
+  invalidation-log data and intake suggests the observed median beside
+  the author's TTL once ≥5 observations exist. Still future: enough
+  field history for the suggestion to mean anything, and a calibration
+  check against ground truth.
+- **Generate the validate mirror from the schema — the corpus half
+  shipped (v0.6, FS-2).** F1 and F8 are one defect class occurring
+  twice: two hand-maintained copies of the record contract (stdlib
+  mirror, JSON Schema) drifting apart. The conformance corpus was a
+  sample, and samples miss; the second recurrence was the trigger, and
+  FS-2 answered it with a constraint-enumerated mutant generator in
+  `test-truth-core.py` — hundreds of generated near-valid records on
+  which mirror and schema must agree, with a meta-canary count floor.
+  The other half — a build step deriving the mirror from the schema —
+  remains unbuilt, acceptable while the generated corpus holds the two
+  in lockstep.
 - **Formal verification of the fold.** The core is a pure function over a
   small event alphabet — a natural target for exhaustive model checking
   (TLA+/Alloy) of confluence and terminality, replacing the permutation
@@ -590,25 +634,24 @@ the safe default) instead of running unarmed and silently skipping.
 | INV-D | Recheck detects non-reproducing evidence | One hash mismatch scored agree | Seeded fault |
 | INV-E | TTL'd claims expire | One claim outliving its TTL | Seeded fault |
 | INV-F | History rewrites invalidate, with reason | One orphaned anchor still trusted | Seeded fault |
-| INV-G | Retraction is terminal, on every path *tested* | One resurrected tombstone | Seeded fault (verdict path, append path) — **open**: a backdated duplicate-id append can still substitute claim content under a retracted id without disturbing the terminal verdict itself; see §1 "Fold semantics, precisely" and §8 item 6 |
+| INV-G | Retraction is terminal, on every path *tested* | One resurrected tombstone | Seeded fault (verdict path, append path); the backdated duplicate-id append that could substitute claim content under a retracted id is detected at commit since v0.6 (ADR-008, canary B-faults) — residual: fresh-id timestamp forgery, accepted per §8 item 6; see §1 "Fold semantics, precisely" |
 | INV-H | Broken premises hold work | One issue ready on a stale premise | Seeded fault |
 | INV-I | Fold is confluent: any event order, same state | Two orders, two statuses | Permutation property test |
 | INV-J | Re-verification is durable across scans | One re-verified claim re-staled with no new changes | Seeded fault |
-| INV-K | Retraction requires the `TRUTH_HUMAN=1` convention to be set | One retraction accepted without it | Seeded fault — convention-level (an environment variable), not identity-verified; see F4, §4 |
+| INV-K | Retraction requires `TRUTH_HUMAN=1` **plus** an interactive typed-id confirmation or `TRUTH_HUMAN_ACK=<exact-id>` (ADR-011, v0.6) | One retraction accepted with the variable alone, headless | Seeded fault (H-faults) — still self-attested rather than identity-verified, but the one-export bypass is closed; see F4, §4 |
 | INV-L | The drift detector is armed or the suite fails | One green run with the schema unchecked | Armed-detector test |
 | INV-M | Every `evidence_path` on an accepted claim matches ≥1 tracked file at filing time, or is an explicit glob | One accepted claim whose tripwire can never fire | Seeded fault (`FAULT T`), shipped v0.5.4 |
-| INV-N | Issue-fold premise protection (ADR-001) cannot be stripped by an appended duplicate `wk-` id | One HELD issue silently flipped to READY | Seeded fault (FAULT R9) — fixed at the fold level (ADR-006): duplicate issue ids are first-wins, identical to INV-G's claims-side mechanism; same open composition-with-forged-timestamps caveat as INV-G, since `ts`/`actor` remain unsigned (§8 item 6) |
+| INV-N | Issue-fold premise protection (ADR-001) cannot be stripped by an appended duplicate `wk-` id | One HELD issue silently flipped to READY | Seeded fault (FAULT R9) — fixed at the fold level (ADR-006): duplicate issue ids are first-wins, identical to INV-G's claims-side mechanism; the backdated-duplicate composition is detected at commit since v0.6 (ADR-008), with INV-G's same residual — fresh-id forgery while `ts`/`actor` remain unsigned (§8 item 6) |
 
 ## Appendix B. Reproduction
 
 All findings and repairs are demonstrated by scripts driving the actual
 CLI in fresh sandbox repositories: `scripts/truth` (CLI, pure core over
 imperative shell), `scripts/check-truth.sh` (prefix-based commit gate),
-`scripts/truth-canary.sh` (58 seeded faults in this repository at time of
-writing, grown from 19 at v0.4 as the pilot's work-kernel, spec-health, and
-doc-health satellites merged upstream into this same template, then to 49
-with F7/ADR-006, 53 with INV-M's intake checks, 54 with F8/S4, and 58
-with ADR-005's impact-verb W-faults — see §2),
+`scripts/truth-canary.sh` (the seeded-fault suite — it prints its own
+count rather than having it restated here; grown from 19 at v0.4 as the
+pilot's satellites, the work kernel, the impact verb, and the v0.6
+hardening batch merged upstream into this same template — see §2),
 `scripts/test-truth-core.py`, `scripts/test-truth-v04.py`, and
 `.truth/schema/claims.schema.json`. Field numbers in §2 are read
 directly from `git log -p .truth/claims.jsonl` in the pilot repository —
