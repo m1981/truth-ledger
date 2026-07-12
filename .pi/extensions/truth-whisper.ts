@@ -14,21 +14,34 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, readFileSync, realpathSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
 const EDIT_TOOLS = new Set(["edit", "write", "multi-edit", "multiedit"]);
 
+function realpathSafe(p: string): string {
+	try {
+		return realpathSync(p);
+	} catch {
+		return p;
+	}
+}
+
 function repoRoot(): string | null {
 	const r = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" });
-	return r.status === 0 && r.stdout.trim() ? r.stdout.trim() : null;
+	// realpath the root: git returns a symlink-resolved path, so relPath
+	// must compare against the same canonical space (see relPath).
+	return r.status === 0 && r.stdout.trim() ? realpathSafe(r.stdout.trim()) : null;
 }
 
 function relPath(event: any, root: string): string | null {
 	const input = event.input ?? event.args ?? {};
 	const fp = input.path ?? input.file_path;
 	if (!fp) return null;
-	const rel = relative(root, resolve(process.cwd(), fp));
+	// realpath BOTH sides: a symlinked path component must not make an
+	// in-repo file look external -- that would skip the deny stage, and
+	// deny must fail CLOSED (parity with the Python hook).
+	const rel = relative(root, realpathSafe(resolve(process.cwd(), fp)));
 	return rel.startsWith("..") ? null : rel;
 }
 
@@ -65,9 +78,11 @@ export default function (pi: ExtensionAPI) {
 				return {
 					block: true,
 					reason:
-						`${rel} is deny-listed (${pat}): frozen or append-only-by-CLI. ` +
-						"See AGENTS.md; amend flow: status changes are new ledger " +
-						"records, archive edits need the deny list changed first.",
+						`${rel} is deny-listed (${pat}): frozen, or append-only ` +
+						"through the truth CLI, by policy (see AGENTS.md). A human " +
+						"must deliberately lift the freeze before an edit here can " +
+						"land -- that is not a step for you to take. Record status " +
+						"changes as new ledger entries via `truth`, never by editing files.",
 				};
 			}
 		}

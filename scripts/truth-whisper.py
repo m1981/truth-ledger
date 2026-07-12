@@ -44,10 +44,14 @@ if not fp:
 
 r = subprocess.run(["git", "rev-parse", "--show-toplevel"],
                    capture_output=True, text=True)
-root = r.stdout.strip()
+root = os.path.realpath(r.stdout.strip()) if r.stdout.strip() else ""
 if r.returncode != 0 or not root:
     sys.exit(0)
-rel = os.path.relpath(os.path.abspath(fp), root)
+# realpath BOTH sides: git returns a symlink-resolved root, so a symlinked
+# path component (macOS /var->/private/var, symlinked homes, /tmp) must not
+# make an in-repo file look external -- that would bail before the deny
+# stage below, and deny must fail CLOSED, not silently allow.
+rel = os.path.relpath(os.path.realpath(fp), root)
 if rel.startswith(".."):
     sys.exit(0)
 
@@ -61,10 +65,12 @@ if os.path.exists(deny_file):
                 continue
             if re.match(pat, rel):
                 emit("deny", permissionDecisionReason=(
-                    f"{rel} is deny-listed ({pat}): frozen or "
-                    "append-only-by-CLI. See AGENTS.md; amend flow: "
-                    "status changes are new ledger records, archive "
-                    "edits need the deny list changed first."))
+                    f"{rel} is deny-listed ({pat}): frozen, or "
+                    "append-only through the truth CLI, by policy (see "
+                    "AGENTS.md). A human must deliberately lift the freeze "
+                    "before an edit here can land -- that is not a step "
+                    "for you to take. Record status changes as new ledger "
+                    "entries via `truth`, never by editing files."))
 
 # ---- whisper stage: fails open, visibly --------------------------------
 try:
@@ -83,7 +89,18 @@ if r.returncode == 3 and r.stdout.strip():
     except OSError:
         lh = "noledger"
     key = f"{sid}:{rel}:{lh}"
-    cache = os.path.join(root, ".git", "truth-whisper.seen")
+    # Resolve the cache path via git, not os.path.join(root, ".git", ...):
+    # in a worktree root/.git is a FILE, so that hardcoded join names a
+    # path under a non-directory and the append below would raise. Deny
+    # stage aside, this is the whisper stage -- it must fail OPEN (ADR-005),
+    # so the append is also wrapped: a cache failure degrades to
+    # whisper-fires-without-dedup, never to a crash that eats the advisory.
+    gp = subprocess.run(["git", "rev-parse", "--git-path",
+                         "truth-whisper.seen"],
+                        capture_output=True, text=True, cwd=root)
+    cache = (os.path.join(root, gp.stdout.strip()) if gp.returncode == 0
+             and gp.stdout.strip()
+             else os.path.join(root, ".git", "truth-whisper.seen"))
     try:
         with open(cache, encoding="utf-8") as f:
             seen = set(f.read().split())
@@ -91,8 +108,11 @@ if r.returncode == 3 and r.stdout.strip():
         seen = set()
     if key in seen:
         sys.exit(0)  # fatigue budget: already whispered this state
-    with open(cache, "a", encoding="utf-8") as f:
-        f.write(key + "\n")
+    try:
+        with open(cache, "a", encoding="utf-8") as f:
+            f.write(key + "\n")
+    except OSError:
+        pass  # fail open: whisper still fires, just undeduped this time
     emit("allow", additionalContext=(
         "truth-ledger whisper (mechanical prediction, not judgment):\n"
         + r.stdout.strip()))

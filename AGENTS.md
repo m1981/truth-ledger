@@ -26,6 +26,9 @@ Meta-repo conventions, on top of the standard layer:
   the ADR-005 adoption-gate metric. The same two stages are enforced
   for the pi harness via `.pi/extensions/truth-whisper.ts` (same deny
   list, same metric file), and `docs/archive/` is additionally guarded
-  harness-independently at pre-commit (`.githooks/pre-commit`).
+  harness-independently at pre-commit (`.githooks/pre-commit`). The
+  consumer hook has its own regression gate (it is untemplated, so it
+  has no home in the template canary): `bash scripts/test-whisper-hook.sh`
+  — deny voice, main-tree and worktree whisper, injection-verified.
 
 See `template/.truth/README.md` for the layer's full documentation.
