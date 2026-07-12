@@ -18,8 +18,8 @@ see §8 item 1.
 
 **How to read this paper.** Section headers are ordered by evidence class,
 not narrative convention: mechanism and measurement first, interpretation
-last. §6.2 is explicitly optional — skip it if you want the artifact, not
-the theory. §6.1 isn't: it's the analysis §2 promises and §10 builds on.
+last. §6.2 and §6.3 are explicitly optional — skip them if you want the
+artifact, not the theory. §6.1 isn't: it's the analysis §2 promises and §10 builds on.
 §7 applies the artifact's own discipline to this document: a table of what
 would falsify this paper's own claims.
 
@@ -282,7 +282,7 @@ gate covered).
 |---|---|---|---|---|---|
 | F1 | Schema stale against code on two features (`retracted` verdicts, TTL-only claims); drift detector fails open (silently skips) without an optional dependency | High | Real CLI produced a ledger the schema rejected; suite reported `OK (skipped=2)` without `jsonschema` | Only if the optional dependency was installed | Schema updated; missing dependency is now a **test failure** unless explicitly waived — the detector fails closed (blocks) instead of open (skips) |
 | F2 | Re-verified claims re-stale every scan — anchor frozen at filing, never advanced | High | stale → agree → live → next scan, zero new edits → stale again | No | `agree` verdicts on path-anchored claims advance an **effective anchor**; scan diffs from it |
-| F3 | Fold not confluent under union merge — `{agree, diverge}` folds to `live` or `diverged` depending on merge direction | Medium | Exhaustive permutation check | No | Fold sorts events into total order `(timestamp, id)` before replay — the standard CRDT last-writer-wins move (Shapiro et al., 2011) |
+| F3 | Fold not confluent under union merge — `{agree, diverge}` folds to `live` or `diverged` depending on merge direction | Medium | Exhaustive permutation check | No | Fold sorts events into total order `(timestamp, id)` before replay — the standard CRDT total-order replay (Shapiro et al., 2011a). This cell previously labeled the move "last-writer-wins," which is imprecise: composed with F6's fix, the fold applies three per-field merge disciplines, only one of which is LWW — see §6.3 |
 | F4 | "Retraction is humans-only" enforced nowhere — CLI checked only that a basis was present, never the actor | Medium | Verifier-actor retraction accepted | No | v0.4: retraction requires setting `TRUTH_HUMAN=1` — a self-attested convention with a syntax, not an identity-checked property; any actor able to set an environment variable could still retract. Hardened in v0.6 (ADR-011): the variable alone is refused — a tombstone additionally needs an interactive typed-id confirmation at a real terminal, or `TRUTH_HUMAN_ACK=<exact-id>` for headless human use, closing the one-export bypass the refusal message itself used to teach (§8 item 5) |
 | F5 | Evidence-path globs cross directory separators (`src/*.py` matches `src/sub/deep.py`) | Low | Direct check | Partially | Custom glob translation: `*`/`?` stop at `/`, `**` spans |
 | F6 | **Tombstone resurrection by pure append** — a duplicate claim record bearing a retracted id resets status to `unverified`; both shipped gates (diff-deletion heuristic, well-formedness check) pass it | Critical | A retracted P0 claim — text: *"the database is safe to drop"* — resurrected through both gates and `validate` | No — the canary seeded this fault only on the verdict path | Fold ignores duplicate claim ids (first wins); commit gate replaced with a line-prefix check: the staged file must literally extend the committed one — see §1's "Fold semantics, precisely" for a related composition gap this fix did not close, since detected at commit by ADR-008 (v0.6) |
@@ -387,6 +387,10 @@ This section names the theoretical vocabulary that motivated the design,
 each corrected against what the field evidence supplied. None of it is
 required to operate the artifact — but §6.1 isn't decoration: it's the
 analysis §2 promises and §10's proposed countermeasure builds on.
+§6.3, added 2026-07-12, records the inverse of §6.1's direction:
+vocabulary the design *converged on* without having been motivated by
+it — which, for a single-author artifact (§8 item 1), is the more
+evidentially valuable kind.
 
 ### 6.1 Byzantine fault tolerance — as analogy, corrected
 
@@ -436,6 +440,94 @@ tier has ≥5 observations, filing a TTL'd claim prints the observed
 median beside the author's choice — a suggestion, never a substitute.
 Whether the suggestion is *calibrated* remains unmeasured; this section
 still should not be read as a formalized result.
+
+### 6.3 Architectural lineage, corrected — vocabulary the design converged on
+
+Added 2026-07-12. The v0.4–v0.6 mechanisms were designed against local
+evidence (§2, §4), not from the literature; this section names, after
+the fact, the classical constructions several of them turn out to be
+instances of — each with the correction stating where the artifact
+deliberately stops short of its ancestor. The point is not pedigree.
+Under this paper's own worst limit (§8 item 1, single-observer), a
+design that independently converges on results derived decades earlier
+by others has acquired the nearest available substitute for external
+review: the original authors' analysis applies, and their known failure
+modes become checkable predictions here. Nothing below changes how
+anything operates.
+
+**The fold, as CRDT constructions — the precision F3's row lacked.**
+§4's F3 cell originally called the confluent fold "the standard CRDT
+last-writer-wins move." Imprecise, corrected there and stated fully
+here: the ledger is a grow-only set of events (a G-Set), and the fold
+applies three *distinct* per-field merge disciplines over it — claim
+**content** is first-writer-wins, a write-once register (F6's fix);
+claim **status** is last-writer-wins in `(ts, id)` order (F3's fix);
+and `retracted` is **terminal**, the two-phase-set tombstone rule under
+which a removed element never re-enters (Shapiro et al., 2011a; the
+2P-Set construction itself is cataloged in the companion report,
+Shapiro et al., 2011b). Each discipline is standard; what is local to
+this design is only their per-field composition and the audited record
+of why each was chosen (F3, F6, G12). Correction: CRDT theory buys
+convergence across mutually unavailable *replicas*; this design spends
+it on something narrower — branches of one repository, union-merged —
+and §8 item 4's multi-machine caveat stands untouched.
+
+**Local-first software.** No server, data in user-owned plain files,
+CRDT-grade convergence, synchronization delegated to a transport the
+user already trusts (git): the artifact is a near-textbook instance of
+the local-first program (Kleppmann, Wiggins, van Hardenberg &
+McGranaghan, 2019), applied to knowledge about code rather than to
+documents. The framing also locates the honest boundary: local-first's
+headline ideal is real-time multi-device *collaboration*, and this
+design claims exactly none of it — §8 item 4 names multi-human,
+multi-machine as untested, which in local-first vocabulary reads as
+"the sync layer exists (git), the collaboration layer was never built."
+
+**Optimistic concurrency control.** ADR-008's stance — never block an
+append, validate coherence at commit, detect conflicts after the fact —
+is the optimistic method (Kung & Robinson, 1981) transplanted from
+transactions to an epistemic log: the commit gate is OCC's validation
+phase with `(ts, id)` order in the role of serializability. Correction:
+OCC's losing transaction is aborted and *retried by the system*; here
+nothing retries — a validation failure feeds a human decision (the
+refusal, the queue), because the conflicting party may be a
+prompt-injected agent whose "retry" is exactly what must not happen
+automatically.
+
+**The confused deputy.** The v0.6 threat model's adversary (a) — the
+compliant-but-confused agent that completes a bypass ritual an error
+message taught it — is Hardy's confused deputy (1988), stated
+twenty-five years before LLM agents gave it a new body. ADR-011's
+remedy is the capability-theoretic one: `TRUTH_HUMAN_ACK=<exact-id>`
+makes the authorization *designate* the specific object it authorizes,
+so a lingering ambient variable (Hardy's ambient authority) can no
+longer be spent on an arbitrary later target. Correction: there are no
+actual capabilities here — identity remains self-attested (F4's class,
+§8 item 5); what is closed is only the ambient-authority channel an
+error message can teach.
+
+**The borrowed event loop.** Stated nowhere above and worth one honest
+paragraph: the system owns no process. All reactivity is borrowed from
+host lifecycles — git's commit and merge hooks supply the transactional
+moments, the agent harness's session-start and edit-intent hooks supply
+the attention moments (ADR-005, FS-4). This buys event-driven behavior
+with zero owned uptime, at the price that liveness is only as strong as
+the host's hook wiring — which is precisely why `doctor` checks the
+installation rather than the scripts (G4) and why §8 item 5 exists. No
+canonical citation is claimed; the nearest kin (interception middleware,
+aspect weaving) share the mechanism but not the motive, and this stays
+a named observation rather than a borrowed authority.
+
+**Older lineage, one breath each.** Derive-don't-store status (§1) is
+event sourcing (Fowler, 2005) and the append-only half of the
+immutability argument (Helland, 2015) — Appendix B's note that the
+append-only file "does double duty as a research instrument" is
+Helland's thesis in miniature. `ttl_days` is the DNS resolver's decay
+model for facts the authoritative source cannot push to you
+(Mockapetris, 1987). And the pipeline journal → derived ledger → trial
+balance (`validate`) is double-entry bookkeeping's, five centuries on —
+offered strictly as metaphor in §6.2's sense, since no double entry
+exists here.
 
 ---
 
@@ -591,7 +683,13 @@ the safe default) instead of running unarmed and silently skipping.
   commit (§1 "Fold semantics, precisely"). Signing stays deferred
   behind a growth gate, per the original v0.4 audit's own trigger:
   build it when the first forged timestamp is found in the wild, not
-  before.
+  before. When that gate trips, the classical signature-free
+  alternative should be evaluated first: hash-linking each record to
+  its predecessor (Haber & Stornetta, 1991) binds order and content
+  with no key management at all — a better fit for a regime that has
+  no identity infrastructure by design (§6.3, confused deputy
+  correction) — at the cost that it authenticates *sequence*, not
+  *authorship*, which may be exactly enough here.
 - **Claim half-life measurement — shipped mechanically (v0.6, FS-1;
   §6.2).** `truth stats` computes per-tier half-life from
   invalidation-log data and intake suggests the observed median beside
@@ -659,16 +757,38 @@ the append-only property doing double duty as a research instrument.
 
 ## References
 
-*(Indicative; verify before any external submission.)*
+*(Indicative; verify before any external submission. Entries added
+2026-07-12 with §6.3 were checked against publisher records at addition
+time — volume/issue/pages confirmed — but re-verify DOIs before
+submission all the same.)*
 
-- Lamport, L., Shostak, R., & Pease, M. (1982). The Byzantine Generals
-  Problem. *ACM TOPLAS*, 4(3).
 - Castro, M., & Liskov, B. (1999). Practical Byzantine Fault Tolerance.
   *OSDI '99*.
-- Popper, K. (1959). *The Logic of Scientific Discovery.*
-- Lehman, M. M. (1980). Programs, Life Cycles, and Laws of Software
-  Evolution. *Proceedings of the IEEE*, 68(9).
 - Claessen, K., & Hughes, J. (2000). QuickCheck: A Lightweight Tool for
   Random Testing of Haskell Programs. *ICFP '00*.
-- Shapiro, M., Preguiça, N., Baquero, C., & Zawirski, M. (2011).
+- Fowler, M. (2005). Event Sourcing. martinfowler.com/eaaDev/
+  EventSourcing.html (development draft, December 2005).
+- Haber, S., & Stornetta, W. S. (1991). How to Time-Stamp a Digital
+  Document. *Journal of Cryptology*, 3(2), 99–111.
+- Hardy, N. (1988). The Confused Deputy (or why capabilities might have
+  been invented). *ACM SIGOPS Operating Systems Review*, 22(4), 36–38.
+- Helland, P. (2015). Immutability Changes Everything. *CIDR 2015*;
+  reprinted in *ACM Queue*, 13(9).
+- Kleppmann, M., Wiggins, A., van Hardenberg, P., & McGranaghan, M.
+  (2019). Local-First Software: You Own Your Data, in spite of the
+  Cloud. *Onward! 2019*, 154–178.
+- Kung, H. T., & Robinson, J. T. (1981). On Optimistic Methods for
+  Concurrency Control. *ACM Transactions on Database Systems*, 6(2),
+  213–226.
+- Lamport, L., Shostak, R., & Pease, M. (1982). The Byzantine Generals
+  Problem. *ACM TOPLAS*, 4(3).
+- Lehman, M. M. (1980). Programs, Life Cycles, and Laws of Software
+  Evolution. *Proceedings of the IEEE*, 68(9).
+- Mockapetris, P. (1987). Domain Names — Concepts and Facilities.
+  RFC 1034, IETF.
+- Popper, K. (1959). *The Logic of Scientific Discovery.*
+- Shapiro, M., Preguiça, N., Baquero, C., & Zawirski, M. (2011a).
   Conflict-free Replicated Data Types. *SSS 2011*.
+- Shapiro, M., Preguiça, N., Baquero, C., & Zawirski, M. (2011b). A
+  Comprehensive Study of Convergent and Commutative Replicated Data
+  Types. INRIA Research Report RR-7506.
