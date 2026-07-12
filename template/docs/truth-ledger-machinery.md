@@ -114,12 +114,12 @@ flowchart LR
     D["do the work"]
     E["truth done wk-…<br/>--claim '&lt;new fact&gt;'"]
     F["closed <b>and</b> the resulting<br/>fact is filed — atomic,<br/>both-or-neither"]
-    H["HELD<br/><i>premise stale/diverged —<br/>re-verify the fact first</i>"]
+    H["HELD<br/><i>premise stale/diverged —<br/>re-verify the fact, or redirect<br/>the premise (ADR-013)</i>"]
 
     A --> B
     B -->|"deps done + premises live"| C
     B -->|"a premise died"| H
-    H -.->|"fact re-verified"| B
+    H -.->|"fact re-verified, or truth premise<br/>--supersedes to its corrected claim"| B
     C --> D
     D --> E
     E --> F

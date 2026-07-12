@@ -810,6 +810,62 @@ class TestIssuePremiseMerge(unittest.TestCase):
                                    {"w": ["tr-000000c1"]})
         self.assertEqual(merged["w"], ["tr-000000c1"])
 
+# --------------------------------------------- premise supersede (ADR-013)
+
+class TestSupersedes(unittest.TestCase):
+    def _redirect(self, issue, old, new, ts):
+        return rec("premise", {"issue": issue, "claim": new,
+                               "supersedes": old}, ts=ts)
+
+    def test_redirect_rewrites_merged_premises(self):
+        supers = tm.fold_supersedes(events(
+            self._redirect("wk-00000001", "tr-000000d1", "tr-000000d2",
+                           "2026-07-01T00:00:00+00:00")))
+        out = tm.apply_supersedes({"wk-00000001": ["tr-000000d1"]}, supers)
+        self.assertEqual(out, {"wk-00000001": ["tr-000000d2"]})
+
+    def test_redirect_scoped_to_one_issue(self):
+        supers = tm.fold_supersedes(events(
+            self._redirect("wk-00000001", "tr-000000d1", "tr-000000d2",
+                           "2026-07-01T00:00:00+00:00")))
+        out = tm.apply_supersedes({"wk-00000001": ["tr-000000d1"],
+                                   "wk-00000002": ["tr-000000d1"]}, supers)
+        self.assertEqual(out["wk-00000001"], ["tr-000000d2"])
+        self.assertEqual(out["wk-00000002"], ["tr-000000d1"])
+
+    def test_chain_follows_to_fixed_point_and_dedupes(self):
+        supers = tm.fold_supersedes(events(
+            self._redirect("w", "tr-000000d1", "tr-000000d2",
+                           "2026-07-01T00:00:00+00:00"),
+            self._redirect("w", "tr-000000d2", "tr-000000d3",
+                           "2026-07-01T01:00:00+00:00")))
+        out = tm.apply_supersedes({"w": ["tr-000000d1", "tr-000000d3"]},
+                                  supers)
+        self.assertEqual(out["w"], ["tr-000000d3"])
+
+    def test_cycle_stops_at_first_repeat(self):
+        supers = tm.fold_supersedes(events(
+            self._redirect("w", "tr-000000d1", "tr-000000d2",
+                           "2026-07-01T00:00:00+00:00"),
+            self._redirect("w", "tr-000000d2", "tr-000000d1",
+                           "2026-07-01T01:00:00+00:00")))
+        out = tm.apply_supersedes({"w": ["tr-000000d1"]}, supers)
+        # a->b->a stops on the first repeat; deterministic, no hang
+        self.assertEqual(out["w"], ["tr-000000d1"])
+
+    def test_last_wins_confluent_under_permutation(self):
+        e1 = self._redirect("w", "tr-000000d1", "tr-000000d2",
+                            "2026-07-01T00:00:00+00:00")
+        e2 = self._redirect("w", "tr-000000d1", "tr-000000d3",
+                            "2026-07-01T01:00:00+00:00")
+        for order in ((e1, e2), (e2, e1)):
+            supers = tm.fold_supersedes(events(*order))
+            self.assertEqual(supers[("w", "tr-000000d1")], "tr-000000d3")
+
+    def test_no_redirects_is_identity(self):
+        prem = {"w": ["tr-000000d1"]}
+        self.assertEqual(tm.apply_supersedes(prem, {}), prem)
+
 # ------------------------------------------------- impact query (ADR-005)
 
 class TestImpact(unittest.TestCase):
@@ -906,6 +962,15 @@ CORPUS = [
     ("premise ok", rec("premise", {"issue": "bd-x1",
                                    "claim": "tr-00000001"}), True),
     ("premise missing issue", rec("premise", {"claim": "tr-00000001"}), False),
+    # ---- premise supersede (ADR-013, v0.6.4) ----
+    ("premise supersedes ok", rec("premise", {"issue": "bd-x1",
+                                              "claim": "tr-00000001",
+                                              "supersedes": "tr-00000002"}),
+     True),
+    ("premise supersedes bad ref", rec("premise", {"issue": "bd-x1",
+                                                   "claim": "tr-00000001",
+                                                   "supersedes": "nonsense"}),
+     False),
     ("unknown kind", rec("wish", {"claim": "tr-00000001"}), False),
     # ---- work kernel (ADR-002, v0.5) ----
     ("issue ok", issue_rec(deps=["wk-00000002"],

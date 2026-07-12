@@ -122,7 +122,8 @@ the snapshot cache is deliberately unbuilt until that warning fires).
                                        gate, 008 order coherence, 009
                                        evidence-command screen, 010 session
                                        separation, 011 tombstones-need-a-
-                                       terminal, 012 divergence subtype
+                                       terminal, 012 divergence subtype,
+                                       013 premise supersede (v0.6.4)
 
 ## Install (day 1)
 
@@ -148,6 +149,10 @@ Issues can live in the same ledger as facts — no external tracker needed:
       --evidence-cmd "..." --paths "..."            # claim-at-death
     scripts/truth ready                             # open ∧ deps closed ∧ premises valid
     scripts/truth issues                            # full board with derived status
+    scripts/truth premise wk-xxxx tr-new \
+      --supersedes tr-old                           # redirect a DEAD premise to its
+                                                    # corrected claim (ADR-013) — refused
+                                                    # while the old one still passes ready
 
 `closed` can be reopened (`done --reopen`); `cancelled` is terminal and
 human-gated per ADR-011 — at your own terminal,

@@ -1,5 +1,20 @@
 #!/usr/bin/env python3
-"""truth v0.6.3 -- append-only claims ledger with a native work kernel.
+"""truth v0.6.4 -- append-only claims ledger with a native work kernel.
+
+v0.6.4 (ADR-013, wk-8d966a5b): premise supersede -- `truth premise
+  <issue> <new-tr> --supersedes <old-tr>` appends an auditable redirect
+  the ready/impact folds honor, releasing work HELD by a premise that
+  died and was corrected under a new id (second-deployment finding:
+  before this, the only exit was cancel-and-refile, breaking every
+  reference to the old wk- id). Fold half is permissive and confluent
+  (last-wins per (issue, old) in (ts, id) order, applied AFTER
+  merge_premises so premise-at-birth links redirect too; chains follow
+  to a fixed point, cycles stop at first repeat). Intake half is
+  strict: replacement claim must exist, old must currently be a
+  premise of the issue, and a live/unverified premise is refused
+  (it passes ready as-is -- supersede is for dead premises). The
+  redirect RE-TARGETS ADR-001 validity, never bypasses it: the
+  replacement claim is judged by the same matrix. Canary R10.
 
 v0.6.3 (wk-968bc087): `doctor` warns when the ledger holds work-kernel
   issue records but no discovery file names `truth ready` -- G2's
@@ -437,6 +452,42 @@ def merge_premises(a, b):
             out.setdefault(k, [])
             if c not in out[k]:
                 out[k].append(c)
+    return out
+
+def fold_supersedes(events):
+    """ADR-013: premise redirects, (issue, old_claim) -> new_claim,
+    last-wins in the same confluent (ts, id) total order every other
+    fold uses. A redirect is scoped to ONE issue: superseding a claim
+    for wk-A never touches wk-B's link to the same claim."""
+    ordered = sorted(events, key=lambda ne: (ne[1].get("ts") or "",
+                                             ne[1].get("id") or ""))
+    out = {}
+    for _, ev in ordered:
+        p = ev.get("payload", {})
+        if ev.get("kind") == "premise" and p.get("supersedes"):
+            out[(p.get("issue"), p["supersedes"])] = p.get("claim")
+    return out
+
+def apply_supersedes(premises, supersedes):
+    """ADR-013: rewrite each issue's premise list through its redirect
+    chain (applied AFTER merge_premises, so premise-at-birth links in
+    the issue payload redirect too). Chains follow to a fixed point; a
+    cycle stops at the first repeat rather than looping. The result
+    still goes through join_ready's ADR-001 matrix -- a redirect
+    re-targets premise validity, it never bypasses it."""
+    if not supersedes:
+        return premises
+    out = {}
+    for iid, cs in premises.items():
+        kept = []
+        for c in cs:
+            cur, seen = c, set()
+            while (iid, cur) in supersedes and cur not in seen:
+                seen.add(cur)
+                cur = supersedes[(iid, cur)]
+            if cur not in kept:
+                kept.append(cur)
+        out[iid] = kept
     return out
 
 def native_ready_issues(issues):
@@ -1018,6 +1069,9 @@ def validate_events(events):
                 errors.append(f"line {n}: malformed premise")
             elif not ID_RE.match(str(p.get("claim"))):
                 errors.append(f"line {n}: premise claim ref not tr-hex8")
+            if "supersedes" in p and not ID_RE.match(str(p["supersedes"])):
+                errors.append(f"line {n}: premise supersedes ref not tr-hex8 "
+                              "(ADR-013)")
         elif kind == "issue":
             if not p.get("title"):
                 errors.append(f"line {n}: issue missing title")
@@ -1386,7 +1440,35 @@ def cmd_invalidate_scan(a):
         print(f"invalidate-scan: {len(hits)} claim(s) marked stale")
 
 def cmd_premise(a):
-    rec = append_record("premise", {"issue": a.issue, "claim": a.claim_id})
+    payload = {"issue": a.issue, "claim": a.claim_id}
+    if a.supersedes:
+        # ADR-013 intake gates: the fold is permissive (any recorded
+        # redirect applies, for confluence); intake is strict so a
+        # redirect that could never mean anything fails loudly.
+        if not ID_RE.match(a.supersedes):
+            sys.exit("truth: --supersedes must name a tr- claim id (ADR-013)")
+        if a.supersedes == a.claim_id:
+            sys.exit("truth: a claim cannot supersede itself (ADR-013)")
+        events = load_events()
+        claims, premises = fold(events)
+        issues = fold_issues(events)
+        premises = merge_premises(premises, issue_premises(issues))
+        premises = apply_supersedes(premises, fold_supersedes(events))
+        if a.claim_id not in claims:
+            sys.exit(f"truth: replacement claim {a.claim_id} is not in the "
+                     "ledger -- file the corrected fact first (ADR-013)")
+        if a.supersedes not in premises.get(a.issue, []):
+            sys.exit(f"truth: {a.supersedes} is not currently a premise of "
+                     f"{a.issue} (after redirects) -- nothing to supersede "
+                     "(ADR-013)")
+        old = claims.get(a.supersedes)
+        if old and old["status"] in ("live", "unverified"):
+            sys.exit(f"truth: premise {a.supersedes} is {old['status']} and "
+                     "passes ready as-is -- supersede is for dead premises "
+                     "(stale, diverged, retracted, cannot_verify, missing); "
+                     "re-verify or diverge it first (ADR-013)")
+        payload["supersedes"] = a.supersedes
+    rec = append_record("premise", payload)
     print(json.dumps(rec) if a.json else rec["id"])
 
 def cmd_list(a):
@@ -1573,8 +1655,10 @@ def cmd_ready(a):
     native = native_ready_issues(issues_fold) if issues_fold else None
     issues = tracker_issues(a, native)
     # premise-at-birth links apply whichever source delivered the issues,
-    # so native, --stdin, and adapter paths join identically (ADR-002)
+    # so native, --stdin, and adapter paths join identically (ADR-002);
+    # redirects apply after the merge so payload links redirect too (ADR-013)
     premises = merge_premises(premises, issue_premises(issues_fold))
+    premises = apply_supersedes(premises, fold_supersedes(events))
     ready, annotated = join_ready(issues, claims, premises)
     if a.json:
         print(json.dumps(ready, indent=2))
@@ -1593,6 +1677,7 @@ def cmd_impact(a):
     claims, premises = fold(events)
     issues = fold_issues(events)
     premises = merge_premises(premises, issue_premises(issues))
+    premises = apply_supersedes(premises, fold_supersedes(events))
     rows = impact_report(a.paths, claims, issues, premises)
     if a.json:
         print(json.dumps(rows, indent=2))
@@ -1862,9 +1947,15 @@ def main():
     s.set_defaults(fn=cmd_invalidate_scan)
 
     p = sub.add_parser("premise", help="link a tracker issue (external or wk-) "
-                       "to a claim it depends on")
+                       "to a claim it depends on; --supersedes redirects a "
+                       "dead premise to its corrected claim (ADR-013)")
     p.add_argument("issue")
     p.add_argument("claim_id")
+    p.add_argument("--supersedes", metavar="OLD_TR",
+                   help="dead premise claim this link replaces for the issue "
+                        "-- an auditable redirect the ready-fold honors; "
+                        "refused while the old premise still passes ready "
+                        "(ADR-013)")
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_premise)
 

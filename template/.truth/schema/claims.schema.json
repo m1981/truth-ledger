@@ -303,6 +303,10 @@
               "claim": {
                 "type": "string",
                 "pattern": "^tr-[0-9a-f]{8}$"
+              },
+              "supersedes": {
+                "type": "string",
+                "pattern": "^tr-[0-9a-f]{8}$"
               }
             }
           }
