@@ -1,0 +1,5 @@
+# truth-ledger: branch ledgers merge by line union; the confluent
+# (ts, id) fold derives identical status either merge direction, so
+# nobody hand-resolves ledger conflicts (see docs/adr/ and E3 in
+# .truth/README.md — `truth doctor` checks this line exists).
+.truth/claims.jsonl merge=union
