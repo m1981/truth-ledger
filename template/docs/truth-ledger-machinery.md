@@ -52,20 +52,30 @@ new, attributable, gate-checked event.
 ## 2. Life of a fact — how a claim stays honest
 
 A claim is born with an **evidence command** (how to re-check it) and
-either **paths** (repo facts) or a **TTL** (world facts). The repo
-itself stales it: any commit touching its paths knocks it back to
-*stale* until someone re-verifies.
+either **paths** (repo facts) or a **TTL** (world facts). It is born
+**unverified**: filing runs and hashes the evidence twice, but that
+double-run is a gate, not a verdict — only an independent session's
+`agree` makes it *live*. Evidence attached and evidence confirmed are
+two distinct events, never conflated. The repo itself stales it: any
+commit touching its paths knocks it back to *stale* until someone
+re-verifies.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Live : truth claim (intake gates pass)
+    [*] --> Unverified : truth claim (intake gates pass)
+
+    Unverified --> Live : verdict agree (independent session)
+    Unverified --> Stale : commit touches paths, or TTL expires
+    Unverified --> CannotVerify : verdict cannot_verify
 
     Live --> Stale : commit touches paths, or TTL expires
     Live --> Diverged : verdict diverge (re-run said otherwise)
+    Live --> CannotVerify : verdict cannot_verify (queued if P0)
     Live --> Live : verdict agree (anchor advances)
 
-    Stale --> Live : re-verified (new claim or agree)
-    Diverged --> Live : successor claim filed
+    Stale --> Live : re-verified (agree)
+    Diverged --> Live : verdict agree (dispute resolved)
+    CannotVerify --> Live : evidence fixed, then agree
 
     Live --> Retracted : human-gated tombstone (typed id)
     Stale --> Retracted : human-gated tombstone
@@ -129,21 +139,99 @@ flowchart TB
     O -->|no| X1["not shown"]
     O -->|yes| D{"all --deps<br/>closed?"}
     D -->|no| X2["blocked<br/><i>waits for dependency</i>"]
-    D -->|yes| P{"all --premise<br/>claims still live?"}
-    P -->|no| X3["HELD<br/><i>shown with the dead fact named</i>"]
-    P -->|yes| R["READY ✅"]
+    D -->|yes| P{"premises pass the<br/>ADR-001 matrix?"}
+    P -->|"stale / diverged /<br/>retracted / missing"| X3["HELD<br/><i>shown with the dead fact named</i>"]
+    P -->|"cannot_verify on a<br/>P0 premise"| X3
+    P -->|"live — or unverified /<br/>non-P0 cannot_verify<br/>(pass WITH a warning)"| R["READY ✅"]
 
     style R stroke-width:3px
     style X3 stroke-dasharray: 5 5
 ```
 
+The premise check is a tier-sensitive **matrix** (ADR-001), not a
+binary: `live` passes clean; `unverified` passes with a warning (low
+filing friction is a stated trade); `cannot_verify` blocks only P0
+premises and warns otherwise; `stale`, `diverged`, `retracted`, and
+missing claims always block.
+
 The same gate works with an external tracker (Beads via adapter, or any
 command printing `[{id,title}]` JSON) — the ledger contributes the
-premise filter either way (ADR-004 seam).
+premise filter either way (ADR-004 seam; the source precedence is the
+next diagram).
 
 ---
 
-## 5. The immune system — who guards the guards
+## 5. Where the work comes from — one join, four sources
+
+`truth ready` doesn't care who the tracker is. Sources resolve in a
+fixed precedence order (ADR-002), and the **premise join is applied
+identically to whichever source won** — which is what makes the seam
+and the kernel incapable of disagreeing.
+
+```mermaid
+flowchart TB
+    R["truth ready"] --> S1{"--stdin piped?"}
+    S1 -->|yes| J["ADR-001 premise join<br/><i>same join, every source</i>"]
+    S1 -->|no| S2{"TRUTH_TRACKER_CMD<br/>set?"}
+    S2 -->|yes| J
+    S2 -->|no| S3{"ledger holds<br/>issue records?"}
+    S3 -->|"yes — native<br/>work kernel"| J
+    S3 -->|"no"| S4["bd ready --json<br/>(Beads default)"] --> J
+    J --> OUT["READY / HELD"]
+
+    K["truth issues --ready-json"] -.->|"emits the same adapter contract:<br/>the kernel is itself a tracker source,<br/>so seam and kernel cannot diverge"| S1
+
+    style J stroke-width:3px
+```
+
+**Why it matters:** the ledger stands alone with no tracker, joins any
+tracker that can print `[{id,title}]` JSON, and — because the native
+kernel speaks the same contract through `issues --ready-json` — the
+adapter seam can be tested against the kernel itself. A missing or
+failing tracker degrades with guidance, never a traceback.
+
+---
+
+## 6. Two branches, one truth — union-merge confluence
+
+Ledgers on diverged branches merge by **union** (`.gitattributes`:
+`merge=union`), and the fold replays events in a canonical
+`(timestamp, id)` total order — *not* file order. So both merge
+directions derive identical status.
+
+```mermaid
+flowchart TB
+    subgraph A["branch A appends"]
+        A1["claim tr-x (ts=10:00)"]
+    end
+    subgraph B["branch B appends"]
+        B1["verdict agree tr-x (ts=10:05)"]
+    end
+
+    A -->|"merge A←B"| M1[("file order 1:<br/>claim, verdict")]
+    B -->|"merge B←A"| M2[("file order 2:<br/>verdict, claim")]
+
+    M1 --> F["fold: sort by (ts, id),<br/>then replay"]
+    M2 --> F
+    F --> S["tr-x: live —<br/>identical either direction ✅"]
+```
+
+Three per-field merge disciplines make this safe (paper §6.3), each an
+audit scar: claim **content** is first-writer-wins — a duplicate id
+can never substitute text or evidence (F6); **status** is
+last-writer-wins in `(ts, id)` order (F3); **retraction** is terminal
+— a tombstone can never be resurrected by a later append (G12). A
+backdated duplicate id that tries to game the sort is detected at
+commit (ADR-008), because within one history, file order is append
+order.
+
+**Why it matters:** agents on parallel branches never coordinate, and
+nobody resolves ledger merge conflicts — convergence is a property of
+the fold, not a procedure for the humans.
+
+---
+
+## 7. The immune system — who guards the guards
 
 The machinery distrusts itself. Every safety property is either
 executed regularly or was converted from a norm ("please don't")
@@ -180,7 +268,7 @@ machine*.
 
 ---
 
-## 6. Proposed next: `--accept-cmd` — "done" must be demonstrable
+## 8. Proposed next: `--accept-cmd` — "done" must be demonstrable
 
 Filed upstream as
 [truth-ledger#1](https://github.com/m1981/truth-ledger/issues/1):
