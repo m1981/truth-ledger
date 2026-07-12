@@ -2,9 +2,10 @@
 
 > Reader: anyone assessing what the truth ledger can and cannot enforce against agent behavior | Enables: knowing, per event type, which gates are CLI refusals and which residuals are behavioral — and what the worst case actually is | Update-trigger: a gate ships or a residual closes (current: CLI v0.6.3)
 
-Provenance: adapted from a pilot-session walkthrough (2026-07, pre-v0.6
-knowledge in places); corrected against CLI v0.6.3 and the paper v2 on
-2026-07-12. Session-specific references generalized to their paper
+Provenance: adapted from a second-deployment session walkthrough
+(repo `temporal-go-agent-sdk`, 2026-07 — the same session behind
+`docs/field-notes-sdk-session.md`; pre-v0.6 knowledge in places);
+corrected against CLI v0.6.3 and the paper v2 on 2026-07-12. Session-specific references generalized to their paper
 citations. Semantics source of truth: `.truth/README.md`, the ADRs, and
 [the paper](truth-ledger-paper-v2.md) — this document is a walkthrough,
 not a second home for any contract.
@@ -111,6 +112,14 @@ adversaries). Asymmetric by design: self-`diverge` and
 self-`cannot_verify` stay allowed — self-incrimination runs against
 interest. The recheck half is enforced mechanically, including the
 ADR-009 refusal to execute unscreened evidence in a verifier session.
+
+**Second hazard — the scribe (ADR-010 amendment, 2026-07-13):** the
+gate keys on the *record's* session, so a courier scribing another
+session's verdict misfires it both ways — an author-courier gets a
+genuinely independent `agree` refused, and a true self-verdict
+launders through any other scribe. Operating rule: verifiers file
+their own verdicts; an unavoidable scribe files under the verifier's
+identity (`TRUTH_SESSION=<verifier-session>`).
 
 ---
 

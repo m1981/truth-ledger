@@ -54,6 +54,8 @@ Work through these in order; each rung removes one manual step.
 
 **Rung 3 — automate the verification dispatch.** Today a human runs `dispatch` and pastes into a fresh session. Mechanize the routing: a scheduled job picks unverified P0/P1 claims (or queue items), feeds `dispatch` output to a fresh agent session via API — the isolation requirement (G11) is *easier* to guarantee programmatically than by human copy-paste discipline, since the script provably sends nothing but the fixed prompt and the record — and lets the verifier's `verdict --recheck` + judgment land as appends. The human courier is replaced while the fresh-context property is kept. *Field note: the pilot runs this rung today — an operator session spawns fresh subagent sessions carrying dispatch-only context, including two verifiers that independently caught the claim author's scope overreach (see [the paper §2](truth-ledger-paper-v2.md)).*
 
+**Attribution caveat (ADR-010 amendment, 2026-07-13).** The verdict of record must carry the *verifier's* session, or the session-separation gate misfires both ways. So: the verifier session files its own verdict — never route verification to a read-only (plan-mode) peer whose verdicts a writer then scribes. If a scribe is ever unavoidable, it files under the verifier's identity (`TRUTH_SESSION=<verifier-session> scripts/truth verdict …`), which the CLI already honors. Do not scribe `agree` under your own session.
+
 **Rung 4 — automate the queue's surfacing, not its verdicts.** Pipe `truth queue` into whatever the humans already look at (Slack, PR comments, dashboard), with the age numbers. `doctor` already warns past 14 days; wire that warning to a channel.
 
 ## 4. The three humans you cannot eliminate — and should not try

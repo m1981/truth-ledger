@@ -638,10 +638,12 @@ though item 2 names the largest single *unanswered question*.
 
 The friction budget is stated as a design constraint, not a marketing
 claim: one command to file a claim, four lines of instruction-file text
-for an agent to discover the layer exists. In practice, three operating
-conventions earned in the pilot are worth adopting alongside the code
-itself — the first is mechanically enforced at intake since v0.6, the
-other two remain discipline:
+for an agent to discover the layer exists. In practice, five operating
+conventions earned in the field are worth adopting alongside the code
+itself — three from the pilot (the first mechanically enforced at
+intake since v0.6, the next two discipline) and two from a second
+deployment (2026-07-12, `docs/field-notes-sdk-session.md`; same
+operator, so §8 item 1's caveat extends to them):
 
 - **Never write a repo-wide clause backed by a package-scoped command.**
   Name the by-design survivors explicitly instead of relying on a
@@ -655,6 +657,19 @@ other two remain discipline:
   70 docs"` will mechanically diverge as the corpus grows even though the
   claimed fact stays true); prefer a stable sentinel like `... && echo
   CLEAN`.
+- **Scope `--paths` to the narrowest set that actually backs the claim**
+  — not only for correctness but for *blast radius*: every claim
+  anchored to a path re-stales when any commit touches it, so a broadly
+  scoped watch drags unrelated-but-true claims into the verification
+  queue on every edit to a hot file (second deployment, 2026-07-12: one
+  commit to a shared file re-staled 8 claims, 6 of them still true).
+- **Reserve an ADR namespace before writing your own ADRs.** The
+  template owns `docs/adr/NNN` and extends that series on `copier
+  update`; number your project's ADRs in a disjoint space (a separate
+  directory, or a distinct prefix such as `P###`) from day one. Ledger
+  claims cite ADR numbers immutably, so a collision discovered after
+  the fact cannot be renumbered away — only namespaced going forward
+  (second deployment hit exactly this).
 
 Requirements: POSIX, git, Python 3; the `jsonschema` package if the
 schema-drift detector should run armed rather than fail closed (block,
