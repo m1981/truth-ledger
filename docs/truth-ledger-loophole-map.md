@@ -1,6 +1,6 @@
 # The Loophole Map — Five Agent Events, Simulated
 
-> Reader: anyone assessing what the truth ledger can and cannot enforce against agent behavior | Enables: knowing, per event type, which gates are CLI refusals and which residuals are behavioral — and what the worst case actually is | Update-trigger: a gate ships or a residual closes (current: CLI v0.6.3)
+> Reader: anyone assessing what the truth ledger can and cannot enforce against agent behavior | Enables: knowing, per event type, which gates are CLI refusals and which residuals are behavioral — and what the worst case actually is | Update-trigger: a gate ships or a residual closes (current: CLI v0.6.4)
 
 Provenance: adapted from a second-deployment session walkthrough
 (repo `temporal-go-agent-sdk`, 2026-07 — the same session behind
@@ -54,8 +54,12 @@ flowchart TD
 refusals, not warnings — the quantifier–scope gate targets the paper's
 dominant real failure shape (both pilot divergences, paper §2). The
 gates drawn are the agent-relevant subset; the full refusal list (G1
-anchor, G6 determinism, INFERRED basis, …) is in §1 of the paper. No
-technical hole inside `claim`.
+anchor, G6 determinism, INFERRED basis, …) is in §1 of the paper. One
+narrow residual *inside* the protection metadata (found in the
+meta-repo, 2026-07-13): INV-M checks that a literal path matches a
+tracked file, but a tracked **symlink** passes and can never fire —
+git sees only the unchanging link, not the target. Watch real paths.
+Otherwise: no technical hole inside `claim`.
 
 ---
 
@@ -84,6 +88,18 @@ finish-line command passes). Not yet shipped — today `done` takes the
 agent's word on the *acceptance criterion* (the completion claim's
 evidence, if VERIFIED, still runs through intake). That's the honest
 residual (upstream truth-ledger#1).
+
+**The HELD dead-end has an exit since v0.6.4 (ADR-013):**
+`truth premise <issue> <new-tr> --supersedes <old-tr>` redirects a
+genuinely dead premise to its corrected claim — refused while the old
+premise still passes ready, judged by the same ADR-001 matrix after.
+But note the **inherited residual**: a fresh *unverified* replacement
+passes that matrix with only a warning, so a drifting agent could free
+its own HELD work by filing a plausible unverified "correction." This
+is ADR-001's unverified-passes trade surfacing through one more door,
+not a new hole — and the redirect record permanently names who opened
+it, with the replacement claim sitting in the ledger for any verifier
+to attack.
 
 ---
 
@@ -155,7 +171,7 @@ agent.
 |---|---|---|---|
 | A. Bootstrap | Agent never loads instructions, hook-less harness | Behavioral (mitigated: G2 check + v0.6.3 kernel warn, whisper, FS-4 digest) | Known, §8.5 |
 | B. Assert | Talks without filing | Behavioral | Known, §1 |
-| C. Finish | `done` trusts the acceptance criterion (no `--accept-cmd`) | Behavioral | Proposed-next (upstream #1) |
+| C. Finish | `done` trusts the acceptance criterion (no `--accept-cmd`); a supersede can free HELD work with an unverified replacement (warned, auditable) | Behavioral | accept-cmd: proposed-next (upstream #1); HELD exit: ADR-013, v0.6.4 |
 | D. Verify | Self-`agree` refused; session identity self-attested | Enforced as refusal; bypass is one visible export (F4 class) | ADR-010, v0.6 |
 | E. Concurrent | Fresh-id timestamp forgery (dup-id substitution now detected) | Accepted residual | §8.6, ADR-008 |
 

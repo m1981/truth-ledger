@@ -147,6 +147,8 @@ A retracted claim is a **tombstone**: terminal, forever. Later verdicts bounce o
 
 `truth premise <issue> <claim>` declares "this work item stands on this fact." Now the fold's output has teeth: `truth ready` intersects your tracker's unblocked issues with premise health, and an issue standing on a stale or diverged claim shows as **HELD** — before any agent picks it up. Without premises, the ledger is a dashboard. With them, it's a gate.
 
+One more verb for the honest edge case (v0.6.4, ADR-013): when a premise dies *genuinely* — the fact was wrong, and its correction lives under a new claim id — re-verifying would be dishonest, and the work would otherwise stay HELD forever. `truth premise <issue> <new-id> --supersedes <old-id>` files an auditable redirect: refused while the old premise still passes ready, and the replacement is judged by the same matrix afterward. It re-targets protection; it never removes it.
+
 ---
 
 ## Part 4 — Science You Might Not Know Yet (why smart people built it this way)
@@ -281,6 +283,7 @@ Lamport, Shostak & Pease, *The Byzantine Generals Problem* (1982) — read the f
 | `truth verdict <id> agree\|diverge\|cannot_verify --basis "<what you did>"` | Your judgment, with receipts |
 | `TRUTH_HUMAN=1 truth verdict <id> retracted --basis "<why>"` — then type the id back when prompted (headless human use: add `TRUTH_HUMAN_ACK=<id>`) | Kill a claim forever (humans, at a terminal — ADR-011) |
 | `truth premise <issue> <claim-id>` | Tie work to a fact |
+| `truth premise <issue> <new-id> --supersedes <old-id>` | Redirect a genuinely dead premise to its corrected claim (ADR-013; refused while the old one still passes) |
 | `truth ready` | Which work is epistemically safe to start |
 | `truth queue` | Daily: what needs a human (empty = carry on) |
 | `truth impact <path>...` | Before editing: what knowledge would this edit endanger? (read-only) |
@@ -308,7 +311,7 @@ stateDiagram-v2
     retracted --> [*]: terminal
 ```
 
-**Golden rules**: never edit the ledger · status changes are new records · UNVERIFIED beats unlabeled · P-tier = cost of being wrong, not confidence · stale ≠ false, stale = re-check first.
+**Golden rules**: never edit the ledger · status changes are new records · UNVERIFIED beats unlabeled · P-tier = cost of being wrong, not confidence · stale ≠ false, stale = re-check first · watch real files — a symlinked path is a tripwire that can never fire (git tracks the link, not the target).
 
 ## Appendix B — FAQ
 
@@ -322,7 +325,9 @@ stateDiagram-v2
 
 **My verdict was refused — "retraction is a human decision."** Correct behavior. Verifiers diverge; humans tombstone. If you're a human at a keyboard, re-run in your own terminal with `TRUTH_HUMAN=1` and type the claim's id back at the confirmation prompt (headless: `TRUTH_HUMAN_ACK=<exact-id>` too — `TRUTH_HUMAN=1` alone is refused without a terminal, ADR-011). If you're an agent reading this: file the diverge and say why it should die; the queue will bring a human.
 
-**`truth ready` says HELD — but I checked, the premise is fine!** Then say so on the record: re-verify the premise claim (`verdict <id> agree --basis ...`) and `ready` will release the issue. HELD isn't the system claiming the fact is false — it's the system refusing to let work proceed on a fact *nobody has re-checked since the ground moved*.
+**`truth ready` says HELD — but I checked, the premise is fine!** Then say so on the record: re-verify the premise claim (`verdict <id> agree --basis ...`) and `ready` will release the issue. HELD isn't the system claiming the fact is false — it's the system refusing to let work proceed on a fact *nobody has re-checked since the ground moved*. And if the premise is *genuinely dead* — wrong, with the corrected fact filed under a new id — don't fake an agree: redirect it with `truth premise <issue> <new-id> --supersedes <old-id>` (ADR-013, v0.6.4).
+
+**The fact legitimately changed — how do I "update" a claim?** You don't edit; you replace, in death-first order. Run `truth verdict <old-id> --recheck` — the hash mismatch files the diverge for you, mechanically and honestly — *then* file the corrected claim. The near-duplicate gate enforces this order: it refuses a successor while the old claim is still live, which is the system making sure the ledger never holds two live contradictory truths.
 
 **Do I need Beads/a work tracker?** No — and since v0.5 you don't even need one for `truth ready`: the ledger ships a native work kernel (`truth issue --premise` / `start` / `done --claim`), so work items can live in the same ledger as facts and the broken-premise gate works with zero external tools. Prefer an external tracker? The join reads a JSON array of `{id, title}` issues from `TRUTH_TRACKER_CMD="your-cmd"` or a pipe (`your-tracker export --json | truth ready --stdin`), with Beads (`bd ready --json`) as the fallback default — note the native kernel outranks that default as soon as any issue record exists. With neither, the ledger still stands alone as claims + verdicts + queue: a dashboard instead of a gate.
 

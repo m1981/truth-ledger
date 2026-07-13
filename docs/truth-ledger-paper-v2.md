@@ -5,11 +5,12 @@
 `truth-ledger-paper.md` (audit, frozen at v0.4) and
 `truth-ledger-field-notes.md` (deployment, formerly living) — both now
 retired to `docs/archive/`. Artifact version audited:
-v0.4. Artifact version deployed in the pilot: v0.5.3 (the template has
-since moved to v0.6.2, including the v0.6 solo-regime hardening batch —
-ADR-007 through ADR-012 plus FS-1/FS-2, which converts several of this
-paper's "accepted" and "future work" items below into shipped
-mechanisms, noted inline where they land; pilot sync pending, §2). Pilot: one multi-component
+v0.4. Artifact version deployed in the pilot: v0.5.3 at day-0 (the
+template has since moved to v0.6.4 — the v0.6 solo-regime hardening
+batch, ADR-007 through ADR-012 plus FS-1/FS-2, then ADR-013's premise
+supersede — which converts several of this paper's "accepted" and
+"future work" items below into shipped mechanisms, noted inline where
+they land; the pilot synced to v0.6.4 on 2026-07-13, §2). Pilot: one multi-component
 kitchen-manufacturing monorepo (domain core, catalog service, ERP, CAM, two
 adapters), one solo developer, LLM agent sessions doing the implementation
 work, day-0 2026-07-08. All quantitative claims in §2 are self-reported by
@@ -167,7 +168,12 @@ with premise validity, tier-sensitive: `live` passes; `unverified` passes
 with a warning; `cannot_verify` blocks only P0 premises; `stale`,
 `diverged`, `retracted`, and missing claims always block. Work may proceed
 on an unverified premise that later proves false — a stated trade for low
-filing friction, with a named fallback if warning fatigue appears.
+filing friction, with a named fallback if warning fatigue appears. Since
+v0.6.4 (ADR-013) a *genuinely dead* premise — the fact was wrong and its
+correction lives under a new id — can be redirected by an auditable
+supersede event; the redirect is refused while the old premise still
+passes ready, and the replacement is judged by this same matrix, so it
+re-targets protection rather than removing it.
 
 That is the entire mechanism: an event log, a derivation function, entry
 gates, exit triggers, an independent recheck, and a policy join. Nothing
@@ -193,7 +199,7 @@ Measured as of 2026-07-09:
 | Concurrent agent sessions writing one ledger | 6 interleaved, zero corruption |
 | Tripwire recall & false-alarm rate (post-commit scan, one real refactor) | 1/1 staled when it should have (recall), 0 false alarms that round (precision signal; both n=1) |
 | Seeded faults, this repo's template canary | the suite prints its own count — no number restated here, since the suite has grown with every mechanism since v0.4's 19 (work kernel, spec-health/doc-health satellites, F7/ADR-006, INV-M, S4, the impact verb's W-faults, and the v0.6 hardening batch's Q/B/E/V/H/M faults) and is no longer frozen; Appendix B |
-| Seeded faults, the pilot's downstream canary | grew 19 → 42 → 45 → 48 → 49 in step with the pre-v0.5.4 merges, matching the template through v0.5.3 (F7/ADR-006 synced 2026-07-09); the template has grown well past that since — pilot sync is pending, so the two suites diverge until the next `copier update` (Appendix B) |
+| Seeded faults, the pilot's downstream canary | grew 19 → 42 → 45 → 48 → 49 in step with the pre-v0.5.4 merges, matching the template through v0.5.3 (F7/ADR-006 synced 2026-07-09); diverged from the template until the pilot re-synced via `copier update` — to v0.6.2 (released tag) and then to v0.6.4 on 2026-07-13, zero-conflict, all suites green post-update (Appendix B) |
 
 **The dominant real failure mode is scope overreach, not hallucination.**
 Both genuine divergences shared one shape: a *correct* evidence command
@@ -355,8 +361,10 @@ One pattern recurred across every new mechanism the pilot grew: **facts
 restated in prose rot; facts cited by id stay checkable** — the same
 structural growth Lehman documented for code itself, absent explicit
 counter-effort (Lehman, 1980), applied here to knowledge about code rather
-than the code. Three mechanisms fell out of this observation, all now
-upstream in the project template:
+than the code. Four mechanisms fell out of this observation — the first
+three grown in the pilot and shipped upstream in the project template,
+the fourth grown in the template's own meta-repo (a third deployment
+site, 2026-07-12):
 
 - **Work kernel** — work items are ledger records with a premise declared
   at birth and a completion claim filed at death; readiness requires open
@@ -371,6 +379,19 @@ upstream in the project template:
   pilot's 105 live markdown files found decay **concentrated entirely in
   pre-ledger prose** — every document written under the citation
   convention came back clean but one routing gap.
+- **doc-coverage claims** — a VERIFIED claim binding a document's
+  load-bearing coverage to the code surface it describes, by watching
+  *both* (the doc's path and the code's) with a sentinel evidence
+  recipe. Code growth then mechanically stales the claim, converting
+  "does the doc still cover this?" from a hoped-for review into a queue
+  item. Installed in the meta-repo after a manual review found its
+  instruction file documenting only half the CLI (the facts verbs, not
+  the work kernel — the exact desync class spec-health cannot see,
+  since it guards cited ids, not coverage). Across the four template
+  releases that followed, the tripwires forced doc re-review each time;
+  the residual, learned the same week: recipes narrower than their
+  sentences survive intake (one was retracted for it), and a watch on a
+  symlink can never fire (Appendix A, INV-M).
 
 That last result is evidence for a claim the original design never
 explicitly made: this isn't only a detector of decayed facts after the
@@ -761,7 +782,7 @@ the safe default) instead of running unarmed and silently skipping.
 | INV-J | Re-verification is durable across scans | One re-verified claim re-staled with no new changes | Seeded fault |
 | INV-K | Retraction requires `TRUTH_HUMAN=1` **plus** an interactive typed-id confirmation or `TRUTH_HUMAN_ACK=<exact-id>` (ADR-011, v0.6) | One retraction accepted with the variable alone, headless | Seeded fault (H-faults) — still self-attested rather than identity-verified, but the one-export bypass is closed; see F4, §4 |
 | INV-L | The drift detector is armed or the suite fails | One green run with the schema unchecked | Armed-detector test |
-| INV-M | Every `evidence_path` on an accepted claim matches ≥1 tracked file at filing time, or is an explicit glob | One accepted claim whose tripwire can never fire | Seeded fault (`FAULT T`), shipped v0.5.4 |
+| INV-M | Every `evidence_path` on an accepted claim matches ≥1 tracked file at filing time, or is an explicit glob | One accepted claim whose tripwire can never fire | Seeded fault (`FAULT T`), shipped v0.5.4. Known residual (found by inspection, meta-repo, 2026-07-13): a tracked **symlink** passes the literal-path check but can never fire — git tracks the link, which never changes, not the target. Watch real paths; an intake warning on symlink literals is a candidate hardening if the class recurs |
 | INV-N | Issue-fold premise protection (ADR-001) cannot be stripped by an appended duplicate `wk-` id | One HELD issue silently flipped to READY | Seeded fault (FAULT R9) — fixed at the fold level (ADR-006): duplicate issue ids are first-wins, identical to INV-G's claims-side mechanism; the backdated-duplicate composition is detected at commit since v0.6 (ADR-008), with INV-G's same residual — fresh-id forgery while `ts`/`actor` remain unsigned (§8 item 6) |
 
 ## Appendix B. Reproduction
