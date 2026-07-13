@@ -92,7 +92,8 @@ residual (upstream truth-ledger#1).
 **The HELD dead-end has an exit since v0.6.4 (ADR-013):**
 `truth premise <issue> <new-tr> --supersedes <old-tr>` redirects a
 genuinely dead premise to its corrected claim — refused while the old
-premise still passes ready, judged by the same ADR-001 matrix after.
+premise is live or unverified (the states needing no rescue), judged by
+the same ADR-001 matrix after.
 But note the **inherited residual**: a fresh *unverified* replacement
 passes that matrix with only a warning, so a drifting agent could free
 its own HELD work by filing a plausible unverified "correction." This

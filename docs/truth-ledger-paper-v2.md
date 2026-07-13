@@ -171,8 +171,9 @@ on an unverified premise that later proves false — a stated trade for low
 filing friction, with a named fallback if warning fatigue appears. Since
 v0.6.4 (ADR-013) a *genuinely dead* premise — the fact was wrong and its
 correction lives under a new id — can be redirected by an auditable
-supersede event; the redirect is refused while the old premise still
-passes ready, and the replacement is judged by this same matrix, so it
+supersede event; the redirect is refused while the old premise is live
+or unverified (the states needing no rescue), and the replacement is
+judged by this same matrix, so it
 re-targets protection rather than removing it.
 
 That is the entire mechanism: an event log, a derivation function, entry

@@ -147,7 +147,7 @@ A retracted claim is a **tombstone**: terminal, forever. Later verdicts bounce o
 
 `truth premise <issue> <claim>` declares "this work item stands on this fact." Now the fold's output has teeth: `truth ready` intersects your tracker's unblocked issues with premise health, and an issue standing on a stale or diverged claim shows as **HELD** — before any agent picks it up. Without premises, the ledger is a dashboard. With them, it's a gate.
 
-One more verb for the honest edge case (v0.6.4, ADR-013): when a premise dies *genuinely* — the fact was wrong, and its correction lives under a new claim id — re-verifying would be dishonest, and the work would otherwise stay HELD forever. `truth premise <issue> <new-id> --supersedes <old-id>` files an auditable redirect: refused while the old premise still passes ready, and the replacement is judged by the same matrix afterward. It re-targets protection; it never removes it.
+One more verb for the honest edge case (v0.6.4, ADR-013): when a premise dies *genuinely* — the fact was wrong, and its correction lives under a new claim id — re-verifying would be dishonest, and the work would otherwise stay HELD forever. `truth premise <issue> <new-id> --supersedes <old-id>` files an auditable redirect: refused while the old premise is live or unverified (the states that need no rescue), and the replacement is judged by the same matrix afterward. It re-targets protection; it never removes it.
 
 ---
 
@@ -283,7 +283,7 @@ Lamport, Shostak & Pease, *The Byzantine Generals Problem* (1982) — read the f
 | `truth verdict <id> agree\|diverge\|cannot_verify --basis "<what you did>"` | Your judgment, with receipts |
 | `TRUTH_HUMAN=1 truth verdict <id> retracted --basis "<why>"` — then type the id back when prompted (headless human use: add `TRUTH_HUMAN_ACK=<id>`) | Kill a claim forever (humans, at a terminal — ADR-011) |
 | `truth premise <issue> <claim-id>` | Tie work to a fact |
-| `truth premise <issue> <new-id> --supersedes <old-id>` | Redirect a genuinely dead premise to its corrected claim (ADR-013; refused while the old one still passes) |
+| `truth premise <issue> <new-id> --supersedes <old-id>` | Redirect a genuinely dead premise to its corrected claim (ADR-013; refused while the old one is live or unverified) |
 | `truth ready` | Which work is epistemically safe to start |
 | `truth queue` | Daily: what needs a human (empty = carry on) |
 | `truth impact <path>...` | Before editing: what knowledge would this edit endanger? (read-only) |
