@@ -70,7 +70,7 @@ _tasks:
   - command: "grep -qxF '.truth/claims.jsonl merge=union' .gitattributes 2>/dev/null || printf '%s\\n' '.truth/claims.jsonl merge=union' >> .gitattributes"
 
   # Permissions must survive updates (a pulled-in file diff resets them).
-  - command: "chmod +x scripts/truth scripts/check-truth.sh scripts/truth-canary.sh scripts/install-hooks.sh scripts/spec-health.sh scripts/doc-health.sh scripts/truth-bd-adapter.sh"
+  - command: "chmod +x scripts/truth scripts/check-truth.sh scripts/truth-canary.sh scripts/install-hooks.sh scripts/spec-health.sh scripts/doc-health.sh scripts/truth-bd-adapter.sh scripts/session-close.sh"
 
   # N3 — hooks only where a repo already exists, shims only, no commits.
   # On update, install-hooks.sh is safe to re-run (idempotent overwrite of
