@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Meta-repo release coherence (untemplated, like the whisper hook —
+# consumers don't release the template). Copier resolves template
+# versions from GIT TAGS: an untagged version is invisible to
+# `copier update`, and a mispointed tag ships the wrong tree.
+#
+# Two arms:
+#   WARN  — CLI docstring states vX but no tag vX exists (legitimate
+#           mid-development; becomes a release bug only if forgotten).
+#   FAIL  — tag vX exists but the tree it points at does not state vX
+#           (the tag is on the wrong commit; always wrong, blocks push).
+#
+# TAG_CHECK_VERSION overrides the detected version (test hook only).
+set -u
+V="${TAG_CHECK_VERSION:-$(sed -n '2s/.*truth v\([0-9][0-9.]*\).*/\1/p' template/scripts/truth)}"
+if [ -z "$V" ]; then
+  echo "tag-check: could not read a version from template/scripts/truth line 2" >&2
+  exit 1
+fi
+if ! git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
+  echo "tag-check: WARN -- CLI states v$V but tag v$V does not exist." >&2
+  echo "  Consumers sync via copier, which resolves versions from tags;" >&2
+  echo "  an untagged release is invisible to them. When the release is" >&2
+  echo "  complete: git tag v$V && git push --tags" >&2
+  exit 0
+fi
+if ! git show "refs/tags/v$V:template/scripts/truth" 2>/dev/null \
+    | sed -n '2p' | grep -q "truth v$V "; then
+  echo "tag-check: FAIL -- tag v$V exists but its tree does not state" >&2
+  echo "  v$V on template/scripts/truth line 2: the tag points at the" >&2
+  echo "  wrong commit. Fix: git tag -f v$V <correct-commit> (before it" >&2
+  echo "  is pushed) or tag the corrected release as a new version." >&2
+  exit 1
+fi
+exit 0
