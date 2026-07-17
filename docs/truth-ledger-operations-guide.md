@@ -1,6 +1,6 @@
 # Truth Ledger — Operations Guide: Triggers, Observability, and Automation
 
-> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: v0.7.0 — one surface change since the v0.6.2 map below: `done` now executes a declared acceptance oracle (ADR-014), see the work-kernel row; v0.6.3 added output within doctor, v0.6.4 a flag within premise)
+> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: v0.7.1 — two surface changes since the v0.6.2 map below: `done` executes a declared acceptance oracle (ADR-014, v0.7.0) and `impact --inverse` is the backward-trace audit row (issue #5, v0.7.1); v0.6.3 added output within doctor, v0.6.4 a flag within premise)
 
 ## 1. The trigger map — every point where the ledger executes
 
@@ -23,6 +23,7 @@ The table below is the full trigger surface — some rows human/agent-initiated,
 | Triage | `truth queue` | Human, daily | ✅ The *surfacing*; not the deciding |
 | Efficacy metrics | `truth stats [--json] [--since ts]` (status/tier counts, verdict rates by subtype, per-tier claim half-life, queue aging — the mechanical half of the monthly audit, v0.6/FS-1) | Human, monthly (or CI report) | ✅ The *measuring*; the hand-audit judgment stays human (§4) |
 | Health | `doctor` + canary | Human, weekly | ✅ Fully (CI cron) |
+| Backward-trace audit | `truth impact --inverse [--under dir]` — tracked files no active claim watches (24765; exit 4 = dark files exist, gateable; v0.7.1/issue #5) | Human or CI, weekly | ✅ The *surfacing*; dark-file triage (adopt/attic/delete) stays human |
 
 The two bolded rows are the system's heartbeat — they make knowledge decay *mechanical* instead of vigilance-dependent. If those two hooks are not firing, you do not have a truth ledger; you have a diary.
 

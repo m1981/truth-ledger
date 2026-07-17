@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.7.0 -- seeded-fault acceptance suite (v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn).
+# truth-canary.sh v0.7.1 -- seeded-fault acceptance suite (v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -1046,6 +1046,66 @@ if $T validate >/dev/null 2>&1; then
   ok "ledger with acceptance records validates (schema mirror in sync)"
 else
   miss "acceptance records fail validate"; $T validate || true
+fi
+
+say "FAULT W5 (issue #5): impact --inverse lists dark files, keeps watched ones, exits 4"
+echo "dark" > lone.txt
+mkdir -p watched-dir && echo "wf" > watched-dir/f.txt
+git add lone.txt watched-dir && git commit -qm "canary: inverse fixtures" --no-verify
+INV_OUT=$($T impact --inverse 2>/dev/null); INV_RC=$?
+if [ "$INV_RC" -eq 4 ] && printf '%s\n' "$INV_OUT" | grep -qx "lone.txt"; then
+  ok "dark file lone.txt listed, exit 4"
+else
+  miss "inverse missed lone.txt or wrong exit ($INV_RC)"
+fi
+# CID_R10A is STALE and watches r10.txt -- stale is knowledge needing
+# re-check, not absence: r10.txt must NOT be dark.
+if printf '%s\n' "$INV_OUT" | grep -qx "r10.txt"; then
+  miss "stale claim's watched file r10.txt reported dark"
+else
+  ok "stale claim still watches: r10.txt not dark"
+fi
+
+say "FAULT W6 (issue #5): fully watched --under scope exits 0 silent"
+$T claim "watched-dir contents are canary fixtures" --class UNVERIFIED \
+   --paths "watched-dir/**" >/dev/null
+if $T impact --inverse --under watched-dir >/dev/null 2>&1; then
+  ok "fully watched scope: exit 0"
+else
+  miss "fully watched scope did not exit 0"
+fi
+
+say "FAULT W7 (issue #5): retraction kills the watch -- file goes dark again"
+CID_W7=$($T claim "lone.txt is a canary fixture" --class UNVERIFIED --paths "lone.txt")
+if $T impact --inverse 2>/dev/null | grep -qx "lone.txt"; then
+  miss "lone.txt dark despite an active claim watching it"
+else
+  ok "active claim watching lone.txt removes it from dark"
+fi
+TRUTH_HUMAN=1 TRUTH_HUMAN_ACK="$CID_W7" $T verdict "$CID_W7" retracted \
+  --basis "canary: fixture retired" >/dev/null 2>&1
+if $T impact --inverse 2>/dev/null | grep -qx "lone.txt"; then
+  ok "retracted claim's watch died: lone.txt dark again"
+else
+  miss "retracted claim still counted as watching lone.txt"
+fi
+
+say "FAULT W8 (issue #5): usage refusals -- positionals, dangling flags, empty scope"
+if $T impact --inverse lone.txt >/dev/null 2>&1; then
+  miss "--inverse accepted positional paths"
+else
+  ok "--inverse with positional paths refused"
+fi
+if $T impact --under watched-dir lone.txt >/dev/null 2>&1; then
+  miss "--under accepted without --inverse"
+else
+  ok "--under without --inverse refused"
+fi
+$T impact --inverse --under no-such-dir >/dev/null 2>&1; W8_RC=$?
+if [ "$W8_RC" -eq 2 ]; then
+  ok "empty scope exits 2 (usage), never a false-green 0"
+else
+  miss "empty scope exited $W8_RC instead of 2"
 fi
 
 say ""

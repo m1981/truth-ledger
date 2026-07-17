@@ -290,6 +290,7 @@ Lamport, Shostak & Pease, *The Byzantine Generals Problem* (1982) — read the f
 | `truth ready` | Which work is epistemically safe to start |
 | `truth queue` | Daily: what needs a human (empty = carry on) |
 | `truth impact <path>...` | Before editing: what knowledge would this edit endanger? (read-only) |
+| `truth impact --inverse [--under <dir>]` | The backward question: which tracked files does the ledger know nothing about? (exit 4 when dark files exist; issue #5) |
 | `truth stats` | Monthly: status/tier counts, verdict rates, claim half-life, queue aging |
 | `truth doctor` | After any repo surgery |
 

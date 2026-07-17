@@ -1,5 +1,23 @@
 #!/usr/bin/env python3
-"""truth v0.7.0 -- append-only claims ledger with a native work kernel.
+"""truth v0.7.1 -- append-only claims ledger with a native work kernel.
+
+v0.7.1 (issue #5, wk-bd379821): `impact --inverse` -- the backward
+  trace (ISO/IEC/IEEE 24765 bidirectional traceability). Forward impact
+  answers "what knowledge does editing these paths endanger?"; inverse
+  answers "which tracked files does the ledger know nothing about?" --
+  the question a curation-only ledger cannot ask itself (field audit:
+  8 of 9 sampled modules untraced, invisible by construction). Joins
+  `git ls-files` against the union of evidence_paths globs of ACTIVE
+  claims -- every status except retracted: a stale claim still names
+  its paths (it needs re-verification, the file is not dark); only
+  retraction kills the watch. Same match_paths matcher as the scan and
+  forward impact (ADR-005: a second matcher implementation is
+  forbidden). Read-only, no fold change, no new record kind. Scoping:
+  --under <dir> plus repeatable --exclude <prefix>; anything smarter
+  (inventories, verdict classes) is a downstream satellite's job. Exit
+  0 when the scope is fully watched / 4 when dark files exist --
+  distinct from forward impact's 3 so satellites can gate on each
+  separately. Canary FAULTS W5-W8.
 
 v0.7.0 (ADR-014, wk-eb59c649, upstream issues #1+#2): acceptance oracles.
   `truth issue --accept-cmd <cmd> [--accept-kind verification|validation]`
@@ -988,6 +1006,36 @@ def impact_report(query_paths, claims, issues, premises):
     rows.sort(key=lambda r: (r["tier"] or "P9", r["claim"]))
     return rows
 
+def inverse_report(tracked, claims, under=None, excludes=()):
+    """Issue #5: the backward trace (24765). Returns {"dark": [paths],
+    "considered": n} -- the tracked files (optionally scoped to --under,
+    minus --exclude prefixes) matched by NO evidence_path glob of any
+    active claim. Active = every status except retracted: stale and
+    diverged claims still name their paths (knowledge needing re-check,
+    not absence of knowledge); a retracted claim's watch died with it.
+    Reuses match_paths -- the scan, forward impact, and this verb must
+    agree on what "watched" means or the three will drift apart
+    (ADR-005). Enumeration only: no module awareness, no auto-filing --
+    what to DO about a dark file (adopt/attic/delete) is a human verb
+    downstream."""
+    def scoped(path):
+        if under:
+            u = under.rstrip("/")
+            if path != u and not path.startswith(u + "/"):
+                return False
+        for ex in excludes:
+            e = ex.rstrip("/")
+            if path == e or path.startswith(e + "/"):
+                return False
+        return True
+    patterns = sorted({p for e in claims.values()
+                       if e["status"] != "retracted"
+                       for p in (e["claim"]["payload"].get("evidence_paths")
+                                 or [])})
+    considered = [p for p in tracked if scoped(p)]
+    dark = [p for p in considered if not match_paths(p, patterns)]
+    return {"dark": sorted(dark), "considered": len(considered)}
+
 def premise_check(status, tier):
     """ADR-001 matrix. Returns (passes, warning-or-None)."""
     if status == "live":
@@ -1821,6 +1869,39 @@ def cmd_ready(a):
                       f"{', '.join(i['_truth']['broken_premises'])}")
 
 def cmd_impact(a):
+    if a.inverse:
+        # Issue #5: the backward slice. Positional paths make no sense
+        # here -- the verb enumerates the whole tracked universe; --under
+        # is the scoping surface.
+        if a.paths:
+            sys.exit("truth: --inverse takes no positional paths (it "
+                     "enumerates every tracked file; scope with --under)")
+        claims, _ = fold(load_events())
+        rep = inverse_report(tracked_files(), claims, a.under,
+                             a.exclude or [])
+        if rep["considered"] == 0:
+            # An audit over an empty universe is a misconfiguration
+            # (typo'd --under, over-broad --exclude), not a clean pass --
+            # exit 0 here would be a permanent false green for any
+            # satellite gating on this verb.
+            print("truth: --inverse scope matched no tracked files -- "
+                  "check --under/--exclude (exit 2: usage, not a clean "
+                  "audit)", file=sys.stderr)
+            sys.exit(2)
+        if a.json:
+            print(json.dumps(rep, indent=2))
+        else:
+            for p in rep["dark"]:
+                print(p)
+            print(f"impact --inverse: {len(rep['dark'])} of "
+                  f"{rep['considered']} tracked file(s) watched by no "
+                  "active claim", file=sys.stderr)
+        sys.exit(4 if rep["dark"] else 0)
+    if a.under or a.exclude:
+        sys.exit("truth: --under/--exclude only accompany --inverse")
+    if not a.paths:
+        sys.exit("truth: give paths to query, or --inverse for the "
+                 "backward slice")
     events = load_events()
     claims, premises = fold(events)
     issues = fold_issues(events)
@@ -2212,9 +2293,22 @@ def main():
 
     im = sub.add_parser("impact", help="what knowledge does editing these "
                         "paths endanger? (ADR-005; read-only prediction; "
-                        "exit 0 silent / 3 watched)")
-    im.add_argument("paths", nargs="+",
-                    help="repo-root-relative paths about to be edited")
+                        "exit 0 silent / 3 watched). --inverse flips the "
+                        "question: which tracked files does no active "
+                        "claim watch? (issue #5; exit 0 clean / 4 dark)")
+    im.add_argument("paths", nargs="*",
+                    help="repo-root-relative paths about to be edited "
+                         "(forward mode; forbidden with --inverse)")
+    im.add_argument("--inverse", action="store_true",
+                    help="list tracked files watched by NO active "
+                         "(non-retracted) claim -- the 24765 backward "
+                         "trace; exit 4 when dark files exist")
+    im.add_argument("--under", metavar="DIR",
+                    help="restrict --inverse to files under this "
+                         "repo-root-relative directory")
+    im.add_argument("--exclude", metavar="PREFIX", action="append",
+                    help="drop files under this path prefix from "
+                         "--inverse (repeatable; lockfiles, assets)")
     im.add_argument("--json", action="store_true")
     im.set_defaults(fn=cmd_impact)
 

@@ -963,6 +963,68 @@ class TestImpact(unittest.TestCase):
         rows = tm.impact_report(["src/x.py"], claims, issues, premises)
         self.assertEqual(rows[0]["holds"], ["bd-x1"])
 
+class TestInverseReport(unittest.TestCase):
+    """Issue #5 (24765 backward trace): tracked ∖ watched, where watched
+    is the evidence_paths union of every non-retracted claim."""
+    TRACKED = ["src/a.py", "src/deep/b.py", "docs/readme.md",
+               "assets/logo.png", "lone.txt"]
+
+    def _claims(self, *specs):
+        """specs: (status, [paths]) -> fold-shaped claims dict."""
+        return {f"tr-0000000{i}": {"status": status,
+                                   "claim": {"payload":
+                                             {"evidence_paths": paths}}}
+                for i, (status, paths) in enumerate(specs)}
+
+    def test_unwatched_files_are_dark_watched_are_not(self):
+        claims = self._claims(("live", ["src/**"]))
+        rep = tm.inverse_report(self.TRACKED, claims)
+        self.assertEqual(rep["dark"],
+                         ["assets/logo.png", "docs/readme.md", "lone.txt"])
+        self.assertEqual(rep["considered"], 5)
+
+    def test_stale_and_diverged_still_watch(self):
+        """A stale claim is knowledge needing re-check, not absence of
+        knowledge -- its paths are not dark."""
+        claims = self._claims(("stale", ["src/**"]),
+                              ("diverged", ["docs/readme.md"]))
+        rep = tm.inverse_report(self.TRACKED, claims)
+        self.assertEqual(rep["dark"], ["assets/logo.png", "lone.txt"])
+
+    def test_retraction_kills_the_watch(self):
+        claims = self._claims(("retracted", ["src/**"]))
+        rep = tm.inverse_report(self.TRACKED, claims)
+        self.assertEqual(rep["dark"], sorted(self.TRACKED))
+
+    def test_empty_ledger_everything_dark(self):
+        rep = tm.inverse_report(self.TRACKED, {})
+        self.assertEqual(rep["dark"], sorted(self.TRACKED))
+
+    def test_under_scopes_both_dark_and_considered(self):
+        claims = self._claims(("live", ["src/a.py"]))
+        rep = tm.inverse_report(self.TRACKED, claims, under="src")
+        self.assertEqual(rep["dark"], ["src/deep/b.py"])
+        self.assertEqual(rep["considered"], 2)
+        # trailing slash must behave identically
+        self.assertEqual(tm.inverse_report(self.TRACKED, claims,
+                                           under="src/"), rep)
+
+    def test_under_is_a_path_prefix_not_a_string_prefix(self):
+        rep = tm.inverse_report(["srcery/x.py", "src/a.py"], {},
+                                under="src")
+        self.assertEqual(rep["dark"], ["src/a.py"])
+
+    def test_exclude_prefixes_drop_files(self):
+        claims = self._claims(("live", ["src/**"]))
+        rep = tm.inverse_report(self.TRACKED, claims,
+                                excludes=["assets", "lone.txt"])
+        self.assertEqual(rep["dark"], ["docs/readme.md"])
+        self.assertEqual(rep["considered"], 3)
+
+    def test_output_is_sorted_and_deterministic(self):
+        rep = tm.inverse_report(list(reversed(self.TRACKED)), {})
+        self.assertEqual(rep["dark"], sorted(self.TRACKED))
+
 # ------------------------------------------ schema conformance (shared corpus)
 
 # Each fixture: (name, record, expected_valid). This corpus is the single

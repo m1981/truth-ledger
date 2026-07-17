@@ -32,13 +32,6 @@ made on your behalf**, and the scaffold runs the full seeded-fault
 self-test — if anything is wrong it **aborts loudly** instead of leaving
 you a broken install.
 
-**Already scaffolded?** (a `.copier-answers.truth-ledger.yml` exists in
-the repo): `copier copy` is the wrong verb — use `copier update` (next
-section). Re-copying the same version is a harmless no-op, but as an
-upgrade path it silently under-delivers: on files you have since
-customized it skips instead of three-way merging, so template changes
-never reach them.
-
 ## After scaffolding
 
 The scaffold prints these steps when it finishes; they are repeated here:
@@ -66,11 +59,6 @@ file no runtime reads is silent death.
 ```bash
 copier update --trust -a .copier-answers.truth-ledger.yml
 ```
-
-This is the only upgrade verb. `update` reads the pinned version from the
-answers file and three-way merges template changes into files you've
-customized; `copy` would skip those files on conflict and leave you
-part-upgraded without saying so.
 
 Your `.truth/claims.jsonl` is **not managed by copier** — updates ship new
 tooling and never diff, rewrite, or conflict your ledger. This holds by

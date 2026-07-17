@@ -1,0 +1,7 @@
+# Acceptance-command allowlist (ADR-014) -- meta-repo policy.
+# Entries execute repository code at `done` time; that is their purpose.
+# bash admits the canary and gate scripts as oracles; python3 admits the
+# core test suite (NOTE: bare python3 lacks jsonschema here -- see
+# issue #7; canary is the preferred oracle until that lands).
+bash
+python3

@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.7.0)
+# .truth — append-only claims ledger (v0.7.1)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -238,6 +238,23 @@ in an agent harness; a deny list for frozen paths; per-session dedup) is
 consumer policy and deliberately not shipped (ADR-003 rule 2) — wire it
 per ADR-005's Decision, and watch its adoption gate: whispers that
 change agent behavior, without fatigue.
+
+**The backward slice (issue #5, v0.7.1).**
+
+    scripts/truth impact --inverse [--under DIR] [--exclude PREFIX]...
+
+flips the question: which tracked files does NO active claim watch? —
+the 24765 backward trace a curation-only ledger cannot otherwise ask.
+Joins `git ls-files` against the evidence-path globs of every
+non-retracted claim (stale/diverged still watch — that is knowledge
+needing re-check, not absence; only retraction kills a watch), same
+matcher by the same decree. Exit 0 = scope fully watched, 4 = dark
+files listed on stdout (distinct from forward's 3, so satellites gate
+each separately), 2 = the scope matched nothing (a typo'd `--under`
+must refuse, never read as a clean audit). Expect noise on a first run
+(lockfiles, assets): `--exclude` is the pressure valve; module
+inventories and dark-file triage (adopt/attic/delete) are downstream
+satellites' work, not this verb's. Canary FAULTS W5–W8.
 
 ## Claim discipline (earned lessons)
 
