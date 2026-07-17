@@ -149,6 +149,8 @@ A retracted claim is a **tombstone**: terminal, forever. Later verdicts bounce o
 
 One more verb for the honest edge case (v0.6.4, ADR-013): when a premise dies *genuinely* — the fact was wrong, and its correction lives under a new claim id — re-verifying would be dishonest, and the work would otherwise stay HELD forever. `truth premise <issue> <new-id> --supersedes <old-id>` files an auditable redirect: refused while the old premise is live or unverified (the states that need no rescue), and the replacement is judged by the same matrix afterward. It re-targets protection; it never removes it.
 
+Premises gate the *start* of work; since v0.7.0 (ADR-014) the *end* has a gate too: `truth issue --accept-cmd "<cmd>"` declares an executable finish line at birth, and a plain `done` runs it from the repo root and refuses the close on a non-zero exit — "done" stops being the agent's word. Because these oracles execute repository code on purpose (a test suite, a golden-diff runner), they're screened against their own committed allowlist, `.truth/accept-allow` — separate from the read-only evidence list, so a real oracle never needs an unsafe override. An optional `--accept-kind validation` marks a golden-diff oracle ("built the right thing") apart from the default `verification` ("built right"). The escape hatch, `--accept-unsafe-ok`, covers an oracle that *cannot run* — stamped visibly on the record — and never one that ran and failed.
+
 ---
 
 ## Part 4 — Science You Might Not Know Yet (why smart people built it this way)
@@ -284,6 +286,7 @@ Lamport, Shostak & Pease, *The Byzantine Generals Problem* (1982) — read the f
 | `TRUTH_HUMAN=1 truth verdict <id> retracted --basis "<why>"` — then type the id back when prompted (headless human use: add `TRUTH_HUMAN_ACK=<id>`) | Kill a claim forever (humans, at a terminal — ADR-011) |
 | `truth premise <issue> <claim-id>` | Tie work to a fact |
 | `truth premise <issue> <new-id> --supersedes <old-id>` | Redirect a genuinely dead premise to its corrected claim (ADR-013; refused while the old one is live or unverified) |
+| `truth issue "<title>" --accept-cmd "<cmd>" [--accept-kind validation]` | Declare the executable finish line at birth; `done` refuses the close unless it exits 0 (ADR-014; screened against `.truth/accept-allow`) |
 | `truth ready` | Which work is epistemically safe to start |
 | `truth queue` | Daily: what needs a human (empty = carry on) |
 | `truth impact <path>...` | Before editing: what knowledge would this edit endanger? (read-only) |

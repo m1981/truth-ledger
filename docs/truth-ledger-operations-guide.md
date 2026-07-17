@@ -1,6 +1,6 @@
 # Truth Ledger — Operations Guide: Triggers, Observability, and Automation
 
-> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: v0.6.4 — surface unchanged since the v0.6.2 map below; v0.6.3 added output within doctor, v0.6.4 a flag within premise)
+> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: v0.7.0 — one surface change since the v0.6.2 map below: `done` now executes a declared acceptance oracle (ADR-014), see the work-kernel row; v0.6.3 added output within doctor, v0.6.4 a flag within premise)
 
 ## 1. The trigger map — every point where the ledger executes
 
@@ -12,6 +12,7 @@ The table below is the full trigger surface — some rows human/agent-initiated,
 | Trusting a fact | `truth list --live` | Agent, *before* relying on anything | Agent-driven via snippet |
 | Picking work | `truth ready` (tracker join ∧ premise matrix, ADR-001) | Agent, at session start | Agent-driven via snippet |
 | Working an issue | `truth issue` / `start` / `done --claim` (work kernel, v0.5/ADR-002) | Agent or human, across a task | Agent-driven; `done --claim` files through the same intake gates — **commit the work first**, or the claim trips its own tripwire (see README, Claim discipline) |
+| Closing an issue with a declared finish line | `done` executes the issue's `--accept-cmd` oracle from the repo root and refuses the close on non-zero exit (v0.7.0/ADR-014); screened against `.truth/accept-allow` — the one trigger that runs REPOSITORY code, by declared policy | Agent or human, at close | ✅ The execution; declaring the oracle (and the allowlist policy) stays human-reviewed |
 | **Every commit touching the ledger** | `check-truth.sh` via pre-commit hook (INV-A prefix check + schema validation) | **git, automatically** | ✅ Fully |
 | **Every merge/pull** | `invalidate-scan` via post-merge hook (paths, TTL, lost anchors) | **git, automatically** | ✅ Fully |
 | **Every push (meta-repo only)** | release tag-check via pre-push hook: WARN when the CLI's stated version has no git tag (copier consumers resolve versions from tags, so an untagged release is invisible to them), FAIL when the tag's tree states a different version (mispointed tag) | **git, automatically** | ✅ Fully — untemplated like the whisper: releasing the template is meta-repo policy, not consumer machinery |
