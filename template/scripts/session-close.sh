@@ -59,7 +59,9 @@ else
 fi
 
 # 4 — verdict queue (warn + count)
-queue=$(scripts/truth queue 2>/dev/null | wc -l | tr -d ' ')
+# count queue ROWS (tr- prefixed), not output lines: an empty queue
+# prints a one-line "queue empty" message that wc -l misread as debt
+queue=$(scripts/truth queue 2>/dev/null | grep -c '^tr-' || true)
 if [ "${queue:-0}" -gt 0 ]; then
     warn "verdict queue holds $queue claim(s) — re-verify what your session staled"
 else
@@ -69,8 +71,11 @@ fi
 # 5/6 — spec + doc gates, when the repo ships them
 for gate in spec-health doc-health; do
     if [ -f "scripts/$gate.sh" ]; then
-        if bash "scripts/$gate.sh" 2>/dev/null | tail -1 | grep -q ' 0 failure'; then
-            ok "$gate: 0 failures"
+        # exit code is the gates' contract (1 iff failures); parsing the
+        # summary line misread spec-health's legitimate "no spec files
+        # found" case as a failure
+        if bash "scripts/$gate.sh" >/dev/null 2>&1; then
+            ok "$gate: passing"
         else
             fail "$gate has failures"
         fi

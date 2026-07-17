@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.7.1 -- seeded-fault acceptance suite (v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn).
+# truth-canary.sh v0.7.1 -- seeded-fault acceptance suite (SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -7,8 +7,8 @@ say()  { printf '%s\n' "$*"; }
 ok()   { PASS=$((PASS+1)); say "  CAUGHT: $*"; }
 miss() { FAIL=$((FAIL+1)); say "  MISSED: $*"; }
 
-TMP1="$(mktemp -d)"; TMP2="$(mktemp -d)"; TMP3="$(mktemp -d)"; TMP4="$(mktemp -d)"
-cleanup() { rm -rf "$TMP1" "$TMP2" "$TMP3" "$TMP4"; }
+TMP1="$(mktemp -d)"; TMP2="$(mktemp -d)"; TMP3="$(mktemp -d)"; TMP4="$(mktemp -d)"; TMP5="$(mktemp -d)"
+cleanup() { rm -rf "$TMP1" "$TMP2" "$TMP3" "$TMP4" "$TMP5"; }
 trap cleanup EXIT
 
 mkrepo() {
@@ -23,7 +23,8 @@ mkrepo() {
   cp "$HERE/check-truth.sh" scripts/check-truth.sh
   cp "$HERE/spec-health.sh" scripts/spec-health.sh
   cp "$HERE/doc-health.sh" scripts/doc-health.sh
-  chmod +x scripts/truth scripts/check-truth.sh scripts/spec-health.sh scripts/doc-health.sh
+  cp "$HERE/session-close.sh" scripts/session-close.sh
+  chmod +x scripts/truth scripts/check-truth.sh scripts/spec-health.sh scripts/doc-health.sh scripts/session-close.sh
 }
 T="python3 scripts/truth"
 export TRUTH_ACTOR=canary TRUTH_SESSION=s-canary
@@ -1106,6 +1107,51 @@ if [ "$W8_RC" -eq 2 ]; then
   ok "empty scope exits 2 (usage), never a false-green 0"
 else
   miss "empty scope exited $W8_RC instead of 2"
+fi
+
+# ================= sandbox 5 (SC: session-close survival gate, wk-7218c85b)
+# Own sandbox: the arms need exact control of tree/kernel/claim state, and
+# sandbox 4 ends with uncommitted ledger appends by design.
+mkrepo "$TMP5"
+git add -A && git commit -qm "canary: init sc"
+
+say "FAULT SC (session-close): survival gate must FAIL on holes, WARN on debt, pass clean"
+if bash scripts/session-close.sh >/dev/null 2>&1; then
+  ok "clean repo: safe to close (exit 0)"
+else
+  miss "clean repo refused"; bash scripts/session-close.sh || true
+fi
+echo probe > sc-dirty.txt
+if bash scripts/session-close.sh >/dev/null 2>&1; then
+  miss "dirty tree passed the survival gate"
+else
+  ok "dirty tree refused (uncommitted changes are a survival hole)"
+fi
+git add -A && git commit -qm "canary: sc file"
+WK_SC=$($T issue "sc probe item" 2>/dev/null)
+$T start "$WK_SC" >/dev/null
+git add .truth/claims.jsonl && git commit -qm "canary: sc claimed" --no-verify
+if bash scripts/session-close.sh 2>/dev/null | grep -q "still claimed"; then
+  ok "claimed work item refused with the claimed-count named"
+else
+  miss "in-flight claimed item not flagged"
+fi
+$T start "$WK_SC" --release --basis "canary: hand back" >/dev/null
+$T claim "sc unverified probe fact" --class UNVERIFIED --tier P2 >/dev/null
+git add .truth/claims.jsonl && git commit -qm "canary: sc released + unverified" --no-verify
+SC_OUT=$(bash scripts/session-close.sh 2>/dev/null); SC_RC=$?
+if [ "$SC_RC" -eq 0 ] && printf '%s' "$SC_OUT" | grep -q "WARN.*unverified"; then
+  ok "unverified claims WARN without blocking (triage debt, not a hole)"
+else
+  miss "unverified-claim debt handling wrong (rc=$SC_RC)"
+fi
+mkdir -p scripts/session-gates.d
+printf '#!/usr/bin/env bash\nexit 1\n' > scripts/session-gates.d/always-fail.sh
+git add -A && git commit -qm "canary: sc failing gate" --no-verify
+if bash scripts/session-close.sh >/dev/null 2>&1; then
+  miss "failing project gate did not block the close"
+else
+  ok "failing scripts/session-gates.d/ gate refused the close"
 fi
 
 say ""
