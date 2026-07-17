@@ -1,5 +1,23 @@
 #!/usr/bin/env python3
-"""truth v0.8.0 -- append-only claims ledger with a native work kernel.
+"""truth v0.8.1 -- append-only claims ledger with a native work kernel.
+
+v0.8.1 (ADR-015, wk-c7378976): canonical timestamp profile. Source: an
+  independent spec-only review (pi, 2026-07-17; findings HIGH-1 and
+  MEDIUM-4) -- the fold sorts the raw ts STRING, but nothing constrained
+  the string's form: schema format:date-time is annotative in draft-07,
+  and validate never looked. An honest non-CLI writer using `Z` or a
+  non-UTC offset would silently misorder events and break INV-I
+  confluence. Three moves, discharging ADR-008's deferred F5 check:
+  (a) the profile now_iso() always emitted -- fixed-width UTC
+  microseconds, YYYY-MM-DDTHH:MM:SS.ssssss+00:00 -- is mandated by
+  schema `pattern` and validate-mirror TS_RE in lockstep (FS-2 mutants
+  exercise both on every seed); (b) TRUTH_NOW overrides are normalized
+  to aware-UTC so the test hook cannot mint a nonconforming record;
+  (c) an HLC-degenerate clock-push at append bumps a real-clock record
+  1 microsecond past a ledger tail it would otherwise sort before,
+  bounded by ADR-008's skew tolerance (beyond it, the honest clock is
+  kept and the regression warning fires). Canary FAULTS TS1-TS3; corpus
+  fixtures for Z/offset/precision/naive forms.
 
 v0.8.0 (issue #3, wk-16a3bff7): `baseline` -- set-level status
   accounting (ISO 10007). `baseline <ref>` reads the ledger at a git
@@ -277,7 +295,7 @@ import statistics
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 LEDGER_REL = ".truth/claims.jsonl"
 PROMPT_REL = "prompts/truth-verifier.md"
@@ -294,6 +312,13 @@ DUPLICATE_THRESHOLD = 0.6
 QUEUE_AGE_WARN_DAYS = 14
 ID_RE = re.compile(r"^tr-[0-9a-f]{8}$")
 WK_ID_RE = re.compile(r"^wk-[0-9a-f]{8}$")
+# ADR-015: the canonical ts profile -- fixed-width UTC microseconds,
+# exactly what now_iso() emits. The fold sorts the raw ts STRING, so
+# string order equals time order ONLY on a fixed-width single-offset
+# form; Z-suffix, non-UTC offsets, and variable precision all break it.
+# Enforced in validate_events in lockstep with the schema's pattern
+# (FS-2 corpus holds the two together).
+TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}\+00:00$")
 # ADR-007: universal-quantifier lexicon (tokens matched word-level via
 # tokens(); phrases matched with word boundaries). Changed only together
 # with the Q-canary faults.
@@ -1210,6 +1235,11 @@ def validate_events(events):
             if field in ev and not ev[field]:
                 errors.append(f"line {n}: empty envelope field '{field}' "
                               "(schema requires minLength 1)")
+        if "ts" in ev and not TS_RE.match(str(ev.get("ts") or "")):
+            errors.append(f"line {n}: ts not in the canonical profile "
+                          "YYYY-MM-DDTHH:MM:SS.ssssss+00:00 (ADR-015: the "
+                          "fold sorts the raw string, so any other offset, "
+                          "Z-suffix, or precision breaks order coherence)")
         kind, p = ev.get("kind"), ev.get("payload", {})
         # issue records carry wk- envelope ids (ADR-002); everything else tr-
         id_re, id_name = ((WK_ID_RE, "wk-hex8") if kind == "issue"
@@ -1327,10 +1357,16 @@ def ledger_path():
     return os.path.join(repo_root(), LEDGER_REL)
 
 def now_dt():
-    """The only place TRUTH_NOW is honored (test hook; never in prod)."""
+    """The only place TRUTH_NOW is honored (test hook; never in prod).
+    ADR-015: the override is normalized to aware-UTC so now_iso() always
+    renders the canonical profile -- a naive or Z-suffix TRUTH_NOW must
+    not mint a record validate would then reject."""
     override = os.environ.get("TRUTH_NOW")
     if override:
-        return datetime.fromisoformat(override)
+        dt = datetime.fromisoformat(override.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
     return datetime.now(timezone.utc)
 
 def now_iso():
@@ -1426,8 +1462,41 @@ def human_ack_error(target_id, what):
         return "truth: confirmation mismatch -- nothing filed"
     return None
 
+def _last_ledger_ts():
+    """The ts of the ledger's last well-formed line, or None."""
+    path = ledger_path()
+    if not os.path.exists(path):
+        return None
+    last = None
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                last = json.loads(line).get("ts")
+            except json.JSONDecodeError:
+                continue
+    return last
+
 def append_record(kind, payload, prefix="tr-"):
-    rec = make_record(kind, payload, actor(), session(), now_iso(), prefix)
+    ts = now_iso()
+    # ADR-015 clock-push (the HLC 'physical clock catch-up' half, and
+    # nothing more): a real-clock record must not sort before the ledger
+    # tail it causally follows. Small honest skew (same-machine append
+    # races, NTP steps) is absorbed by bumping 1 microsecond past the
+    # tail; skew beyond ADR-008's tolerance is NOT absorbed -- the
+    # honest clock is kept and order_check's existing regression warning
+    # surfaces it, so a forged far-future tail cannot drag every later
+    # record with it. TRUTH_NOW (test hook) disables the push: seeded
+    # backdating is the point of the hook (canary FAULT D).
+    if not os.environ.get("TRUTH_NOW"):
+        last = _last_ledger_ts()
+        if last and TS_RE.match(str(last)) and ts <= last:
+            last_dt = parse_ts(last)
+            if (last_dt - now_dt()).total_seconds() <= SKEW_TOLERANCE_SECONDS:
+                ts = (last_dt + timedelta(microseconds=1)) \
+                    .isoformat(timespec="microseconds")
+    rec = make_record(kind, payload, actor(), session(), ts, prefix)
     path = ledger_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:

@@ -30,7 +30,7 @@ tm = importlib.util.module_from_spec(_spec)
 _loader.exec_module(tm)
 
 NOW = datetime(2026, 7, 5, 12, 0, 0, tzinfo=timezone.utc)
-TS = "2026-07-01T00:00:00+00:00"
+TS = "2026-07-01T00:00:00.000000+00:00"  # ADR-015 canonical profile
 
 def rec(kind, payload, rid="tr-00000001", ts=TS):
     return {"id": rid, "kind": kind, "actor": "t", "session": "s",
@@ -1255,6 +1255,17 @@ CORPUS = [
                          "accept": {"command": "pytest -q",
                                     "kind": "verification",
                                     "executed": "yes"}}), False),
+    # ---- canonical ts profile (ADR-015, v0.8.1) -- the fold sorts the
+    # raw ts string, so every non-canonical form must be rejected by
+    # schema pattern and mirror alike ----
+    ("ts with Z suffix",
+     rec("claim", claim_p(), ts="2026-07-01T00:00:00.000000Z"), False),
+    ("ts with non-UTC offset",
+     rec("claim", claim_p(), ts="2026-07-01T05:00:00.000000+05:00"), False),
+    ("ts without microseconds",
+     rec("claim", claim_p(), ts="2026-07-01T00:00:00+00:00"), False),
+    ("ts tz-naive",
+     rec("claim", claim_p(), ts="2026-07-01T00:00:00.000000"), False),
 ]
 
 class TestConformancePython(unittest.TestCase):

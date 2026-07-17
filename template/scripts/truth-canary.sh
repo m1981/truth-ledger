@@ -387,7 +387,7 @@ say "FAULT K (INV-G'): appending a duplicate claim id must not reset status"
 python3 - "$CID_H" <<'PYEOF'
 import json, sys
 rec={"id":sys.argv[1],"kind":"claim","actor":"agent-x","session":"s-evil",
-     "ts":"2099-01-01T00:00:00+00:00",
+     "ts":"2099-01-01T00:00:00.000000+00:00",
      "payload":{"text":"resurrection via duplicate id","evidence_class":"UNVERIFIED",
                 "cost_tier":"P0","ttl_days":None,"evidence_paths":[]}}
 open(".truth/claims.jsonl","a").write(json.dumps(rec,sort_keys=True)+"\n")
@@ -469,6 +469,56 @@ else
   ok "validate failed the junk-ts backdated duplicate (F2 closed)"
 fi
 mv claims.b4.bak .truth/claims.jsonl
+
+# ---- FAULTS TS1-TS3 (ADR-015): canonical timestamp profile ---------------
+say "FAULT TS1 (ADR-015): a fresh-id record with a Z-suffix ts must fail validate"
+cp .truth/claims.jsonl claims.ts1.bak
+python3 - <<'PYEOF'
+import json
+# Z is valid ISO 8601 UTC, but ASCII 'Z' > '+' -- the raw-string fold
+# would order this record inconsistently against +00:00 records at the
+# same instant, so the profile refuses the form outright
+rec={"id":"tr-00000ad5","kind":"claim","actor":"agent-x","session":"s-evil",
+     "ts":"2026-01-01T00:00:00.000000Z",
+     "payload":{"text":"honest fact in a Z-suffix timestamp","evidence_class":"UNVERIFIED",
+                "cost_tier":"P2","ttl_days":None,"evidence_paths":[]}}
+open(".truth/claims.jsonl","a").write(json.dumps(rec,sort_keys=True)+"\n")
+PYEOF
+if ! grep -q "Z-suffix timestamp" .truth/claims.jsonl; then
+  miss "fault injection failed: Z-suffix record was never appended"
+elif $T validate >/dev/null 2>&1; then
+  miss "validate passed a Z-suffix ts (non-canonical form breaks raw-string order)"
+else
+  ok "validate failed the Z-suffix ts (canonical profile enforced)"
+fi
+mv claims.ts1.bak .truth/claims.jsonl
+
+say "FAULT TS2 (ADR-015): a naive TRUTH_NOW override must still mint a canonical ts"
+TS2_OUT=$(TRUTH_NOW="2026-06-30T12:00:00" $T claim \
+  "canary ts2 canonical mint probe fact" --class UNVERIFIED --tier P2 \
+  --duplicate-ok 2>/dev/null)
+TS2_TS=$(tail -1 .truth/claims.jsonl | python3 -c "import json,sys; print(json.load(sys.stdin)['ts'])")
+if [ "$TS2_TS" = "2026-06-30T12:00:00.000000+00:00" ] && $T validate >/dev/null 2>&1; then
+  ok "naive override normalized to canonical UTC microseconds; validate green"
+else
+  miss "naive TRUTH_NOW minted '$TS2_TS' (expected 2026-06-30T12:00:00.000000+00:00)"
+fi
+
+say "FAULT TS3 (ADR-015): a real-clock append must not sort before the ledger tail (clock-push)"
+TS3_FUTURE=$(python3 -c "from datetime import datetime,timedelta,timezone; print((datetime.now(timezone.utc)+timedelta(seconds=120)).isoformat(timespec='microseconds'))")
+TRUTH_NOW="$TS3_FUTURE" $T claim "canary ts3 future tail fact" \
+  --class UNVERIFIED --tier P2 --duplicate-ok >/dev/null 2>&1
+$T claim "canary ts3 real clock follower fact" \
+  --class UNVERIFIED --tier P2 --duplicate-ok >/dev/null 2>&1
+TS3_ORDER=$(tail -2 .truth/claims.jsonl | python3 -c "
+import json,sys
+a,b=[json.loads(l)['ts'] for l in sys.stdin]
+print('PUSHED' if b > a else 'INVERTED')")
+if [ "$TS3_ORDER" = "PUSHED" ] && $T validate >/dev/null 2>&1; then
+  ok "real-clock record bumped past the future tail; file order stays sort order"
+else
+  miss "real-clock append sorted before the ledger tail ($TS3_ORDER) -- clock-push inert"
+fi
 
 # ---- FAULT L (v0.4): re-verification must survive the next scan ----------
 say "FAULT L: re-verified claim must stay live across a subsequent scan"
@@ -672,7 +722,7 @@ python3 - "$WK_STALE" <<'PYEOF'
 import json, sys
 wid = sys.argv[1]
 rec = {"id": wid, "kind": "issue", "actor": "agent-x", "session": "s-evil",
-       "ts": "2099-01-01T00:00:00+00:00",
+       "ts": "2099-01-01T00:00:00.000000+00:00",
        "payload": {"title": "kernel issue on stale premise", "text": "",
                    "deps": [], "premises": []}}
 open(".truth/claims.jsonl", "a").write(json.dumps(rec, sort_keys=True) + "\n")

@@ -39,7 +39,11 @@ validate` mirrors it in stdlib and the conformance corpus in
 
 Status is derived, never stored: a pure fold replays all events in
 `(ts, id)` order — a total order independent of file position, so
-union-merged branches derive identical status (confluence). Duplicate
+union-merged branches derive identical status (confluence). The fold
+sorts the raw `ts` string, so `ts` must be the canonical profile
+`YYYY-MM-DDTHH:MM:SS.ssssss+00:00` — fixed-width UTC microseconds,
+exactly what the CLI mints; any other offset, `Z` suffix, or precision
+fails `validate` (ADR-015: string order must equal time order). Duplicate
 claim and issue ids are first-wins (F6, ADR-006): a later append bearing
 an existing id is inert. `retracted` (claims) and `cancelled` (issues)
 are terminal and human-gated (ADR-011; the full requirement is stated
