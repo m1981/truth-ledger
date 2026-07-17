@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.6.2)
+# .truth — append-only claims ledger (v0.7.0)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -162,6 +162,23 @@ back when prompted; headless,
 External trackers still work through the seam (`TRUTH_TRACKER_CMD`,
 `--stdin`); `truth issues --ready-json` emits the same contract, so you
 can run both and diff. Full semantics: `docs/adr/002-native-work-kernel.md`.
+
+**Acceptance oracles (ADR-014, v0.7).** `issue --accept-cmd "<cmd>"
+[--accept-kind verification|validation]` declares an executable finish
+line at birth (default kind `verification` = suite/gate, "built right";
+`validation` = golden-diff, "built the right thing" — 12207's two V's).
+A plain `done` then runs the command from the repo root and refuses the
+close on non-zero exit; the close event records `accept: {executed,
+returncode}`, and validate rejects an executed acceptance with a
+non-zero returncode. Oracles execute repository code by purpose, so they
+are screened (ADR-009's screen, reused) against their **own** committed
+allowlist, `.truth/accept-allow` — never `evidence-allow`, which stays
+read-only. Missing list fails closed; the template ships it empty
+(header explains the policy trade). `--accept-unsafe-ok` files an
+unscreenable oracle with `screened: false` (done then refuses to execute
+it), and at `done` closes without running an oracle that *cannot* run,
+stamped `executed: false` — it never overrides an oracle that ran and
+failed. `--cancel`/`--reopen` skip the oracle. Canary FAULTS AC1–AC7.
 
 ## Feature specs (optional satellite, v0.5.1)
 

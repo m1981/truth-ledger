@@ -358,6 +358,49 @@ class TestEvidenceScreen(unittest.TestCase):
         self.assertIsNone(tm.screen_evidence_command(
             "grep -rn x . | sort | wc -l", ALLOW))
 
+class TestAcceptScreen(unittest.TestCase):
+    """ADR-014: same structural screen, its own allowlist -- the refusal
+    messages must name .truth/accept-allow and the accept escape hatch,
+    never ADR-009's evidence vocabulary (a message naming the wrong list
+    teaches the wrong fix)."""
+    ACC = ["pytest", "bash", "python3"]
+
+    def test_allowlisted_oracle_passes(self):
+        self.assertIsNone(tm.screen_accept_command("pytest -q tests", self.ACC))
+        self.assertIsNone(tm.screen_accept_command(
+            "python3 exercises/harness/runner.py leg --strict", self.ACC))
+
+    def test_unlisted_program_names_accept_allow(self):
+        err = tm.screen_accept_command("cargo test", self.ACC)
+        self.assertIn(tm.ACCEPT_ALLOW_REL, err)
+        self.assertIn("--accept-unsafe-ok", err)
+        self.assertNotIn(tm.EVIDENCE_ALLOW_REL, err)
+
+    def test_missing_allowlist_fails_closed_naming_accept_allow(self):
+        err = tm.screen_accept_command("pytest -q", None)
+        self.assertIn(tm.ACCEPT_ALLOW_REL, err)
+        self.assertIn("--accept-cmd", err)
+
+    def test_structural_rules_still_apply(self):
+        # one screen implementation (the F1/F5 drift lesson): command
+        # substitution, path-form programs, and real-file sinks are
+        # refused for oracles exactly as for evidence
+        self.assertIsNotNone(tm.screen_accept_command(
+            "pytest $(cat pwn)", self.ACC))
+        self.assertIsNotNone(tm.screen_accept_command(
+            "./run_tests.sh", self.ACC))
+        self.assertIsNotNone(tm.screen_accept_command(
+            "pytest -q > results.txt", self.ACC))
+
+    def test_evidence_screen_messages_unchanged(self):
+        # regression: the parameterization must not rewrite ADR-009's
+        # messages -- they still name evidence-allow and its escape hatch
+        err = tm.screen_evidence_command("curl x", ALLOW)
+        self.assertIn(tm.EVIDENCE_ALLOW_REL, err)
+        self.assertIn("--evidence-unsafe-ok", err)
+        err = tm.screen_evidence_command("grep x f.txt", None)
+        self.assertIn(tm.EVIDENCE_ALLOW_REL, err)
+
 # --------------------------------------------- order coherence (ADR-008)
 
 class TestOrderCheck(unittest.TestCase):
@@ -1010,6 +1053,54 @@ CORPUS = [
                      "basis": "b", "subtype": "cosmic"}), False),
     ("claim negative ttl", rec("claim", claim_p(ttl_days=-1)), False),
     ("empty envelope actor", rec("claim", claim_p()) | {"actor": ""}, False),
+    # ---- acceptance oracles (ADR-014, v0.7) ----
+    ("issue accept ok",
+     issue_rec(accept={"command": "pytest -q", "kind": "verification",
+                       "screened": True}), True),
+    ("issue accept validation kind",
+     issue_rec(accept={"command": "python3 run.py --strict",
+                       "kind": "validation", "screened": False}), True),
+    ("issue accept missing command",
+     issue_rec(accept={"kind": "verification", "screened": True}), False),
+    ("issue accept bad kind",
+     issue_rec(accept={"command": "pytest -q", "kind": "vibes",
+                       "screened": True}), False),
+    ("issue accept screened non-boolean",
+     issue_rec(accept={"command": "pytest -q", "kind": "verification",
+                       "screened": "yes"}), False),
+    ("issue_event accept executed ok",
+     rec("issue_event", {"issue": "wk-00000001", "event": "closed",
+                         "basis": "b",
+                         "accept": {"command": "pytest -q",
+                                    "kind": "verification",
+                                    "executed": True, "returncode": 0}}),
+     True),
+    ("issue_event accept executed nonzero returncode",
+     rec("issue_event", {"issue": "wk-00000001", "event": "closed",
+                         "basis": "b",
+                         "accept": {"command": "pytest -q",
+                                    "kind": "verification",
+                                    "executed": True, "returncode": 1}}),
+     False),
+    ("issue_event accept executed missing returncode",
+     rec("issue_event", {"issue": "wk-00000001", "event": "closed",
+                         "basis": "b",
+                         "accept": {"command": "pytest -q",
+                                    "kind": "verification",
+                                    "executed": True}}), False),
+    ("issue_event accept unexecuted ok",
+     rec("issue_event", {"issue": "wk-00000001", "event": "closed",
+                         "basis": "b",
+                         "accept": {"command": "eval x",
+                                    "kind": "verification",
+                                    "executed": False, "screened": False}}),
+     True),
+    ("issue_event accept executed non-boolean",
+     rec("issue_event", {"issue": "wk-00000001", "event": "closed",
+                         "basis": "b",
+                         "accept": {"command": "pytest -q",
+                                    "kind": "verification",
+                                    "executed": "yes"}}), False),
 ]
 
 class TestConformancePython(unittest.TestCase):

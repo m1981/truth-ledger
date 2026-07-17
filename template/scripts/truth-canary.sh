@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.6.4 -- seeded-fault acceptance suite (v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn).
+# truth-canary.sh v0.7.0 -- seeded-fault acceptance suite (v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -954,6 +954,98 @@ if PATH="/usr/bin:/bin" $T ready | grep -q "^$WK_R10"; then
   ok "supersede released the HELD issue (redirect honored by ready)"
 else
   miss "issue $WK_R10 still HELD after supersede"; PATH="/usr/bin:/bin" $T ready || true
+fi
+
+say "FAULT AC1 (ADR-014): --accept-cmd with no accept-allow must fail closed"
+if $T issue "ac1 work" --accept-cmd "true" >/dev/null 2>&1; then
+  miss "issue filed an acceptance oracle with no .truth/accept-allow"
+else
+  ok "intake refused: acceptance allowlist absent (fail closed)"
+fi
+
+say "FAULT AC2 (ADR-014): unlisted oracle program refused; unsafe-ok stamps screened=false"
+printf 'true\nfalse\nsh\n' > .truth/accept-allow
+if $T issue "ac2 work" --accept-cmd "cargo test" >/dev/null 2>&1; then
+  miss "intake accepted an oracle program not in accept-allow"
+else
+  ok "intake refused the unlisted oracle program"
+fi
+WK_AC2=$($T issue "ac2 unscreened" --accept-cmd "cargo test" --accept-unsafe-ok 2>/dev/null)
+if grep "$WK_AC2" .truth/claims.jsonl | grep -q '"screened": false'; then
+  ok "unsafe-ok filed with accept.screened=false stamped"
+else
+  miss "unsafe-ok intake did not stamp screened=false"
+fi
+
+say "FAULT AC3 (ADR-014): failing oracle must refuse the close; work stays claimed"
+WK_AC3=$($T issue "ac3 red oracle" --accept-cmd "sh -c 'exit 1'" --accept-kind validation)
+$T start "$WK_AC3" >/dev/null
+if $T done "$WK_AC3" --basis "narrative says done" >/dev/null 2>&1; then
+  miss "done closed $WK_AC3 over a failing acceptance oracle"
+else
+  ok "done refused: oracle exit non-zero"
+fi
+if $T issues | grep "$WK_AC3" | grep -q claimed; then
+  ok "issue stayed claimed after the refused close"
+else
+  miss "issue status changed despite the refused close"
+fi
+
+say "FAULT AC4 (ADR-014): --accept-unsafe-ok must NOT bypass an oracle that ran and failed"
+if $T done "$WK_AC3" --basis "bypass attempt" --accept-unsafe-ok >/dev/null 2>&1; then
+  miss "--accept-unsafe-ok closed over a FAILING (executable) oracle"
+else
+  ok "unsafe-ok refused: it only covers oracles that cannot run"
+fi
+
+say "FAULT AC5 (ADR-014): passing oracle closes; event stamps executed+returncode 0"
+WK_AC5=$($T issue "ac5 green oracle" --accept-cmd "true")
+$T start "$WK_AC5" >/dev/null
+if $T done "$WK_AC5" --basis "oracle green" >/dev/null 2>&1; then
+  ok "done closed on the passing oracle"
+else
+  miss "done refused a passing oracle"
+fi
+if grep '"issue_event"' .truth/claims.jsonl | grep "$WK_AC5" \
+   | grep -q '"executed": true, "kind": "verification", "returncode": 0'; then
+  ok "close event carries accept {executed:true, returncode:0}"
+else
+  miss "close event missing the acceptance stamp"
+fi
+
+say "FAULT AC6 (ADR-014): unscreened oracle -- done refuses to execute; unsafe-ok close is stamped"
+$T start "$WK_AC2" >/dev/null
+if $T done "$WK_AC2" --basis "try plain close" >/dev/null 2>&1; then
+  miss "done executed (or skipped) an unscreened oracle on a plain close"
+else
+  ok "done refused to execute the unscreened oracle"
+fi
+$T done "$WK_AC2" --basis "conscious unscreened close" --accept-unsafe-ok >/dev/null 2>&1
+if grep '"issue_event"' .truth/claims.jsonl | grep "$WK_AC2" \
+   | grep -q '"executed": false'; then
+  ok "unsafe-ok close stamped executed=false on the event"
+else
+  miss "unsafe-ok close left no executed=false stamp"
+fi
+
+say "FAULT AC7 (ADR-014): --accept-kind without --accept-cmd refused; cancel skips the oracle"
+if $T issue "ac7 shape only" --accept-kind validation >/dev/null 2>&1; then
+  miss "intake accepted --accept-kind with no --accept-cmd"
+else
+  ok "intake refused the oracle shape with no oracle"
+fi
+WK_AC7=$($T issue "ac7 doomed work" --accept-cmd "sh -c 'exit 1'")
+$T start "$WK_AC7" >/dev/null
+if TRUTH_HUMAN=1 TRUTH_HUMAN_ACK="$WK_AC7" $T done "$WK_AC7" --cancel \
+   --basis "canary: killing failed work must not need its finish line" >/dev/null 2>&1; then
+  ok "cancel skipped the failing oracle (tombstone path unblocked)"
+else
+  miss "cancel was blocked by the acceptance oracle"
+fi
+if $T validate >/dev/null 2>&1; then
+  ok "ledger with acceptance records validates (schema mirror in sync)"
+else
+  miss "acceptance records fail validate"; $T validate || true
 fi
 
 say ""

@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "truth-ledger-record.v0.6",
+  "$id": "truth-ledger-record.v0.7",
   "title": "Truth ledger record",
   "description": "One line of .truth/claims.jsonl. The ledger is append-only and event-sourced: status is never stored, only derived by folding records in (ts, id) order. v0.5 adds the ADR-002 work kernel kinds: `issue` (wk- envelope id) and `issue_event`. This schema is the durable contract; scripts/truth validate implements a stdlib mirror of it.",
   "type": "object",
@@ -373,6 +373,30 @@
                   "type": "string",
                   "pattern": "^tr-[0-9a-f]{8}$"
                 }
+              },
+              "accept": {
+                "type": "object",
+                "description": "ADR-014: executable finish line declared at birth; `done` runs command from the repo root and refuses the close on non-zero exit. screened=false means filed with --accept-unsafe-ok; done then refuses to execute it.",
+                "required": [
+                  "command",
+                  "kind",
+                  "screened"
+                ],
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "kind": {
+                    "enum": [
+                      "verification",
+                      "validation"
+                    ]
+                  },
+                  "screened": {
+                    "type": "boolean"
+                  }
+                }
               }
             }
           }
@@ -410,6 +434,52 @@
               },
               "basis": {
                 "type": "string"
+              },
+              "accept": {
+                "type": "object",
+                "description": "ADR-014: what happened to the acceptance oracle at close. executed=true requires returncode 0 (a failing oracle never closes); executed=false means the close was forced with --accept-unsafe-ok on an unscreened oracle.",
+                "required": [
+                  "executed"
+                ],
+                "properties": {
+                  "command": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "verification",
+                      "validation"
+                    ]
+                  },
+                  "executed": {
+                    "type": "boolean"
+                  },
+                  "returncode": {
+                    "const": 0
+                  },
+                  "screened": {
+                    "type": "boolean"
+                  }
+                },
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "executed": {
+                          "const": true
+                        }
+                      },
+                      "required": [
+                        "executed"
+                      ]
+                    },
+                    "then": {
+                      "required": [
+                        "returncode"
+                      ]
+                    }
+                  }
+                ]
               }
             },
             "allOf": [
