@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.7.1)
+# .truth — append-only claims ledger (v0.8.0)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -238,6 +238,23 @@ in an agent harness; a deny list for frozen paths; per-session dedup) is
 consumer policy and deliberately not shipped (ADR-003 rule 2) — wire it
 per ADR-005's Decision, and watch its adoption gate: whispers that
 change agent behavior, without fatigue.
+
+**Baselines (issue #3, v0.8.0 — ISO 10007 set-level status accounting).**
+
+    scripts/truth baseline <ref> [--json]      # the frozen status account
+    scripts/truth baseline <a> --diff <b>      # release-notes delta
+
+`baseline <ref>` folds the ledger as it stood at any git ref (tag, sha,
+HEAD) into a deterministic snapshot — claims by status/tier, issues by
+state, sorted id lists; `--json` redirected to a file and committed IS
+the persisted baseline artifact (the CLI deliberately persists
+nothing). `--diff` folds two refs and prints born records, status
+transitions grouped `from->to`, and **DISAPPEARED** records — a record
+present at the older ref and absent at the newer is impossible between
+ancestor and descendant of an append-only file, so it means rewritten
+or divergent history: 10007's omission, caught by exactly the
+comparison the standard prescribes, exit 5 (gateable). Exit 2 =
+unreadable ref. Canary FAULTS BL1–BL4.
 
 **The backward slice (issue #5, v0.7.1).**
 

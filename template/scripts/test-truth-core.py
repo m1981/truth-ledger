@@ -991,6 +991,70 @@ class TestImpact(unittest.TestCase):
         rows = tm.impact_report(["src/x.py"], claims, issues, premises)
         self.assertEqual(rows[0]["holds"], ["bd-x1"])
 
+class TestBaseline(unittest.TestCase):
+    """Issue #3 (10007): snapshot of one fold, delta of two."""
+    def _events_a(self):
+        return events(
+            rec("claim", claim_p(), rid="tr-000000a1"),
+            rec("claim", claim_p(text="second fact"), rid="tr-000000a2"),
+            issue_rec(rid="wk-000000b1"))
+
+    def _events_b(self):
+        return self._events_a() + events(
+            rec("verdict", {"claim": "tr-000000a1", "verdict": "agree",
+                            "basis": "b"}, rid="tr-000000a3",
+                ts="2026-07-02T00:00:00+00:00"),
+            rec("claim", claim_p(text="third fact"), rid="tr-000000a4",
+                ts="2026-07-02T00:00:00+00:00"),
+            issue_ev("closed", ref="wk-000000b1", basis="done",
+                     ts="2026-07-02T00:00:00+00:00"))
+
+    def test_snapshot_counts_and_ids(self):
+        s = tm.baseline_snapshot(self._events_a())
+        self.assertEqual(s["records"], 3)
+        self.assertEqual(s["claims"]["by_status"], {"unverified": 2})
+        self.assertEqual(s["claims"]["ids"]["unverified"],
+                         ["tr-000000a1", "tr-000000a2"])
+        self.assertEqual(s["issues"]["by_status"], {"open": 1})
+        self.assertEqual(s["claims"]["by_tier"], {"P2": 2})
+
+    def test_snapshot_tier_excludes_retracted(self):
+        evs = self._events_a() + events(
+            rec("verdict", {"claim": "tr-000000a2", "verdict": "retracted",
+                            "basis": "dead"}, rid="tr-000000a9",
+                ts="2026-07-02T00:00:00+00:00"))
+        s = tm.baseline_snapshot(evs)
+        self.assertEqual(s["claims"]["by_tier"], {"P2": 1})
+        self.assertEqual(s["claims"]["by_status"],
+                         {"retracted": 1, "unverified": 1})
+
+    def test_diff_born_transitions_no_disappeared(self):
+        d = tm.baseline_diff(tm.baseline_snapshot(self._events_a()),
+                             tm.baseline_snapshot(self._events_b()))
+        self.assertEqual(d["claims"]["born"], {"tr-000000a4": "unverified"})
+        self.assertEqual(d["claims"]["transitions"],
+                         {"unverified->live": ["tr-000000a1"]})
+        self.assertEqual(d["claims"]["disappeared"], {})
+        self.assertEqual(d["issues"]["transitions"],
+                         {"open->closed": ["wk-000000b1"]})
+        self.assertEqual(d["records_delta"], 3)
+
+    def test_diff_disappeared_flags_rewritten_history(self):
+        # newer "ref" missing a record the older one has -- impossible in
+        # an append-only descendant, so the diff must surface it
+        d = tm.baseline_diff(tm.baseline_snapshot(self._events_a()),
+                             tm.baseline_snapshot(self._events_a()[:1]))
+        self.assertIn("tr-000000a2", d["claims"]["disappeared"])
+        self.assertIn("wk-000000b1", d["issues"]["disappeared"])
+
+    def test_snapshot_is_deterministic(self):
+        import json as _json
+        one = _json.dumps(tm.baseline_snapshot(self._events_b()),
+                          sort_keys=True)
+        two = _json.dumps(tm.baseline_snapshot(
+            list(reversed(self._events_b()))), sort_keys=True)
+        self.assertEqual(one, two)
+
 class TestInverseReport(unittest.TestCase):
     """Issue #5 (24765 backward trace): tracked ∖ watched, where watched
     is the evidence_paths union of every non-retracted claim."""

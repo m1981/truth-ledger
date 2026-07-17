@@ -1,5 +1,21 @@
 #!/usr/bin/env python3
-"""truth v0.7.2 -- append-only claims ledger with a native work kernel.
+"""truth v0.8.0 -- append-only claims ledger with a native work kernel.
+
+v0.8.0 (issue #3, wk-16a3bff7): `baseline` -- set-level status
+  accounting (ISO 10007). `baseline <ref>` reads the ledger at a git
+  ref (`git show`), runs the SAME fold, and emits the frozen set:
+  claims by status/tier, issues by state, with sorted id lists --
+  deterministic JSON, no volatile timestamps, so redirect-and-commit
+  gives an auditable artifact. `baseline <a> --diff <b>` folds both and
+  prints the delta in release-notes shape: born records (with their
+  b-status), status transitions grouped from->to, and DISAPPEARED
+  records -- in an append-only ledger a record present at an ancestor
+  and absent at a descendant means rewritten history, so disappearance
+  is an omission alarm (the loophole map's named failure mode) with its
+  own exit code 5, gateable. Exit 2 = unreadable ref (usage), 0
+  otherwise. Read-only, no fold change, no new record kind, no
+  persistence by the CLI (10007's baseline artifact is the caller's
+  redirect). Canary FAULTS BL1-BL4.
 
 v0.7.2 (issue #7, wk-75aa9735, owner decision 2026-07-17): path-form
   accept-allow entries. First-consumer dogfood found the gap the same
@@ -252,6 +268,7 @@ Stdlib only. Python 3.9+. POSIX (G5: documented limit).
 import argparse
 import fnmatch
 import hashlib
+import io
 import json
 import os
 import re
@@ -1039,6 +1056,52 @@ def impact_report(query_paths, claims, issues, premises):
                      "holds": holds})
     rows.sort(key=lambda r: (r["tier"] or "P9", r["claim"]))
     return rows
+
+def baseline_snapshot(events):
+    """Issue #3 (10007): the frozen status account of one fold. Counts
+    AND sorted id lists -- ids make diffs exact and give auditors the
+    drill-down; sorting plus sort_keys serialization makes the artifact
+    deterministic, so identical ledgers yield byte-identical baselines."""
+    claims, _ = fold(events)
+    issues = fold_issues(events)
+    c_ids, tiers = {}, {}
+    for cid, e in sorted(claims.items()):
+        c_ids.setdefault(e["status"], []).append(cid)
+        if e["status"] != "retracted":
+            t = e["claim"]["payload"].get("cost_tier") or "?"
+            tiers[t] = tiers.get(t, 0) + 1
+    i_ids = {}
+    for wid, e in sorted(issues.items()):
+        i_ids.setdefault(e["status"], []).append(wid)
+    return {"records": len(events),
+            "claims": {"by_status": {k: len(v) for k, v in sorted(c_ids.items())},
+                       "by_tier": dict(sorted(tiers.items())),
+                       "ids": dict(sorted(c_ids.items()))},
+            "issues": {"by_status": {k: len(v) for k, v in sorted(i_ids.items())},
+                       "ids": dict(sorted(i_ids.items()))}}
+
+def baseline_diff(a, b):
+    """Issue #3: the delta between two snapshots, release-notes shape.
+    Three classes per kind: born (in b only, with b-status), transitions
+    (both, status changed; grouped 'from->to'), and DISAPPEARED (in a
+    only) -- impossible between ancestor and descendant of an
+    append-only file, so its presence means rewritten or divergent
+    history: 10007's omission, caught by exactly the comparison the
+    standard prescribes. The caller escalates it (exit 5)."""
+    out = {}
+    for kind in ("claims", "issues"):
+        sa = {i: st for st, ids in a[kind]["ids"].items() for i in ids}
+        sb = {i: st for st, ids in b[kind]["ids"].items() for i in ids}
+        trans = {}
+        for i in sorted(sa.keys() & sb.keys()):
+            if sa[i] != sb[i]:
+                trans.setdefault(f"{sa[i]}->{sb[i]}", []).append(i)
+        out[kind] = {"born": {i: sb[i] for i in sorted(sb.keys() - sa.keys())},
+                     "transitions": dict(sorted(trans.items())),
+                     "disappeared": {i: sa[i]
+                                     for i in sorted(sa.keys() - sb.keys())}}
+    out["records_delta"] = b["records"] - a["records"]
+    return out
 
 def inverse_report(tracked, claims, under=None, excludes=()):
     """Issue #5: the backward trace (24765). Returns {"dark": [paths],
@@ -1902,6 +1965,68 @@ def cmd_ready(a):
                 print(f"HELD {i.get('id')}  broken premises: "
                       f"{', '.join(i['_truth']['broken_premises'])}")
 
+def events_at_ref(ref):
+    """The ledger's content at a git ref, folded-ready. Exit 2 on an
+    unreadable ref/path: a baseline over nothing is usage, not data."""
+    r = subprocess.run(["git", "show", f"{ref}:{LEDGER_REL}"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"truth: cannot read {LEDGER_REL} at {ref!r} -- "
+              f"{r.stderr.strip().splitlines()[-1] if r.stderr.strip() else 'git show failed'} "
+              "(exit 2: usage)", file=sys.stderr)
+        sys.exit(2)
+    return load_events(io.StringIO(r.stdout))
+
+def _short_sha(ref):
+    r = subprocess.run(["git", "rev-parse", "--short", ref],
+                       capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else "?"
+
+def cmd_baseline(a):
+    snap_a = baseline_snapshot(events_at_ref(a.ref))
+    if not a.diff:
+        snap_a["ref"] = a.ref
+        snap_a["commit"] = _short_sha(a.ref)
+        if a.json:
+            print(json.dumps(snap_a, indent=2, sort_keys=True))
+        else:
+            c, i = snap_a["claims"], snap_a["issues"]
+            fmt = lambda d: ", ".join(f"{v} {k}" for k, v in d.items()) or "none"
+            print(f"baseline {a.ref} ({snap_a['commit']}): "
+                  f"{snap_a['records']} records")
+            print(f"claims: {fmt(c['by_status'])}  "
+                  f"[{' / '.join(f'{k} {v}' for k, v in c['by_tier'].items())}]")
+            print(f"issues: {fmt(i['by_status'])}")
+        return
+    snap_b = baseline_snapshot(events_at_ref(a.diff))
+    delta = baseline_diff(snap_a, snap_b)
+    delta["from"], delta["to"] = a.ref, a.diff
+    disappeared = any(delta[k]["disappeared"] for k in ("claims", "issues"))
+    if a.json:
+        print(json.dumps(delta, indent=2, sort_keys=True))
+    else:
+        print(f"baseline diff {a.ref} -> {a.diff} "
+              f"({delta['records_delta']:+d} records)")
+        for kind in ("claims", "issues"):
+            d = delta[kind]
+            if d["born"]:
+                by = {}
+                for _, st in d["born"].items():
+                    by[st] = by.get(st, 0) + 1
+                print(f"{kind} born: {len(d['born'])} "
+                      f"({', '.join(f'{v} {k}' for k, v in sorted(by.items()))})")
+                for i_, st in d["born"].items():
+                    print(f"  + {i_}  {st}")
+            for pair, ids in d["transitions"].items():
+                print(f"{kind} {pair}: {len(ids)}")
+                for i_ in ids:
+                    print(f"  ~ {i_}")
+            for i_, st in d["disappeared"].items():
+                print(f"{kind} DISAPPEARED (was {st}): {i_} -- a record "
+                      "present at the older ref is gone: history was "
+                      "rewritten or the refs diverge (10007 omission)")
+    sys.exit(5 if disappeared else 0)
+
 def cmd_impact(a):
     if a.inverse:
         # Issue #5: the backward slice. Positional paths make no sense
@@ -2345,6 +2470,20 @@ def main():
                          "--inverse (repeatable; lockfiles, assets)")
     im.add_argument("--json", action="store_true")
     im.set_defaults(fn=cmd_impact)
+
+    bl = sub.add_parser("baseline", help="fold the ledger at a git ref: "
+                        "the frozen status account (10007, issue #3); "
+                        "--diff folds a second ref and prints the delta "
+                        "(exit 5 if any record DISAPPEARED -- rewritten "
+                        "history; exit 2 unreadable ref)")
+    bl.add_argument("ref", help="git ref to fold the ledger at (tag, sha, HEAD)")
+    bl.add_argument("--diff", metavar="REF_B",
+                    help="second (newer) ref: print born/transitions/"
+                         "disappeared between ref and REF_B")
+    bl.add_argument("--json", action="store_true",
+                    help="deterministic JSON (sorted; redirect to a file "
+                         "and commit it if you want a persisted baseline)")
+    bl.set_defaults(fn=cmd_baseline)
 
     d = sub.add_parser("dispatch",
                        help="print the verifier context (prompt + claim only) for a fresh session")

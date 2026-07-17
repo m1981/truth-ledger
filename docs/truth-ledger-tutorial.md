@@ -292,6 +292,7 @@ Lamport, Shostak & Pease, *The Byzantine Generals Problem* (1982) — read the f
 | `truth impact <path>...` | Before editing: what knowledge would this edit endanger? (read-only) |
 | `truth impact --inverse [--under <dir>]` | The backward question: which tracked files does the ledger know nothing about? (exit 4 when dark files exist; issue #5) |
 | `truth stats` | Monthly: status/tier counts, verdict rates, claim half-life, queue aging |
+| `truth baseline <ref> [--diff <ref>]` | The frozen status account at a git ref; --diff prints the release-notes delta and alarms (exit 5) if any record disappeared (issue #3) |
 | `truth doctor` | After any repo surgery |
 
 **Statuses**: `unverified` (filed, unjudged) → `live` (confirmed) → `stale` (ground moved) / `diverged` (checker disagrees — the process *working*) / `cannot_verify` (honest shrug) → `retracted` (tombstone, terminal).

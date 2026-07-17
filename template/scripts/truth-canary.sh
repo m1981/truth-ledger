@@ -1181,6 +1181,60 @@ else
   ok "failing scripts/session-gates.d/ gate refused the close"
 fi
 
+say "FAULT BL1 (issue #3): baseline at an older ref excludes later records; HEAD includes them"
+git add .truth/claims.jsonl
+git commit -qm "canary: bl ref point" --no-verify >/dev/null 2>&1 || true
+REF_BL=$(git rev-parse HEAD)
+CID_BL=$($T claim "bl canary fact" --class UNVERIFIED --tier P2)
+TRUTH_SESSION=s-canary-verifier $T verdict "$CID_BL" agree --basis "canary bl" >/dev/null
+git add .truth/claims.jsonl && git commit -qm "canary: bl new claim" --no-verify
+if $T baseline "$REF_BL" --json 2>/dev/null | grep -q "$CID_BL"; then
+  miss "older baseline contains a claim filed after it"
+else
+  ok "older baseline excludes the later claim"
+fi
+if $T baseline HEAD --json 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if '$CID_BL' in d['claims']['ids'].get('live',[]) else 1)"; then
+  ok "HEAD baseline shows the new claim live"
+else
+  miss "HEAD baseline missing the new live claim"
+fi
+
+say "FAULT BL2 (issue #3): diff shows the born claim, exit 0"
+BL_DIFF=$($T baseline "$REF_BL" --diff HEAD 2>/dev/null); BL_RC=$?
+if [ "$BL_RC" -eq 0 ] && printf '%s\n' "$BL_DIFF" | grep -q "+ $CID_BL"; then
+  ok "diff lists $CID_BL as born, exit 0"
+else
+  miss "diff missed the born claim or wrong exit ($BL_RC)"
+fi
+
+say "FAULT BL3 (issue #3): a record vanishing between refs must alarm (exit 5, 10007 omission)"
+git checkout -qb bl-rewrite
+# drop the last TWO lines (CID_BL's claim AND its verdict) -- deleting
+# only the verdict would be a status transition, not a disappearance
+sed -i.bak '$d' .truth/claims.jsonl && sed -i.bak '$d' .truth/claims.jsonl
+rm -f .truth/claims.jsonl.bak
+git add .truth/claims.jsonl && git commit -qm "canary: rewritten ledger" --no-verify
+git checkout -q main
+$T baseline main --diff bl-rewrite >/dev/null 2>&1; BL3_RC=$?
+if [ "$BL3_RC" -eq 5 ]; then
+  ok "disappeared record raised exit 5"
+else
+  miss "rewritten-history diff exited $BL3_RC instead of 5"
+fi
+if $T baseline main --diff bl-rewrite 2>/dev/null | grep -q "DISAPPEARED"; then
+  ok "diff names the DISAPPEARED record"
+else
+  miss "diff silent about the disappeared record"
+fi
+
+say "FAULT BL4 (issue #3): unreadable ref exits 2"
+$T baseline no-such-ref >/dev/null 2>&1; BL4_RC=$?
+if [ "$BL4_RC" -eq 2 ]; then
+  ok "bad ref exits 2 (usage)"
+else
+  miss "bad ref exited $BL4_RC instead of 2"
+fi
+
 say ""
 say "canary result: $PASS caught, $FAIL missed"
 if [ "$FAIL" -gt 0 ]; then
