@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.7.1 -- seeded-fault acceptance suite (SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn).
+# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -1283,6 +1283,87 @@ if [ "$BL4_RC" -eq 2 ]; then
   ok "bad ref exits 2 (usage)"
 else
   miss "bad ref exited $BL4_RC instead of 2"
+fi
+
+say "FAULT C1 (issue #4): contradicts edge on two live claims folds both to DISPUTED and HOLDs premised work"
+CID_C1=$($T claim "c-fixture formula alpha" --class UNVERIFIED --tier P1)
+CID_C2=$($T claim "c-fixture formula beta variant disagreeing" --class UNVERIFIED --tier P1 --duplicate-ok)  # contradicting claims are inherently near-dups: G8 fires, --duplicate-ok is the honest path
+TRUTH_SESSION=s-canary-verifier $T verdict "$CID_C1" agree --basis "canary c" >/dev/null
+TRUTH_SESSION=s-canary-verifier $T verdict "$CID_C2" agree --basis "canary c" >/dev/null
+WK_C1=$($T issue "work standing on alpha" --premise "$CID_C1")
+if PATH="/usr/bin:/bin" $T ready | grep -q "^$WK_C1"; then
+  ok "premised work READY while both claims live"
+else
+  miss "issue $WK_C1 not ready before the dispute"
+fi
+$T contradicts "$CID_C1" "$CID_C2" --basis "canary: the two formulas cannot both hold" >/dev/null
+if $T list --disputed | grep -q "$CID_C1" && $T list --disputed | grep -q "$CID_C2"; then
+  ok "both sides derive DISPUTED"
+else
+  miss "DISPUTED not derived for both sides"; $T list --disputed || true
+fi
+if PATH="/usr/bin:/bin" $T ready | grep -q "^$WK_C1"; then
+  miss "issue $WK_C1 still READY on a disputed premise"
+else
+  ok "premised work HELD by the dispute"
+fi
+if $T queue | grep "$CID_C1" | grep -q "$CID_C2"; then
+  ok "queue names the counterpart on the disputed row"
+else
+  miss "queue row missing the counterpart"; $T queue || true
+fi
+
+say "FAULT C2 (issue #4): retracting one side resolves the dispute -- the other returns live"
+TRUTH_HUMAN=1 TRUTH_HUMAN_ACK="$CID_C2" $T verdict "$CID_C2" retracted \
+  --basis "canary: beta loses" >/dev/null 2>&1
+if $T list --live | grep -q "$CID_C1" && ! $T list --disputed | grep -q "$CID_C1"; then
+  ok "surviving side live again after the retraction"
+else
+  miss "dispute did not resolve on retraction"
+fi
+if PATH="/usr/bin:/bin" $T ready | grep -q "^$WK_C1"; then
+  ok "premised work released after resolution"
+else
+  miss "issue $WK_C1 still HELD after resolution"
+fi
+
+say "FAULT C3 (issue #4): intake refusals -- self-edge, unknown id, duplicate either direction"
+if $T contradicts "$CID_C1" "$CID_C1" --basis "x" >/dev/null 2>&1; then
+  miss "self-edge accepted"
+else
+  ok "self-edge refused"
+fi
+if $T contradicts "$CID_C1" tr-00000bad --basis "x" >/dev/null 2>&1; then
+  miss "unknown claim accepted"
+else
+  ok "unknown claim refused"
+fi
+CID_C3=$($T claim "c-fixture formula gamma third contender" --class UNVERIFIED --tier P2 --duplicate-ok)
+$T contradicts "$CID_C1" "$CID_C3" --basis "canary dup seed" >/dev/null
+if $T contradicts "$CID_C3" "$CID_C1" --basis "reversed dup" >/dev/null 2>&1; then
+  miss "duplicate edge accepted in reverse direction"
+else
+  ok "duplicate edge refused either direction"
+fi
+
+say "FAULT C4 (issue #4): edge with a non-live side files DORMANT -- no status change"
+if $T list --live | grep -q "$CID_C1"; then
+  ok "live side untouched by the dormant edge (gamma is unverified)"
+else
+  miss "dormant edge changed a status"
+fi
+if $T contradicts "$CID_C2" "$CID_C3" --basis "x" >/dev/null 2>&1; then
+  miss "edge to a RETRACTED claim accepted (dispute already resolved)"
+else
+  ok "edge to a retracted claim refused"
+fi
+
+say "FAULT C5 (issue #4): contradicts records survive validate and the commit gate"
+git add .truth/claims.jsonl && git commit -qm "canary: c-edges" --no-verify
+if $T validate >/dev/null 2>&1; then
+  ok "ledger with contradicts records validates (mirror+schema in sync)"
+else
+  miss "contradicts records fail validate"; $T validate || true
 fi
 
 say ""

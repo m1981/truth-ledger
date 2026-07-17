@@ -991,6 +991,82 @@ class TestImpact(unittest.TestCase):
         rows = tm.impact_report(["src/x.py"], claims, issues, premises)
         self.assertEqual(rows[0]["holds"], ["bd-x1"])
 
+class TestDisputed(unittest.TestCase):
+    """Issue #4: the contradicts edge and the DISPUTED post-pass."""
+    def _base(self, verdicts=("agree", "agree")):
+        evs = [rec("claim", claim_p(text="formula alpha"), rid="tr-000000d1"),
+               rec("claim", claim_p(text="formula beta"), rid="tr-000000d2")]
+        for i, v in enumerate(verdicts):
+            if v:
+                evs.append(rec("verdict", {"claim": f"tr-000000d{i+1}",
+                                           "verdict": v, "basis": "b"},
+                               rid=f"tr-000000e{i+1}",
+                               ts="2026-07-02T00:00:00+00:00"))
+        return evs
+
+    def _edge(self, ts="2026-07-03T00:00:00+00:00", rid="tr-000000f1",
+              a="tr-000000d1", b="tr-000000d2"):
+        return rec("contradicts", {"a": a, "b": b, "basis": "incompatible"},
+                   rid=rid, ts=ts)
+
+    def test_both_live_fold_disputed_with_counterpart(self):
+        claims, _ = tm.fold(events(*self._base(), self._edge()))
+        for cid, other in (("tr-000000d1", "tr-000000d2"),
+                           ("tr-000000d2", "tr-000000d1")):
+            self.assertEqual(claims[cid]["status"], "disputed")
+            self.assertEqual(claims[cid]["disputed_with"], [other])
+            self.assertEqual(claims[cid]["status_ts"],
+                             "2026-07-03T00:00:00+00:00")
+
+    def test_dormant_when_either_side_not_live(self):
+        for v in ("diverge", "retracted", None):
+            claims, _ = tm.fold(events(*self._base(("agree", v)),
+                                       self._edge()))
+            self.assertEqual(claims["tr-000000d1"]["status"], "live",
+                             f"edge fired against a {v or 'unverified'} side")
+
+    def test_resolution_by_killing_one_side(self):
+        evs = self._base() + [self._edge(),
+                              rec("verdict", {"claim": "tr-000000d2",
+                                              "verdict": "retracted",
+                                              "basis": "loser"},
+                                  rid="tr-000000e9",
+                                  ts="2026-07-04T00:00:00+00:00")]
+        claims, _ = tm.fold(events(*evs))
+        self.assertEqual(claims["tr-000000d1"]["status"], "live")
+        self.assertEqual(claims["tr-000000d2"]["status"], "retracted")
+
+    def test_multi_edge_uses_underlying_statuses(self):
+        # A-B and A-C: all three live underneath -> all disputed; C's
+        # fate must not depend on whether A-B folded first
+        evs = self._base() + [
+            rec("claim", claim_p(text="formula gamma"), rid="tr-000000d3"),
+            rec("verdict", {"claim": "tr-000000d3", "verdict": "agree",
+                            "basis": "b"}, rid="tr-000000e3",
+                ts="2026-07-02T00:00:00+00:00"),
+            self._edge(rid="tr-000000f1"),
+            self._edge(rid="tr-000000f2", a="tr-000000d1", b="tr-000000d3",
+                       ts="2026-07-03T01:00:00+00:00")]
+        claims, _ = tm.fold(events(*evs))
+        self.assertEqual(claims["tr-000000d3"]["status"], "disputed")
+        self.assertEqual(claims["tr-000000d1"]["disputed_with"],
+                         ["tr-000000d2", "tr-000000d3"])
+
+    def test_hand_crafted_self_edge_is_inert(self):
+        claims, _ = tm.fold(events(*self._base(),
+                                   self._edge(a="tr-000000d1",
+                                              b="tr-000000d1")))
+        self.assertEqual(claims["tr-000000d1"]["status"], "live")
+
+    def test_disputed_blocks_premises_and_queues_both(self):
+        claims, _ = tm.fold(events(*self._base(), self._edge()))
+        passes, _ = tm.premise_check("disputed", "P1")
+        self.assertFalse(passes)
+        rows = tm.queue_rows(claims, NOW)
+        queued = {r["id"]: r["reason"] for r in rows}
+        self.assertIn("tr-000000d1", queued)
+        self.assertIn("tr-000000d2", queued["tr-000000d1"])
+
 class TestBaseline(unittest.TestCase):
     """Issue #3 (10007): snapshot of one fold, delta of two."""
     def _events_a(self):
@@ -1249,6 +1325,23 @@ CORPUS = [
                                     "kind": "verification",
                                     "executed": False, "screened": False}}),
      True),
+    # ---- contradicts edge (issue #4, v0.9) ----
+    ("contradicts ok",
+     rec("contradicts", {"a": "tr-00000001", "b": "tr-00000002",
+                         "basis": "cannot both hold"}), True),
+    ("contradicts missing basis",
+     rec("contradicts", {"a": "tr-00000001", "b": "tr-00000002"}), False),
+    ("contradicts bad ref",
+     rec("contradicts", {"a": "nope", "b": "tr-00000002",
+                         "basis": "x"}), False),
+    # self-edge: schema-VALID (draft-07 cannot compare properties, and
+    # the mirror may not be stricter) -- refused at intake, inert in fold
+    ("contradicts self edge schema-tolerated",
+     rec("contradicts", {"a": "tr-00000001", "b": "tr-00000001",
+                         "basis": "x"}), True),
+    ("contradicts with wk envelope id",
+     rec("contradicts", {"a": "tr-00000001", "b": "tr-00000002",
+                         "basis": "x"}, rid="wk-00000009"), False),
     ("issue_event accept executed non-boolean",
      rec("issue_event", {"issue": "wk-00000001", "event": "closed",
                          "basis": "b",

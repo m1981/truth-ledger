@@ -1,6 +1,6 @@
 # Truth Ledger — Operations Guide: Triggers, Observability, and Automation
 
-> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: v0.8.0 — three surface changes since the v0.6.2 map below: `done` executes a declared acceptance oracle (ADR-014, v0.7.0) and `impact --inverse` is the backward-trace audit row (issue #5, v0.7.1) and `baseline` the release-accounting row (issue #3, v0.8.0); v0.6.3 added output within doctor, v0.6.4 a flag within premise)
+> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: v0.9.0 — four surface changes since the v0.6.2 map below: `done` executes a declared acceptance oracle (ADR-014, v0.7.0) and `impact --inverse` is the backward-trace audit row (issue #5, v0.7.1) and `baseline` the release-accounting row (issue #3, v0.8.0) and `contradicts` the consistency row (issue #4, v0.9.0); v0.6.3 added output within doctor, v0.6.4 a flag within premise)
 
 ## 1. The trigger map — every point where the ledger executes
 
@@ -25,6 +25,7 @@ The table below is the full trigger surface — some rows human/agent-initiated,
 | Health | `doctor` + canary | Human, weekly | ✅ Fully (CI cron) |
 | Backward-trace audit | `truth impact --inverse [--under dir]` — tracked files no active claim watches (24765; exit 4 = dark files exist, gateable; v0.7.1/issue #5) | Human or CI, weekly | ✅ The *surfacing*; dark-file triage (adopt/attic/delete) stays human |
 | Release accounting | `truth baseline <tag-a> --diff <tag-b>` — born/transitions/disappeared between releases (10007; exit 5 = a record disappeared, i.e. rewritten history; v0.8.0/issue #3) | Human, per release; CI on tags | ✅ Fully — the delta IS the ledger half of the release notes |
+| Declaring a contradiction | `truth contradicts <a> <b> --basis` — both live sides derive DISPUTED, premised work HOLDs, both queue (29148 R5; v0.9.0/issue #4) | Agent or human, on discovering incompatible claims | ✅ The *derivation*; declaring and resolving (retract/supersede one side) stay human-judged |
 
 The two bolded rows are the system's heartbeat — they make knowledge decay *mechanical* instead of vigilance-dependent. If those two hooks are not firing, you do not have a truth ledger; you have a diary.
 

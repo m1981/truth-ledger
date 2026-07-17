@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.8.0)
+# .truth — append-only claims ledger (v0.9.0)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -242,6 +242,23 @@ in an agent harness; a deny list for frozen paths; per-session dedup) is
 consumer policy and deliberately not shipped (ADR-003 rule 2) — wire it
 per ADR-005's Decision, and watch its adoption gate: whispers that
 change agent behavior, without fatigue.
+
+**Contradictions (issue #4, v0.9.0 — 29148 set consistency, rule R5).**
+
+    scripts/truth contradicts <tr-a> <tr-b> --basis "<why not both>"
+
+A DECLARED edge, mirroring premise — no NLP: the moment a gate needs a
+model to fire, it is a review, not a refusal. While an edge connects
+two claims whose statuses would otherwise both be live, BOTH derive
+**DISPUTED** — which behaves like diverged everywhere: premised work
+HOLDs, spec-health fails citers, both sides queue naming their
+counterpart. Any other endpoint state leaves the edge dormant. There is
+no arbitration verb: retract, supersede, or re-file one side and the
+edge stops firing. Intake refuses self-edges, unknown or retracted
+endpoints, and duplicate edges in either direction; note that a claim
+CONTRADICTING an existing one is usually also its near-duplicate, so
+filing the second side legitimately takes `--duplicate-ok` — that is
+the flag's honest use, not a bypass. Canary FAULTS C1–C5.
 
 **Baselines (issue #3, v0.8.0 — ISO 10007 set-level status accounting).**
 

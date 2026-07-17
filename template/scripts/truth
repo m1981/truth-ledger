@@ -1,5 +1,28 @@
 #!/usr/bin/env python3
-"""truth v0.8.1 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.0 -- append-only claims ledger with a native work kernel.
+
+v0.9.0 (issue #4, wk-3a8a725f): `contradicts` -- 29148 set consistency
+  made syntax (conformance rule R5). Near-dup intake catches
+  restatement; nothing caught contradiction -- two incompatible live
+  claims coexisted until a human diffed them (field: two back-panel
+  formulas, two LEGRABOX width formulas). New record kind `contradicts`
+  {a, b, basis}: a DECLARED edge, mirroring premise -- no NLP, the
+  moment a gate needs a model to fire it is a review, not a refusal.
+  Fold: a post-pass over the UNDERLYING statuses -- for every edge
+  whose two endpoints would otherwise both be live, both derive
+  DISPUTED. Evaluating edges against pre-edge statuses (never
+  iteratively) keeps the fold confluent and makes multi-edge chains
+  order-independent; disputed status_ts advances to the edge ts when
+  later (safe as a string compare under ADR-015). DISPUTED behaves
+  like diverged downstream: premise_check blocks, spec-health fails
+  citers, queue lists BOTH sides naming the counterpart, impact stops
+  whispering for it; inverse still counts it as watching (knowledge in
+  dispute, not absence). Resolution needs no new verb: retract,
+  supersede, or re-file one side -- the edge stops firing the moment
+  either endpoint is not live, and a dormant edge (an endpoint
+  unverified/stale/dead) fires nothing. Intake refusals: unknown ids,
+  self-edge, duplicate edge (either direction), retracted endpoint
+  (already resolved), empty basis. Canary FAULTS C1-C5.
 
 v0.8.1 (ADR-015, wk-c7378976): canonical timestamp profile. Source: an
   independent spec-only review (pi, 2026-07-17; findings HIGH-1 and
@@ -302,8 +325,10 @@ PROMPT_REL = "prompts/truth-verifier.md"
 EVIDENCE_CLASSES = ("VERIFIED", "INFERRED", "UNVERIFIED")
 TIERS = ("P0", "P1", "P2")
 VERDICTS = ("agree", "diverge", "cannot_verify", "retracted")
-KINDS = ("claim", "verdict", "invalidation", "premise", "issue", "issue_event")
-STATUSES = ("unverified", "live", "stale", "diverged", "cannot_verify", "retracted")
+KINDS = ("claim", "verdict", "invalidation", "premise", "issue",
+         "issue_event", "contradicts")
+STATUSES = ("unverified", "live", "stale", "diverged", "cannot_verify",
+            "retracted", "disputed")
 ISSUE_EVENTS = ("claimed", "released", "closed", "reopened", "cancelled")
 ISSUE_STATUSES = ("open", "claimed", "closed", "cancelled")
 DISCOVERY_FILES = ("AGENTS.md", "CLAUDE.md", ".cursorrules",
@@ -445,7 +470,7 @@ def fold(events):
     """
     ordered = sorted(events, key=lambda ne: (ne[1].get("ts") or "",
                                              ne[1].get("id") or ""))
-    claims, premises = {}, {}
+    claims, premises, edges = {}, {}, []
     def set_status(cid, status, ts):
         if claims[cid]["status"] == "retracted":
             return
@@ -453,7 +478,9 @@ def fold(events):
         claims[cid]["status_ts"] = ts
     for _, ev in ordered:
         kind, p = ev.get("kind"), ev.get("payload", {})
-        if kind == "claim":
+        if kind == "contradicts":
+            edges.append((p.get("a"), p.get("b"), ev.get("ts")))
+        elif kind == "claim":
             if ev["id"] in claims:
                 continue  # first claim wins; duplicates cannot reset status
             claims[ev["id"]] = {"claim": ev, "status": "unverified",
@@ -481,6 +508,28 @@ def fold(events):
                 set_status(c, "stale", ev.get("ts"))
         elif kind == "premise":
             premises.setdefault(p["issue"], []).append(p["claim"])
+    # Issue #4 (v0.9.0): the DISPUTED post-pass. Every edge is judged
+    # against the UNDERLYING statuses computed above -- never against
+    # statuses this pass itself changes -- so the result is independent
+    # of edge order and the fold stays confluent. An edge fires only
+    # while BOTH endpoints would otherwise be live; anything else
+    # (unverified, stale, diverged, dead, missing) leaves it dormant.
+    # status_ts advances to the edge ts when later (ADR-015 fixed-width
+    # timestamps make the string max well-ordered).
+    fires = [(a, b, ts) for a, b, ts in edges
+             if a != b  # hand-crafted self-edge: inert, never disputes
+             and claims.get(a, {}).get("status") == "live"
+             and claims.get(b, {}).get("status") == "live"]
+    for a, b, ts in fires:
+        for side, other in ((a, b), (b, a)):
+            e = claims[side]
+            e["status"] = "disputed"
+            if ts and ts > (e.get("status_ts") or ""):
+                e["status_ts"] = ts
+            e.setdefault("disputed_with", []).append(other)
+    for e in claims.values():
+        if "disputed_with" in e:
+            e["disputed_with"] = sorted(set(e["disputed_with"]))
     return claims, premises
 
 def age_days(entry, now):
@@ -1038,6 +1087,10 @@ def queue_rows(claims, now):
             reason = "author/verifier diverged"
             if e.get("subtype") == "mechanical":
                 reason += " (mechanical: recipe changed, fact may hold)"
+        elif status == "disputed":
+            reason = ("declared contradiction with "
+                      + ", ".join(e.get("disputed_with", []))
+                      + " -- retract, supersede, or re-file one side")
         elif status == "stale" and tier in ("P0", "P1"):
             reason = "evidence invalidated"
         elif status == "cannot_verify" and tier == "P0":
@@ -1168,7 +1221,7 @@ def premise_check(status, tier):
         if tier == "P0":
             return False, None
         return True, "premise is cannot_verify (non-P0, passes per ADR-001)"
-    return False, None  # stale | diverged | retracted | missing
+    return False, None  # stale | diverged | disputed | retracted | missing
 
 def join_ready(issues, claims, premises):
     """Annotate bd issues with premise validity; return (ready, all)."""
@@ -1292,6 +1345,16 @@ def validate_events(events):
                 errors.append(f"line {n}: malformed invalidation")
             elif not ID_RE.match(str(p.get("claim"))):
                 errors.append(f"line {n}: invalidation claim ref not tr-hex8")
+        elif kind == "contradicts":
+            if not p.get("a") or not p.get("b") \
+                    or not (p.get("basis") or "").strip():
+                errors.append(f"line {n}: malformed contradicts (needs "
+                              "a, b, basis) (issue #4)")
+            elif not ID_RE.match(str(p["a"])) or not ID_RE.match(str(p["b"])):
+                errors.append(f"line {n}: contradicts refs not tr-hex8")
+            # a==b is refused at INTAKE and inert in the fold, but not a
+            # validate error: draft-07 cannot express property inequality,
+            # and the mirror may not be stricter than the schema (FS-2)
         elif kind == "premise":
             if not p.get("issue") or not p.get("claim"):
                 errors.append(f"line {n}: malformed premise")
@@ -1764,6 +1827,38 @@ def cmd_premise(a):
         payload["supersedes"] = a.supersedes
     rec = append_record("premise", payload)
     print(json.dumps(rec) if a.json else rec["id"])
+
+def cmd_contradicts(a):
+    events = load_events()
+    claims, _ = fold(events)
+    if a.claim_a == a.claim_b:
+        sys.exit("truth: a claim cannot contradict itself (issue #4)")
+    for cid in (a.claim_a, a.claim_b):
+        if cid not in claims:
+            sys.exit(f"truth: unknown claim {cid} -- a contradiction is "
+                     "declared between two EXISTING claims (issue #4)")
+        if claims[cid]["status"] == "retracted":
+            sys.exit(f"truth: {cid} is retracted -- the dispute is already "
+                     "resolved; an edge to a tombstone can never fire "
+                     "(issue #4)")
+    pair = {a.claim_a, a.claim_b}
+    for _, ev in events:
+        if ev.get("kind") == "contradicts" \
+                and {ev["payload"].get("a"), ev["payload"].get("b")} == pair:
+            sys.exit(f"truth: this contradiction is already declared "
+                     f"({ev['id']}) -- one edge per pair, either "
+                     "direction (issue #4)")
+    if not (a.basis or "").strip():
+        sys.exit("truth: --basis is required: state WHY these cannot both "
+                 "hold; the sentence is the attackable record (issue #4)")
+    rec = append_record("contradicts", {"a": a.claim_a, "b": a.claim_b,
+                                        "basis": a.basis})
+    both_live = all(claims[c]["status"] == "live"
+                    for c in (a.claim_a, a.claim_b))
+    state = ("both claims now derive DISPUTED (premised work HOLDs, "
+             "specs citing either side fail)" if both_live else
+             "edge filed DORMANT (fires only while both sides are live)")
+    print(f"{rec['id']}: {a.claim_a} <-x-> {a.claim_b} -- {state}")
 
 def cmd_list(a):
     claims, _ = fold(load_events())
@@ -2415,6 +2510,18 @@ def main():
                         "(ADR-013)")
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_premise)
+
+    ct = sub.add_parser("contradicts", help="declare two claims cannot both "
+                        "hold (issue #4): while both would otherwise be "
+                        "live, both derive DISPUTED -- premised work HOLDs "
+                        "and specs citing either side fail; resolve by "
+                        "retract/supersede/re-file, no new verb")
+    ct.add_argument("claim_a")
+    ct.add_argument("claim_b")
+    ct.add_argument("--basis", required=True,
+                    help="why these cannot both hold -- the attackable "
+                         "record of the accusation")
+    ct.set_defaults(fn=cmd_contradicts)
 
     i = sub.add_parser("issue", help="file a work item in the ledger (ADR-002); "
                        "link the facts it stands on with --premise")
