@@ -1,5 +1,20 @@
 #!/usr/bin/env python3
-"""truth v0.7.1 -- append-only claims ledger with a native work kernel.
+"""truth v0.7.2 -- append-only claims ledger with a native work kernel.
+
+v0.7.2 (issue #7, wk-75aa9735, owner decision 2026-07-17): path-form
+  accept-allow entries. First-consumer dogfood found the gap the same
+  day ADR-014 shipped: the repo's REAL suite interpreter is often
+  repo-local (.venv/bin/python, ./gradlew, node_modules/.bin/*), and
+  the screen's bare-name rule forced either a bash -c wrapper (which
+  launders the path past the screen) or the broadest interpreter entry.
+  Now an acceptance oracle's program may be a path IFF it exactly
+  equals a committed .truth/accept-allow entry, is repo-relative (no
+  leading /), and has no `..` segment -- an allowlisted exact path is
+  the opposite of arbitrary, and STRONGER than an interpreter bare-name
+  (it bounds which executable runs, not which language). The evidence
+  screen (ADR-009) keeps its unconditional path refusal: recheck is a
+  different trust seam and read-only stays the rule there. Canary
+  FAULT AC8.
 
 v0.7.1 (issue #5, wk-bd379821): `impact --inverse` -- the backward
   trace (ISO/IEC/IEEE 24765 bidirectional traceability). Forward impact
@@ -646,7 +661,8 @@ _SCREEN_SEPARATORS = frozenset((";", "|", "||", "&&", "&"))
 _SCREEN_PUNCT = frozenset("();<>|&")
 
 def screen_evidence_command(cmd, allowlist, allow_rel=EVIDENCE_ALLOW_REL,
-                            missing_tail=None, unlisted_hint=None):
+                            missing_tail=None, unlisted_hint=None,
+                            allow_paths=False):
     """ADR-009: evidence commands re-execute later in a *verifier's*
     session (recheck) -- deferred code execution across the trust seam
     G11 protects. Static screen over a QUOTE-AWARE token stream (shlex
@@ -705,9 +721,26 @@ def screen_evidence_command(cmd, allowlist, allow_rel=EVIDENCE_ALLOW_REL,
             continue
         if expecting_program:
             if "/" in tok:
+                # Issue #7 (v0.7.2, accept screen only): an ALLOWLISTED
+                # exact repo-relative path may run as an oracle -- the
+                # committed entry bounds precisely which executable, which
+                # is stronger than an interpreter bare-name. Absolute
+                # paths and `..` segments never pass; the evidence screen
+                # (allow_paths=False) keeps ADR-009's blanket refusal.
+                if allow_paths and tok in allowlist \
+                        and not tok.startswith("/") \
+                        and ".." not in tok.split("/"):
+                    expecting_program = False
+                    program = tok
+                    continue
                 return (f"program {tok!r} is a path, not a bare command "
-                        "name -- repo-local executables are not "
-                        "screenable (ADR-009)")
+                        "name -- " +
+                        ("add the exact repo-relative path to "
+                         f"{allow_rel} to admit it as an oracle; absolute "
+                         "paths and '..' never pass (issue #7, ADR-014)"
+                         if allow_paths else
+                         "repo-local executables are not screenable "
+                         "(ADR-009)"))
             if tok not in allowlist:
                 return (f"'{tok}' is not in {allow_rel}. " +
                         (unlisted_hint or "Add it there if it is read-only "
@@ -748,7 +781,8 @@ def screen_accept_command(cmd, allowlist):
         unlisted_hint=("Add it there if you accept it executing at `done` "
                        "time inside the closing session, or file the issue "
                        "with --accept-unsafe-ok (`done` will then refuse "
-                       "to execute the oracle) (ADR-014)."))
+                       "to execute the oracle) (ADR-014)."),
+        allow_paths=True)
 
 def order_check(events):
     """ADR-008: within one repository's history, file order is append

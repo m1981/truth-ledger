@@ -392,6 +392,34 @@ class TestAcceptScreen(unittest.TestCase):
         self.assertIsNotNone(tm.screen_accept_command(
             "pytest -q > results.txt", self.ACC))
 
+    def test_path_form_entry_admits_exact_oracle(self):
+        """Issue #7: an allowlisted exact repo-relative path runs as an
+        oracle; near-misses and traversals do not."""
+        acc = ["bash", ".venv/bin/python", "./gradlew"]
+        self.assertIsNone(tm.screen_accept_command(
+            ".venv/bin/python scripts/test-truth-core.py", acc))
+        self.assertIsNone(tm.screen_accept_command("./gradlew test", acc))
+        # exact match only -- a different path is refused with the hint
+        err = tm.screen_accept_command(".venv/bin/pytest -q", acc)
+        self.assertIn(tm.ACCEPT_ALLOW_REL, err)
+        # unlisted path still refused
+        self.assertIsNotNone(tm.screen_accept_command("./run.sh", acc))
+
+    def test_path_form_entry_never_absolute_or_traversal(self):
+        # even a LISTED absolute or ..-path is refused -- the entry is
+        # inert, not a policy the screen will honor
+        acc = ["/usr/bin/python3", "../outside/tool", ".venv/bin/python"]
+        self.assertIsNotNone(tm.screen_accept_command(
+            "/usr/bin/python3 -m pytest", acc))
+        self.assertIsNotNone(tm.screen_accept_command(
+            "../outside/tool run", acc))
+
+    def test_evidence_screen_still_refuses_paths_unconditionally(self):
+        # ADR-009 unchanged: a path program is refused for EVIDENCE even
+        # if some allowlist listed it -- different trust seam
+        self.assertIsNotNone(tm.screen_evidence_command(
+            ".venv/bin/python x.py", ALLOW + [".venv/bin/python"]))
+
     def test_evidence_screen_messages_unchanged(self):
         # regression: the parameterization must not rewrite ADR-009's
         # messages -- they still name evidence-allow and its escape hatch

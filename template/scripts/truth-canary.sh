@@ -1049,6 +1049,33 @@ else
   miss "acceptance records fail validate"; $T validate || true
 fi
 
+say "FAULT AC8 (issue #7): exact path-form accept-allow entry admits the oracle; near-miss and absolute refused"
+mkdir -p tools && printf '#!/bin/sh\nexit 0\n' > tools/oracle.sh && chmod +x tools/oracle.sh
+git add tools && git commit -qm "canary: ac8 oracle" --no-verify
+printf 'true\nfalse\nsh\ntools/oracle.sh\n/bin/echo\n' > .truth/accept-allow
+WK_AC8=$($T issue "ac8 path oracle" --accept-cmd "tools/oracle.sh" 2>/dev/null)
+if [ -n "$WK_AC8" ]; then
+  ok "listed repo-relative path oracle accepted at filing"
+  $T start "$WK_AC8" >/dev/null
+  if $T done "$WK_AC8" --basis "ac8 close" >/dev/null 2>&1; then
+    ok "path-form oracle executed and closed the issue"
+  else
+    miss "path-form oracle did not execute at done"
+  fi
+else
+  miss "listed repo-relative path oracle refused at filing"
+fi
+if $T issue "ac8 near miss" --accept-cmd "tools/oracle2.sh" >/dev/null 2>&1; then
+  miss "unlisted path oracle accepted"
+else
+  ok "unlisted path oracle refused (exact match only)"
+fi
+if $T issue "ac8 absolute" --accept-cmd "/bin/echo hi" >/dev/null 2>&1; then
+  miss "absolute path oracle accepted despite being listed"
+else
+  ok "absolute path refused even when listed (inert entry)"
+fi
+
 say "FAULT W5 (issue #5): impact --inverse lists dark files, keeps watched ones, exits 4"
 echo "dark" > lone.txt
 mkdir -p watched-dir && echo "wf" > watched-dir/f.txt
