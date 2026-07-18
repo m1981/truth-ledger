@@ -88,6 +88,12 @@ Issue *status is derived by the fold, never stored* — exactly as claim
 status is. Re-filing an `issue` record with an existing id updates payload
 fields (fold: last write in `(ts, id)` order wins); status moves only
 through events. Dependency cycles fail loudly at filing time.
+> ⚠ **Superseded by ADR-006 (see `Amended by:` above).** This sentence's
+> "last write wins" is no longer accurate: `fold_issues` is now
+> FIRST-wins on duplicate ids (a later append with an existing id is
+> inert), identical to `fold()`. The "update-by-refile" verb it describes
+> was never implemented. Kept in the immutable body per the ADR-body
+> convention; this marker is the correction pointer.
 
 **Status semantics.** `open` → `claimed` → `closed`, with `reopened`
 returning to open: work is cyclical, so `closed` is NOT terminal — unlike

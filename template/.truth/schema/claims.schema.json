@@ -109,6 +109,15 @@
                 "minLength": 1,
                 "description": "ADR-007: the author's stated reason a scoped evidence command covers a universally quantified claim text -- attackable by verifiers"
               },
+              "overridden_duplicates": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "pattern": "^tr-[0-9a-f]{8}$"
+                },
+                "description": "MEDIUM-1: the active claim ids a --duplicate-ok override declared this claim distinct from -- the auditable trace of the near-duplicate (G8) bypass"
+              },
               "evidence": {
                 "type": "object",
                 "required": [
@@ -515,6 +524,25 @@
                       "required": [
                         "returncode"
                       ]
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "executed": {
+                          "const": false
+                        }
+                      },
+                      "required": [
+                        "executed"
+                      ]
+                    },
+                    "then": {
+                      "not": {
+                        "required": [
+                          "returncode"
+                        ]
+                      }
                     }
                   }
                 ]

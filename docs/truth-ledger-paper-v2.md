@@ -771,7 +771,14 @@ the safe default) instead of running unarmed and silently skipping.
 
 ---
 
-## Appendix A. Invariant table (merged, v0.4 + proposed)
+## Appendix A. Invariant table (v0.4 core through v0.9.1)
+
+Every shipped property that a seeded fault gates belongs here — a row is
+added when the property ships, not later. INV-O/P/Q were backfilled
+2026-07-18 after an independent review found ADR-010/013/014 shipping
+with canary faults but no table row; the table is itself an admitted
+artifact class that needs its own freshness discipline (§5), and a lag
+between "fault lands" and "row lands" is exactly the decay §5 predicts.
 
 | ID | Property | Falsified by | Gate |
 |----|----------|--------------|------|
@@ -782,13 +789,16 @@ the safe default) instead of running unarmed and silently skipping.
 | INV-E | TTL'd claims expire | One claim outliving its TTL | Seeded fault |
 | INV-F | History rewrites invalidate, with reason | One orphaned anchor still trusted | Seeded fault |
 | INV-G | Retraction is terminal, on every path *tested* | One resurrected tombstone | Seeded fault (verdict path, append path); duplicate-id content substitution under a retracted id is detected at commit — backdated (strictly-earlier `ts`) since v0.6 (ADR-008), and copied-`ts` (equal, non-identical content) since v0.9.1 (ADR-016, canary B5) — residual: fresh-id timestamp forgery, accepted per §8 item 6; see §1 "Fold semantics, precisely" |
-| INV-H | Broken premises hold work | One issue ready on a stale premise | Seeded fault |
+| INV-H | Broken premises hold work: a premise that is `stale`, `diverged`, `retracted`, or missing HOLDs its issue (the full ADR-001 blocking set, not just `stale`) | One issue ready on a premise in any of those four states | Seeded fault (FAULT J covers `stale`; the ADR-001 matrix — reused verbatim by the work kernel, ADR-002 — blocks all four identically). The `cannot_verify` P0-only rule and the `unverified` warn-pass are the matrix's two non-blocking cells |
 | INV-I | Fold is confluent: any event order, same state | Two orders, two statuses (or two contents) | Permutation property test. The order key is `(ts, id, canonical-serialization)`: the third key is load-bearing (ADR-016, v0.9.1) — `(ts, id)` alone is not total, so a duplicate id with a copied equal `ts` folded to different *content* by file order until the content-derived tie-break closed it (canary B6; core `test_duplicate_id_equal_ts_folds_to_one_content`) |
 | INV-J | Re-verification is durable across scans | One re-verified claim re-staled with no new changes | Seeded fault |
 | INV-K | Retraction requires `TRUTH_HUMAN=1` **plus** an interactive typed-id confirmation or `TRUTH_HUMAN_ACK=<exact-id>` (ADR-011, v0.6) | One retraction accepted with the variable alone, headless | Seeded fault (H-faults) — still self-attested rather than identity-verified, but the one-export bypass is closed; see F4, §4 |
 | INV-L | The drift detector is armed or the suite fails | One green run with the schema unchecked | Armed-detector test |
 | INV-M | Every `evidence_path` on an accepted claim matches ≥1 tracked file at filing time, or is an explicit glob | One accepted claim whose tripwire can never fire | Seeded fault (`FAULT T`), shipped v0.5.4. Known residual (found by inspection, meta-repo, 2026-07-13): a tracked **symlink** passes the literal-path check but can never fire — git tracks the link, which never changes, not the target. Watch real paths; an intake warning on symlink literals is a candidate hardening if the class recurs |
 | INV-N | Issue-fold premise protection (ADR-001) cannot be stripped by an appended duplicate `wk-` id | One HELD issue silently flipped to READY | Seeded fault (FAULT R9) — fixed at the fold level (ADR-006): duplicate issue ids are first-wins, identical to INV-G's claims-side mechanism; the backdated- and copied-`ts` duplicate compositions are detected at commit (ADR-008 v0.6, ADR-016 v0.9.1 — the equal-ts gate and total order apply to every kind, `wk-` included), with INV-G's same residual — fresh-id forgery while `ts`/`actor` remain unsigned (§8 item 6) |
+| INV-O | A verifier cannot `agree` with a claim from that claim's own authoring session; a `diverge` from the own session IS allowed (self-incrimination) (ADR-010, v0.6) | One same-session `agree` accepted, or one same-session `diverge` refused | Seeded fault (FAULTS V1/V2/V3). Self-attested session identity (`TRUTH_SESSION`), same class as F4/INV-K — the bypass is one visible env export, not an identity check |
+| INV-P | A supersede redirect re-targets premise validity, never bypasses it: the replacement is judged by the same ADR-001 matrix, and the redirect is refused while the old premise still passes `ready` | One issue made READY by redirecting a live/unverified premise, or a redirect resolving non-deterministically | Seeded fault (FAULT R10); cycle resolution pinned by core tests (ADR-013 amended 2026-07-18, first-repeated-value rule) |
+| INV-Q | An acceptance oracle gates issue close: a non-zero exit refuses `done`, and an unscreened oracle is refused execution unless `--accept-unsafe-ok` stamps it visibly | One issue closed over a failing oracle, or an unscreened oracle executed silently | Seeded fault (FAULTS AC1–AC8, ADR-014, v0.7); `accept.executed=true` requires `returncode 0` in schema and mirror |
 
 ## Appendix B. Reproduction
 

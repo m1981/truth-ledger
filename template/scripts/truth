@@ -1371,6 +1371,14 @@ def validate_events(events):
             if "scope_basis" in p and not p["scope_basis"]:
                 errors.append(f"line {n}: empty scope_basis (ADR-007: the "
                               "override carries a sentence, not a boolean)")
+            if "overridden_duplicates" in p:
+                od = p["overridden_duplicates"]
+                if (not isinstance(od, list) or not od
+                        or any(not ID_RE.match(str(c)) for c in od)):
+                    errors.append(f"line {n}: overridden_duplicates must be a "
+                                  "non-empty list of tr-hex8 ids (MEDIUM-1: "
+                                  "the --duplicate-ok trace records which "
+                                  "active claims it declared distinct from)")
             if "screened" in p.get("evidence", {}) \
                     and not isinstance(p["evidence"]["screened"], bool):
                 errors.append(f"line {n}: evidence.screened must be a "
@@ -1451,6 +1459,11 @@ def validate_events(events):
                     errors.append(f"line {n}: an executed acceptance on a "
                                   "close must record returncode 0 -- a "
                                   "failing oracle never closes (ADR-014)")
+                elif not acc["executed"] and "returncode" in acc:
+                    errors.append(f"line {n}: an unexecuted acceptance "
+                                  "(executed=false) must not carry a "
+                                  "returncode -- there was no run to have an "
+                                  "exit code (ADR-014, MEDIUM-3)")
                 elif "kind" in acc and acc["kind"] not in ACCEPT_KINDS:
                     errors.append(f"line {n}: issue_event accept kind must "
                                   f"be one of {'/'.join(ACCEPT_KINDS)} "
@@ -1653,12 +1666,19 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
         sys.exit("truth: claim text must be non-empty -- an assertion with "
                  "no sentence cannot be verified, diverged from, or cited "
                  "(schema: text minLength 1)")
-    if not duplicate_ok:
-        similar = duplicate_conflicts(text, claims)
-        if similar:
-            lines = "\n".join(f"  {cid}: {t}" for cid, t in similar)
-            sys.exit("truth: refusing near-duplicate of active claim(s) (G8):\n"
-                     f"{lines}\nRe-file with --duplicate-ok if genuinely distinct.")
+    # G8 duplicate gate. Compute conflicts UNCONDITIONALLY (MEDIUM-1): a
+    # bare --duplicate-ok used to skip the check and leave no trace, unlike
+    # every other override (scope_basis, screened) which records itself.
+    # Now the override stamps the ids it bypassed onto the record, so the
+    # author's "these are genuinely distinct" judgment is attackable ledger
+    # content a verifier can review -- not a silent flag.
+    similar = duplicate_conflicts(text, claims)
+    if similar and not duplicate_ok:
+        lines = "\n".join(f"  {cid}: {t}" for cid, t in similar)
+        sys.exit("truth: refusing near-duplicate of active claim(s) (G8):\n"
+                 f"{lines}\nRe-file with --duplicate-ok if genuinely distinct.")
+    overridden_duplicates = sorted(cid for cid, _ in similar) \
+        if (similar and duplicate_ok) else []
 
     conflict = quantifier_scope_conflict(text, evidence_cmd)
     if conflict and not scope_basis:
@@ -1698,6 +1718,8 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
                "evidence_paths": paths}
     if scope_basis:
         payload["scope_basis"] = scope_basis
+    if overridden_duplicates:
+        payload["overridden_duplicates"] = overridden_duplicates
 
     if evidence_class == "VERIFIED":
         err = verified_intake_error(evidence_cmd, paths, ttl_days,

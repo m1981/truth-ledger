@@ -1282,6 +1282,14 @@ CORPUS = [
      rec("claim", claim_p(scope_basis="quantifier scoped to services/")), True),
     ("claim empty scope_basis",
      rec("claim", claim_p(scope_basis="")), False),
+    # MEDIUM-1: --duplicate-ok override trace
+    ("claim with overridden_duplicates",
+     rec("claim", claim_p(overridden_duplicates=["tr-00000001",
+                                                 "tr-00000002"])), True),
+    ("claim empty overridden_duplicates",
+     rec("claim", claim_p(overridden_duplicates=[])), False),
+    ("claim overridden_duplicates bad ref",
+     rec("claim", claim_p(overridden_duplicates=["nope"])), False),
     ("verified evidence screened false",
      rec("claim", verified_p(evidence={"command": "cat f.txt",
                                        "output_hash": "sha256:" + "0" * 64,
@@ -1365,6 +1373,14 @@ CORPUS = [
                          "accept": {"command": "pytest -q",
                                     "kind": "verification",
                                     "executed": "yes"}}), False),
+    # MEDIUM-3: an unexecuted acceptance must not carry a returncode
+    ("issue_event accept unexecuted with returncode",
+     rec("issue_event", {"issue": "wk-00000001", "event": "closed",
+                         "basis": "b",
+                         "accept": {"command": "eval x",
+                                    "kind": "verification",
+                                    "executed": False, "screened": False,
+                                    "returncode": 0}}), False),
     # ---- canonical ts profile (ADR-015, v0.8.1) -- the fold sorts the
     # raw ts string, so every non-canonical form must be rejected by
     # schema pattern and mirror alike ----

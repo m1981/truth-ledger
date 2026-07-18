@@ -67,9 +67,14 @@ pipeline segment's program must be a bare name in
 `.truth/evidence-allow`; no command substitution; output redirection
 only to `/dev/null` or an fd dup (`2>&1`), so the pin-the-output
 convention keeps working;
-`--evidence-unsafe-ok` files anyway with `evidence.screened=false`, and
-recheck then refuses to execute the command, ever — verification becomes
-manual), and a nondeterministic evidence command (two intake runs must
+`--evidence-unsafe-ok` files a *screen failure* anyway with
+`evidence.screened=false`, and recheck then refuses to execute the
+command, ever — verification becomes manual; but a **missing** allowlist
+fails closed *even under* the override (a repo with no `evidence-allow`
+cannot file a VERIFIED evidence command at all — the F1 fail-closed
+lesson), so the override covers a screened-out program, not the absence
+of a policy to screen against), and a nondeterministic evidence command
+(two intake runs must
 hash identically; `--single-run` overrides). INFERRED requires `--basis`.
 
 ## v0.6 solo-regime hardening (docs/hardening-proposals-solo-regime.md)
