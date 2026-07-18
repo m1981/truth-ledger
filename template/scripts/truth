@@ -1,5 +1,23 @@
 #!/usr/bin/env python3
-"""truth v0.9.6 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.7 -- append-only claims ledger with a native work kernel.
+
+v0.9.7 (evidence-deny baseline, wk-372de09c): ADR-022 adds an anti-footgun
+  guardrail beneath the allowlist (which stays the boundary, ADR-021). A
+  TEMPLATE-owned `.truth/evidence-deny` file lists programs whose sole job
+  is to run other programs (shells + generic executors/exec-wrappers +
+  privilege-then-run); the evidence screen refuses them in program
+  position even if a consumer allowlisted one by accident (deny-wins),
+  evidence screen only -- ADR-014 oracles still run `bash run.sh`. It is
+  template-owned (NOT copier `_skip_if_exists`, unlike the consumer-owned
+  allowlist), so `copier update` keeps the baseline current; absent it
+  fails open, the allowlist still gating. `doctor` additionally warns
+  (non-blocking) on grey-zone code-executors (git/python/curl/...) in the
+  allowlist. An adversarial review found and closed one RCE gap (`time
+  bash -c <cmd>`; time added to the baseline). NOT a completeness claim --
+  the allowlist is the boundary. Core test_denylist_wins_over_allowlist /
+  _deny_baseline_not_applied_to_oracles / _doctor_grey_zone_set; canary
+  FAULT ED.
+
 
 v0.9.6 (independent ledger-code review, H4 -- SECURITY): ADR-021
   (wk-5b2b724e) closes a live evidence-screen bypass. The screen tokenizes
