@@ -433,18 +433,26 @@ QUANTIFIER_PHRASES = ("repo-wide", "the repo", "the codebase", "the project")
 SCOPE_OPTION_TOKENS = frozenset(("--include", "--exclude", "--include-dir",
                                  "--exclude-dir", "-g", "--glob", "--path",
                                  "-t", "--type"))
-# ADR-009 (v0.6.2, F1): allowlisted programs whose own options open an
-# exec or file-write channel the bare-name screen cannot see. Keyed by
-# program; an argument whose '='-prefix is listed is refused even though
-# the program is allowlisted. git's exec surface (-c <k>=!cmd aliases,
-# pagers, --exec-path) is too broad to bound this way, so it is dropped
-# from the shipped default allowlist (see .truth/evidence-allow); this
-# entry is defense-in-depth for a consumer who re-adds it consciously.
+# ADR-009 (v0.6.2, F1) / ADR-021 (H4): allowlisted programs whose own
+# options open an exec or file-write channel the bare-name screen cannot
+# see. Keyed by program; an argument whose '='-prefix is listed is refused
+# even though the program is allowlisted. THIS IS A BLOCKLIST AND A
+# BLOCKLIST CANNOT BOUND AN INTERPRETER OR VCS: it is defense-in-depth for
+# a few shipped programs' KNOWN write channels (find's -exec/-fprint*,
+# sort's -o/--output/--compress-program), NOT a safety guarantee. `git` is
+# the standing example -- its exec/write surface is unbounded by flags
+# (filter-branch --tree-filter, bundle, archive -o, config --file,
+# worktree, format-patch -o, checkout-index, bisect run, submodule
+# foreach, -c <k>=!cmd aliases, ...), no enumerable deny set closes it, so
+# git is NOT in the shipped default allowlist and MUST NOT be added for
+# evidence use (ADR-021). The git entry below only blunts a few top-level
+# flags for a consumer who re-adds it against that advice; it does not
+# make git safe.
 PROGRAM_ARG_DENY = {
     "find": frozenset(("-exec", "-execdir", "-ok", "-okdir", "-delete",
                        "-fprintf", "-fprint", "-fprint0", "-fls")),
-    "sort": frozenset(("-o", "--output")),
-    "git": frozenset(("-c", "--exec-path", "-p", "--paginate", "-O",
+    "sort": frozenset(("-o", "--output", "--compress-program")),
+    "git": frozenset(("-c", "--exec-path", "-p", "--paginate", "-O", "-o",
                       "--output")),
 }
 # ADR-008: same-machine append races invert timestamps by milliseconds;
@@ -878,6 +886,22 @@ def screen_evidence_command(cmd, allowlist, allow_rel=EVIDENCE_ALLOW_REL,
     if "$(" in cmd or "`" in cmd:
         return ("command substitution ('$(' or backtick) is not "
                 "screenable (ADR-009)")
+    # ADR-021 (H4): the screen tokenizes with shlex but run_evidence
+    # executes with /bin/sh (shell=True). shlex's whitespace set includes
+    # newline and CR, so it drops a post-newline program into ARGUMENT
+    # position while /bin/sh treats a newline as a statement separator and
+    # runs it -- a screen/executor tokenizer mismatch that smuggles an
+    # unscreened command into a verifier's recheck session. Refuse every
+    # ASCII control character except tab (tab is word-whitespace to both):
+    # evidence commands must be a single printable line.
+    ctrl = next((c for c in cmd
+                 if (ord(c) < 0x20 and c != "\t") or ord(c) == 0x7f), None)
+    if ctrl is not None:
+        return (f"control character {ctrl!r} is not screenable -- it is "
+                "word-whitespace to the screen's lexer but a command "
+                "separator to the executing shell (a newline is /bin/sh's "
+                "statement terminator); evidence commands must be a single "
+                "printable line (ADR-021)")
     lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
     lex.whitespace_split = True
     try:

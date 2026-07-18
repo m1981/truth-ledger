@@ -190,7 +190,15 @@ may omit evidence, paths, and TTL); evidence commands failing the
 read-only safety screen against the committed `.truth/evidence-allow`
 allowlist (ADR-009, v0.6 — the command re-executes later inside verifier
 sessions; `--evidence-unsafe-ok` files with `screened=false` and recheck
-then refuses to ever execute it); evidence commands whose two intake
+then refuses to ever execute it. The screen tokenizes with `shlex` but
+the command executes under `/bin/sh`; ADR-021 (v0.9.6, H4) closed a real
+bypass where a newline — word-whitespace to `shlex`, a statement
+separator to `/bin/sh` — smuggled a second command past the screen into a
+verifier's recheck, by refusing control characters so the screen
+tokenizes like its executor. The same ADR records that the per-program
+argument blocklist is defense-in-depth, not the boundary: it cannot bound
+a VCS or interpreter, so `git`/`sed`/`awk`/test-runners are excluded from
+the allowlist by design, not merely flag-screened); evidence commands whose two intake
 runs hash differently (nondeterministic, overridable); and INFERRED
 claims with no `--basis`. The list is stated here in refusal
 order, which is observable when one claim trips several gates.

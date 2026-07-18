@@ -15,12 +15,17 @@
 # the arbitrary-execution channel being screened. Add yours below as a
 # conscious, committed policy decision if you accept that trade.
 #
-# git is deliberately NOT shipped (removed v0.6.2, F1): `git -c
-# <k>=!cmd ... <alias>` runs an arbitrary shell, and pagers/--exec-path
-# are further exec channels the bare-name screen cannot bound. Add it
-# consciously if you accept that; even then PROGRAM_ARG_DENY blocks the
-# worst flags. find and sort ARE shipped but their write/exec flags
-# (find -exec/-fprintf, sort -o) are refused by that same table.
+# git is deliberately NOT shipped and MUST NOT be added for evidence use
+# (ADR-021, H4). Its exec/write surface is unbounded by a flag blocklist:
+# `git filter-branch --tree-filter <cmd>` is arbitrary code execution,
+# and archive -o / bundle / config --file / worktree / format-patch -o /
+# checkout-index / bisect run / submodule foreach / `-c <k>=!cmd` aliases
+# are further exec-or-write channels. PROGRAM_ARG_DENY blunts a handful of
+# top-level git flags but CANNOT make git safe -- do not rely on it. find
+# and sort ARE shipped and read-only in normal use; their known write/exec
+# flags (find -exec/-fprintf, sort -o/--compress-program) are refused by
+# that same table, which for these bounded tools is complete as far as is
+# known -- but the table is a blocklist, so prefer minimal allowlists.
 grep
 rg
 ls

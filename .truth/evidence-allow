@@ -14,7 +14,11 @@
 # shipped here: a test runner executes repository code, which is exactly
 # the arbitrary-execution channel being screened. Add yours below as a
 # conscious, committed policy decision if you accept that trade.
-git
+#
+# git REMOVED 2026-07-18 (ADR-021, H4): its exec/write surface (git
+# filter-branch --tree-filter <cmd> is arbitrary code execution) is
+# unbounded by the PROGRAM_ARG_DENY blocklist, and no evidence command
+# here used it. Do not re-add it.
 grep
 rg
 ls
