@@ -109,6 +109,16 @@ double-run is a gate, not a verdict; only an explicit `agree` event (via
 deliberate: evidence attached at filing and evidence independently
 confirmed are kept as two distinct events in the log, never conflated.
 
+The negative states are the mirror image of that terminality: `diverged`,
+`cannot_verify`, and `stale` are all **recoverable** — a later `agree`
+(the higher-key event) returns the claim to `live`, and a `stale` claim
+re-anchors as it does so. Status is one total function of the log
+(§6.3, ADR-020): fold in `(ts, id, canon)` order and take the
+last-writer-wins effect of each verdict/invalidation, with `retracted`
+alone absorbing. Only a human retraction is a dead end; a machine's "I
+could not check this" or "the evidence moved" is an invitation to check
+again, not a verdict of falsehood.
+
 Terminality of `retracted` is the strongest promise the system makes: a
 human decision to kill a claim cannot be undone by any later event —
 **on the paths this design defends against**, precisely stated below.
@@ -332,7 +342,7 @@ gate covered).
 |---|---|---|---|---|---|
 | F1 | Schema stale against code on two features (`retracted` verdicts, TTL-only claims); drift detector fails open (silently skips) without an optional dependency | High | Real CLI produced a ledger the schema rejected; suite reported `OK (skipped=2)` without `jsonschema` | Only if the optional dependency was installed | Schema updated; missing dependency is now a **test failure** unless explicitly waived — the detector fails closed (blocks) instead of open (skips) |
 | F2 | Re-verified claims re-stale every scan — anchor frozen at filing, never advanced | High | stale → agree → live → next scan, zero new edits → stale again | No | `agree` verdicts on path-anchored claims advance an **effective anchor**; scan diffs from it |
-| F3 | Fold not confluent under union merge — `{agree, diverge}` folds to `live` or `diverged` depending on merge direction | Medium | Exhaustive permutation check | No | Fold sorts events into total order `(timestamp, id)` before replay — the standard CRDT total-order replay (Shapiro et al., 2011a). This cell previously labeled the move "last-writer-wins," which is imprecise: composed with F6's fix, the fold applies three per-field merge disciplines, only one of which is LWW — see §6.3 |
+| F3 | Fold not confluent under union merge — `{agree, diverge}` folds to `live` or `diverged` depending on merge direction | Medium | Exhaustive permutation check | No | Fold sorts events into total order `(timestamp, id, canon)` before replay (ADR-016 made the order total) — the standard CRDT total-order replay (Shapiro et al., 2011a). This cell previously labeled the move "last-writer-wins," which is imprecise: composed with F6's fix, the fold applies three per-field merge disciplines, only one of which is LWW — see §6.3 and ADR-020 for the single total status function. Confluence holds on the verdict path too (distinct verdict ids, total order), so backdating a verdict is not a C1 analogue — it only lowers the record's key and trips an ADR-008 warning (H3, ADR-020) |
 | F4 | "Retraction is humans-only" enforced nowhere — CLI checked only that a basis was present, never the actor | Medium | Verifier-actor retraction accepted | No | v0.4: retraction requires setting `TRUTH_HUMAN=1` — a self-attested convention with a syntax, not an identity-checked property; any actor able to set an environment variable could still retract. Hardened in v0.6 (ADR-011): the variable alone is refused — a tombstone additionally needs an interactive typed-id confirmation at a real terminal, or `TRUTH_HUMAN_ACK=<exact-id>` for headless human use, closing the one-export bypass the refusal message itself used to teach (§8 item 5) |
 | F5 | Evidence-path globs cross directory separators (`src/*.py` matches `src/sub/deep.py`) | Low | Direct check | Partially | Custom glob translation: `*`/`?` stop at `/`, `**` spans |
 | F6 | **Tombstone resurrection by pure append** — a duplicate claim record bearing a retracted id resets status to `unverified`; both shipped gates (diff-deletion heuristic, well-formedness check) pass it | Critical | A retracted P0 claim — text: *"the database is safe to drop"* — resurrected through both gates and `validate` | No — the canary seeded this fault only on the verdict path | Fold ignores duplicate claim ids (first wins); commit gate replaced with a line-prefix check: the staged file must literally extend the committed one — see §1's "Fold semantics, precisely" for a related composition gap this fix did not close, since detected at commit by ADR-008 (v0.6) |
@@ -529,11 +539,28 @@ last-writer-wins move." Imprecise, corrected there and stated fully
 here: the ledger is a grow-only set of events (a G-Set), and the fold
 applies three *distinct* per-field merge disciplines over it — claim
 **content** is first-writer-wins, a write-once register (F6's fix);
-claim **status** is last-writer-wins in `(ts, id)` order (F3's fix);
-and `retracted` is **terminal**, the two-phase-set tombstone rule under
-which a removed element never re-enters (Shapiro et al., 2011a; the
-2P-Set construction itself is cataloged in the companion report,
-Shapiro et al., 2011b). Each discipline is standard; what is local to
+claim **status** is last-writer-wins in `(ts, id, canon)` order (F3's
+fix, made a total order by ADR-016); and `retracted` is **terminal**, the
+two-phase-set tombstone rule under which a removed element never re-enters
+(Shapiro et al., 2011a; the 2P-Set construction itself is cataloged in the
+companion report, Shapiro et al., 2011b). These compose into **one total
+status function** (ADR-020), not three competing rules: fold every event
+in `(ts, id, canon)` order; each verdict/invalidation sets the status
+(`agree→live`, `diverge→diverged`, `cannot_verify→cannot_verify`,
+`invalidation→stale`, `retracted→retracted`) last-writer-wins, EXCEPT that
+once the folded status is `retracted` every later setter is ignored
+(absorbing, tested on the folded status, not on `ts`). So `cannot_verify`,
+`diverged`, and `stale` are **recoverable** — a later `agree` returns the
+claim to `live` (a `stale` claim re-anchors) — while `retracted` is the
+**sole terminal** verdict (intake also refuses any verdict on a retracted
+claim). The worked worry "cannot_verify@ts=5 then a backdated agree@ts=3"
+folds to `cannot_verify` by this function (5 is the higher key). Because
+two verdicts carry distinct ids and the order is total, verdict ordering
+is **confluent** — reordering ledger lines never changes a status, so
+this is *not* a C1-style analogue: backdating only lowers a record's key
+(strictly dominated by filing at `ts=now`) and merely trips the ADR-008
+clock-regression warning; the sole residual is the accepted §8 item 6
+forgery, needing no new gate (ADR-020). Each discipline is standard; what is local to
 this design is only their per-field composition and the audited record
 of why each was chosen (F3, F6, G12). Correction: CRDT theory buys
 convergence across mutually unavailable *replicas*; this design spends
