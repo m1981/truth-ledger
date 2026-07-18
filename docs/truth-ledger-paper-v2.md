@@ -100,6 +100,20 @@ confirmed are kept as two distinct events in the log, never conflated.
 Terminality of `retracted` is the strongest promise the system makes: a
 human decision to kill a claim cannot be undone by any later event —
 **on the paths this design defends against**, precisely stated below.
+The promise has two layers, and both are now defended (ADR-017, after
+an independent review found the second undefended — C3). At the *status*
+layer, a retracted claim stays `retracted` in the fold under any event.
+At the *readiness* layer, the block a retracted premise imposes (ADR-001:
+HELD, unconditional) can be released only by the same human authority
+that imposed the retraction: superseding a retracted premise (ADR-013)
+requires the ADR-011 human gate, exactly as retraction does. The
+mechanical dead states a premise may also be superseded out of —
+`stale`, `diverged`, `cannot_verify`, `missing` — stay ungated, because
+no human decided them; only `retracted` carries a human veto whose
+release needs matching authority. Before ADR-017 the readiness layer was
+open: any actor could redirect a retracted premise via a normal CLI verb
+and release the blocked work, no forgery needed — the status promise
+held while the operational one was silently spent.
 
 **Fold semantics, precisely.** The fold replays every event — claim,
 verdict, invalidation, premise — in the canonical total order
@@ -788,7 +802,7 @@ between "fault lands" and "row lands" is exactly the decay §5 predicts.
 | INV-D | Recheck detects non-reproducing evidence | One hash mismatch scored agree | Seeded fault |
 | INV-E | TTL'd claims expire | One claim outliving its TTL | Seeded fault |
 | INV-F | History rewrites invalidate, with reason | One orphaned anchor still trusted | Seeded fault |
-| INV-G | Retraction is terminal, on every path *tested* | One resurrected tombstone | Seeded fault (verdict path, append path); duplicate-id content substitution under a retracted id is detected at commit — backdated (strictly-earlier `ts`) since v0.6 (ADR-008), and copied-`ts` (equal, non-identical content) since v0.9.1 (ADR-016, canary B5) — residual: fresh-id timestamp forgery, accepted per §8 item 6; see §1 "Fold semantics, precisely" |
+| INV-G | Retraction is terminal at both layers: the claim's *status* stays `retracted` under any event, and the readiness *block* it imposes is released only by matching human authority | One resurrected tombstone; or a retracted premise's HELD block released without the human gate (C3) | Seeded fault (verdict path, append path); duplicate-id content substitution under a retracted id is detected at commit — backdated (strictly-earlier `ts`) since v0.6 (ADR-008), and copied-`ts` (equal, non-identical content) since v0.9.1 (ADR-016, canary B5); the readiness-layer supersede release is human-gated since v0.9.3 (ADR-017, canary R11) — residual: fresh-id timestamp forgery, accepted per §8 item 6; see §1 "Fold semantics, precisely" |
 | INV-H | Broken premises hold work: a premise that is `stale`, `diverged`, `retracted`, or missing HOLDs its issue (the full ADR-001 blocking set, not just `stale`) | One issue ready on a premise in any of those four states | Seeded fault (FAULT J covers `stale`; the ADR-001 matrix — reused verbatim by the work kernel, ADR-002 — blocks all four identically). The `cannot_verify` P0-only rule and the `unverified` warn-pass are the matrix's two non-blocking cells |
 | INV-I | Fold is confluent: any event order, same state | Two orders, two statuses (or two contents) | Permutation property test. The order key is `(ts, id, canonical-serialization)`: the third key is load-bearing (ADR-016, v0.9.1) — `(ts, id)` alone is not total, so a duplicate id with a copied equal `ts` folded to different *content* by file order until the content-derived tie-break closed it (canary B6; core `test_duplicate_id_equal_ts_folds_to_one_content`) |
 | INV-J | Re-verification is durable across scans | One re-verified claim re-staled with no new changes | Seeded fault |
@@ -797,7 +811,7 @@ between "fault lands" and "row lands" is exactly the decay §5 predicts.
 | INV-M | Every `evidence_path` on an accepted claim matches ≥1 tracked file at filing time, or is an explicit glob | One accepted claim whose tripwire can never fire | Seeded fault (`FAULT T`), shipped v0.5.4. Known residual (found by inspection, meta-repo, 2026-07-13): a tracked **symlink** passes the literal-path check but can never fire — git tracks the link, which never changes, not the target. Watch real paths; an intake warning on symlink literals is a candidate hardening if the class recurs |
 | INV-N | Issue-fold premise protection (ADR-001) cannot be stripped by an appended duplicate `wk-` id | One HELD issue silently flipped to READY | Seeded fault (FAULT R9) — fixed at the fold level (ADR-006): duplicate issue ids are first-wins, identical to INV-G's claims-side mechanism; the backdated- and copied-`ts` duplicate compositions are detected at commit (ADR-008 v0.6, ADR-016 v0.9.1 — the equal-ts gate and total order apply to every kind, `wk-` included), with INV-G's same residual — fresh-id forgery while `ts`/`actor` remain unsigned (§8 item 6) |
 | INV-O | A verifier cannot `agree` with a claim from that claim's own authoring session; a `diverge` from the own session IS allowed (self-incrimination) (ADR-010, v0.6) | One same-session `agree` accepted, or one same-session `diverge` refused | Seeded fault (FAULTS V1/V2/V3). Self-attested session identity (`TRUTH_SESSION`), same class as F4/INV-K — the bypass is one visible env export, not an identity check |
-| INV-P | A supersede redirect re-targets premise validity, never bypasses it: the replacement is judged by the same ADR-001 matrix, and the redirect is refused while the old premise still passes `ready` | One issue made READY by redirecting a live/unverified premise, or a redirect resolving non-deterministically | Seeded fault (FAULT R10); cycle resolution pinned by core tests (ADR-013 amended 2026-07-18, first-repeated-value rule) |
+| INV-P | A supersede redirect re-targets premise validity, never bypasses it: the replacement is judged by the same ADR-001 matrix, the redirect is refused while the old premise still passes `ready`, and superseding a `retracted` premise requires the ADR-011 human gate (ADR-017 — the mechanical dead states stay ungated) | One issue made READY by redirecting a live/unverified premise; a retracted premise redirected without human authority (C3); or a redirect resolving non-deterministically | Seeded fault (FAULT R10, R11); cycle resolution pinned by core tests (ADR-013 amended 2026-07-18, first-repeated-value rule) |
 | INV-Q | An acceptance oracle gates issue close: a non-zero exit refuses `done`, and an unscreened oracle is refused execution unless `--accept-unsafe-ok` stamps it visibly | One issue closed over a failing oracle, or an unscreened oracle executed silently | Seeded fault (FAULTS AC1–AC8, ADR-014, v0.7); `accept.executed=true` requires `returncode 0` in schema and mirror |
 
 ## Appendix B. Reproduction
