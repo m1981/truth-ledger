@@ -1,5 +1,21 @@
 #!/usr/bin/env python3
-"""truth v0.9.7 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.8 -- append-only claims ledger with a native work kernel.
+
+v0.9.8 (INV-M glob scope + commit-gate decidability, batch-2 H5/H6): three
+  spec-precision ADRs, one with a real gate. ADR-023 (H5): INV-M is a
+  static-dead-tripwire gate, NOT a liveness guarantee -- a glob over a
+  REACHABLE namespace is dormant (fires when it fills), refuting "an empty
+  glob can never fire". ADR-024 (H5 follow-up, wk-dc763341): a glob over an
+  UNREACHABLE namespace (`.git/*`, absolute, trailing-slash, `.`/`..`/empty
+  component) is a dead tripwire despite the glob exemption, now REFUSED at
+  intake (dead_glob_paths) -- sound, not complete; the tracked symlink is
+  the undecidable residual. ADR-025 (H6, wk-4a7450d8): the README's one MUST
+  (a `check-truth` commit gate via hook OR CI) is now DECIDABLE by `doctor`,
+  which greps top-level CI configs for the gate script so a CI-only repo
+  passes instead of false-failing; the invariant table + paper Sec 8 item 5
+  disclose that INV-A/INV-G/INV-N + the ADR-008 detections are conditional
+  on the commit gate running. Canary FAULTs T (dormant + unreachable glob),
+  DG (doctor decides hook-or-CI, 4 arms).
 
 v0.9.7 (evidence-deny baseline, wk-372de09c): ADR-022 adds an anti-footgun
   guardrail beneath the allowlist (which stays the boundary, ADR-021). A
