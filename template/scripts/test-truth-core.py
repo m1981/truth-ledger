@@ -921,8 +921,25 @@ class TestSupersedes(unittest.TestCase):
             self._redirect("w", "tr-000000d2", "tr-000000d1",
                            "2026-07-01T01:00:00+00:00")))
         out = tm.apply_supersedes({"w": ["tr-000000d1"]}, supers)
-        # a->b->a stops on the first repeat; deterministic, no hang
+        # ADR-013 clarified (HIGH-2): a 2-cycle a->b->a entered at a
+        # resolves back to a -- a deterministic no-op, not an escape
         self.assertEqual(out["w"], ["tr-000000d1"])
+
+    def test_chain_into_cycle_resolves_to_entry_point(self):
+        # ADR-013 clarified (HIGH-2): the effective premise on a cycle is
+        # the FIRST REPEATED value, which for a chain into a cycle is the
+        # cycle's entry point, not the chain's start. P->Q->R->Q from P
+        # resolves to Q. This is the case the prose omitted and the
+        # 2-cycle test alone did not distinguish.
+        supers = tm.fold_supersedes(events(
+            self._redirect("w", "tr-000000dP", "tr-000000dQ",
+                           "2026-07-01T00:00:00+00:00"),
+            self._redirect("w", "tr-000000dQ", "tr-000000dR",
+                           "2026-07-01T01:00:00+00:00"),
+            self._redirect("w", "tr-000000dR", "tr-000000dQ",
+                           "2026-07-01T02:00:00+00:00")))
+        out = tm.apply_supersedes({"w": ["tr-000000dP"]}, supers)
+        self.assertEqual(out["w"], ["tr-000000dQ"])
 
     def test_last_wins_confluent_under_permutation(self):
         e1 = self._redirect("w", "tr-000000d1", "tr-000000d2",

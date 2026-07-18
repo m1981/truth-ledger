@@ -3,6 +3,20 @@
 Status: Accepted (2026-07-13, operator) — proposed 2026-07-12 as FS-5 in
 `docs/field-notes-sdk-session.md` item 2 (second deployment), filed as
 wk-8d966a5b, implemented in CLI v0.6.4. Canary FAULT R10.
+Amended by: note (2026-07-18, wk-d6e00f93) — an independent spec review
+(HIGH-2) found the Decision's "cycles stop at the first repeat"
+under-specified: it named the halt condition but not *which value*
+becomes the effective premise. Precise rule, matching the shipped
+`apply_supersedes` and now pinned by core tests: the walk follows each
+premise's redirect chain until it reaches either a claim with no
+redirect (a clean chain — resolves to that terminal claim) or a claim
+it has already visited (a cycle — resolves to that first-repeated
+value). Concretely: a 2-cycle A→B→A entered at A resolves back to A
+(the redirect is a deterministic no-op, never an escape to an arbitrary
+node), and a chain-into-cycle P→Q→R→Q resolves to Q (the cycle's entry
+point). The result is deterministic, independent of iteration count and
+of event order, and still passes through ADR-001's matrix — a cyclic
+redirect cannot bypass premise validity, it only fails to change it.
 Date: 2026-07-13
 Supersedes: — (extends ADR-002's kernel; leaves ADR-001's matrix intact)
 

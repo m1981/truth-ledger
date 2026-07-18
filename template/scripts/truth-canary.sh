@@ -687,6 +687,23 @@ else
   miss "$WK_DEP still blocked after dep closed"
 fi
 
+say "FAULT RL (ADR-002, HIGH-3): start --release returns a claimed item to open; refused from open"
+WK_REL=$($T issue "kernel issue for release probe" 2>/dev/null)
+$T start "$WK_REL" >/dev/null 2>&1                     # -> claimed
+# releasing a claimed item must put it back in ready (open, deps ok)
+$T start "$WK_REL" --release >/dev/null 2>&1
+if PATH="/usr/bin:/bin" $T ready | grep -q "^$WK_REL"; then
+  ok "start --release returned $WK_REL to the ready pool (claimed -> open)"
+else
+  miss "start --release did not return $WK_REL to open"
+fi
+# released is valid ONLY from claimed: a second release (now open) must refuse
+if $T start "$WK_REL" --release >/dev/null 2>&1; then
+  miss "start --release accepted from open state (transition guard missing)"
+else
+  ok "start --release refused from open -- released is valid only from claimed"
+fi
+
 say "FAULT R5 (ADR-002): kernel-as-tracker seam must join identically to native"
 NATIVE_OUT=$(PATH="/usr/bin:/bin" $T ready)
 SEAM_OUT=$($T issues --ready-json | $T ready --stdin)

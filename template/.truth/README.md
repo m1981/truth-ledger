@@ -147,7 +147,8 @@ the snapshot cache is deliberately unbuilt until that warning fires).
 Issues can live in the same ledger as facts — no external tracker needed:
 
     scripts/truth issue "title" --premise tr-xxxx   # premise-at-birth
-    scripts/truth start wk-xxxx                     # claim it
+    scripts/truth start wk-xxxx                     # claim it (files 'claimed')
+    scripts/truth start wk-xxxx --release           # give it back: claimed -> open
     scripts/truth done wk-xxxx --basis "..." \
       --claim "<what the work made true>" --class VERIFIED \
       --evidence-cmd "..." --paths "..."            # claim-at-death
@@ -158,7 +159,10 @@ Issues can live in the same ledger as facts — no external tracker needed:
                                                     # corrected claim (ADR-013) — refused
                                                     # while the old one still passes ready
 
-`closed` can be reopened (`done --reopen`); `cancelled` is terminal and
+Issue states form `open ⇄ claimed → closed`: `start` files `claimed`,
+`start --release` returns a claimed item to `open` (valid only from
+`claimed`, basis optional, not human-gated), `closed` can be reopened
+(`done --reopen`); `cancelled` is terminal and
 human-gated per ADR-011 — at your own terminal,
 `TRUTH_HUMAN=1 truth done wk-x --cancel --basis "..."` then type the id
 back when prompted; headless,
