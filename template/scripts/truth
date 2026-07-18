@@ -1,5 +1,18 @@
 #!/usr/bin/env python3
-"""truth v0.9.1 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.2 -- append-only claims ledger with a native work kernel.
+
+v0.9.2 (independent spec review, MEDIUM-1/2/3): override auditability +
+  cross-surface coherence. MEDIUM-1 (wk-00b8ee57): the --duplicate-ok
+  override left no trace, unlike scope_basis/screened. The G8 gate now
+  computes the near-duplicate conflict unconditionally and stamps
+  `payload.overridden_duplicates` (the active claim ids the override
+  declared distinct from) -- attackable ledger content, schema + mirror
+  + corpus + canary FAULT I trace. MEDIUM-3 (wk-15335617): schema and
+  mirror now forbid `accept.returncode` on an unexecuted acceptance
+  (executed=false); README states the missing-allowlist fails-closed
+  exception; ADR-002's superseded last-wins sentence gets an inline
+  ADR-006 marker. MEDIUM-2 (wk-813b84d4) was doc-only (invariant-table
+  rows INV-O/P/Q, INV-H broadened). No fold or gate-decision change.
 
 v0.9.1 (ADR-016, wk-280e0b76): total fold order + equal-ts gate. Source:
   independent spec review finding C1 (Critical) -- the fold's (ts, id)
