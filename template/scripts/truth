@@ -445,6 +445,20 @@ ISSUE_EVENTS = ("claimed", "released", "closed", "reopened", "cancelled")
 ISSUE_STATUSES = ("open", "claimed", "closed", "cancelled")
 DISCOVERY_FILES = ("AGENTS.md", "CLAUDE.md", ".cursorrules",
                    ".github/copilot-instructions.md")
+# ADR-025: CI config files/dirs doctor greps for the commit-gate script
+# name, so it can decide the README's "a hook OR CI must exist" MUST
+# instead of false-failing a CI-only repo. Best-effort, same rigor as the
+# discovery grep -- a CI file naming the gate is evidence it runs, not
+# proof. CI_GATE_DIRS hold pipeline files at the TOP LEVEL only: their CI
+# executes exactly those (GitHub Actions/Woodpecker ignore subdirectories
+# and non-.yml/.yaml files), so doctor scans exactly what runs -- scanning
+# deeper would pass a `truth.yml.disabled` rename or a `disabled/` subdir
+# the CI never runs (an H6 adversarial finding).
+CI_GATE_FILES = (".gitlab-ci.yml", ".circleci/config.yml",
+                 "azure-pipelines.yml", "Jenkinsfile", ".drone.yml",
+                 "bitbucket-pipelines.yml", ".woodpecker.yml",
+                 ".travis.yml", ".buildkite/pipeline.yml")
+CI_GATE_DIRS = (".github/workflows", ".woodpecker")
 DUPLICATE_THRESHOLD = 0.6
 QUEUE_AGE_WARN_DAYS = 14
 ID_RE = re.compile(r"^tr-[0-9a-f]{8}$")
@@ -2587,6 +2601,43 @@ def cmd_stats(a):
     print(f"queue: {report['queue_size']} item(s)"
           + (f", oldest {age}d" if age is not None else ""))
 
+def ci_gate_names(needle, root):
+    """ADR-025 (H6): does a known CI config name `needle` (the commit-gate
+    script, e.g. 'check-truth')? The README makes 'a local hook OR CI' the
+    one MUST, but doctor could see only the hook -- so a correctly
+    CI-gated repo got a FAIL and learned to ignore doctor. This lets doctor
+    decide the CI arm too. Best-effort with the SAME rigor as the
+    discovery-snippet grep: a CI file mentioning the gate is doctor's
+    evidence it runs where local hooks are absent, NOT proof the pipeline
+    fires on the right events -- exactly as the AGENTS.md grep is not proof
+    an agent reads it. Returns the repo-relative file, or None."""
+    files = []
+    for d in CI_GATE_DIRS:
+        dp = os.path.join(root, d)
+        if os.path.isdir(dp):
+            # TOP LEVEL only, *.yml/*.yaml only -- exactly what the CI runs.
+            # A `disabled/` subdir or a `truth.yml.disabled` rename is a
+            # gate the CI does NOT run, so it must not satisfy the MUST.
+            try:
+                entries = sorted(os.listdir(dp))
+            except OSError:
+                entries = []
+            for f in entries:
+                if f.endswith((".yml", ".yaml")) \
+                        and os.path.isfile(os.path.join(dp, f)):
+                    files.append(os.path.join(dp, f))
+    for rel in CI_GATE_FILES:
+        p = os.path.join(root, rel)
+        if os.path.isfile(p):
+            files.append(p)
+    for p in files:
+        try:
+            if needle in open(p, encoding="utf-8", errors="replace").read():
+                return os.path.relpath(p, root)
+        except OSError:
+            continue
+    return None
+
 def cmd_doctor(a):
     """G4: check the INSTALLATION, which the sandboxed canary cannot."""
     root = repo_root()
@@ -2686,23 +2737,41 @@ def cmd_doctor(a):
         hit = None
         for name in names:
             for hp, need_x in hook_candidates(name):
-                if os.path.exists(hp) and (not need_x or os.access(hp, os.X_OK)) \
-                        and needle in open(hp, encoding="utf-8",
-                                           errors="replace").read():
-                    hit = hp
-                    break
+                # isfile + try/except: a *directory* named `pre-commit`, or an
+                # executable-not-readable hook, must make doctor REPORT, not
+                # traceback (a doctor that crashes cannot decide the gate).
+                try:
+                    if os.path.isfile(hp) \
+                            and (not need_x or os.access(hp, os.X_OK)) \
+                            and needle in open(hp, encoding="utf-8",
+                                               errors="replace").read():
+                        hit = hp
+                        break
+                except OSError:
+                    continue
             if hit:
                 break
         if hit:
             ok(f"{names[0]} hook enforces {purpose}",
                os.path.relpath(hit, root))
+            continue
+        # ADR-025 (H6): no local hook -- the README allows CI as the other
+        # arm of the MUST, so decide it before failing. A CI config naming
+        # the gate script passes (self-certified: doctor cannot run the
+        # pipeline, only see that it references the gate).
+        ci = ci_gate_names(needle, root)
+        if ci:
+            ok(f"{names[0]} gate enforces {purpose} via CI",
+               f"{ci} names {needle} -- CI arm, not locally verifiable")
         else:
             where = os.path.relpath(hooks_dir, root)
             fail(f"{names[0]} hook enforces {purpose}",
                  f"no executable hook invoking {needle} under {where}"
                  + (" -- core.hooksPath is set, so .git/hooks is IGNORED by git"
                     if hp_cfg else "")
-                 + " (use CI equivalents if hooks are unavailable, see README)")
+                 + f", and no top-level CI config (.github/workflows/*.yml, "
+                 f".gitlab-ci.yml, Jenkinsfile, …) names {needle} -- a hook "
+                 "OR CI MUST exist, see README Install")
 
     found = [f for f in DISCOVERY_FILES
              if os.path.exists(os.path.join(root, f))

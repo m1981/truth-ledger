@@ -19,6 +19,7 @@ import importlib.util
 import json
 import os
 import sys
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -348,6 +349,54 @@ class TestIntake(unittest.TestCase):
             self.assertEqual(tm.dead_glob_paths([g]), [], g)
         # a plain literal is not this gate's concern (dead_literal_paths owns it)
         self.assertEqual(tm.dead_glob_paths(["src/main.py"]), [])
+
+    def test_ci_gate_names_detects_and_misses(self):
+        """ADR-025 (H6): doctor decides the CI arm of the commit-gate MUST
+        by grepping known CI configs for the gate script name -- so a
+        CI-only repo passes instead of false-failing. A workflow naming the
+        gate is found (under .github/workflows and at top-level CI paths);
+        an unrelated file is not; a repo with no CI config yields None."""
+        with tempfile.TemporaryDirectory() as root:
+            wf = os.path.join(root, ".github", "workflows")
+            os.makedirs(wf)
+            # no CI naming the gate yet
+            self.assertIsNone(tm.ci_gate_names("check-truth", root))
+            # an unrelated workflow does NOT satisfy the gate
+            with open(os.path.join(wf, "lint.yml"), "w") as f:
+                f.write("jobs:\n  lint:\n    steps:\n      - run: ruff .\n")
+            self.assertIsNone(tm.ci_gate_names("check-truth", root))
+            # a workflow naming the gate script IS found, and the path is returned
+            with open(os.path.join(wf, "truth.yml"), "w") as f:
+                f.write("jobs:\n  gate:\n    steps:\n      - run: bash scripts/check-truth.sh\n")
+            self.assertEqual(tm.ci_gate_names("check-truth", root),
+                             os.path.join(".github", "workflows", "truth.yml"))
+            # a top-level CI file (e.g. .gitlab-ci.yml) is scanned too
+            with open(os.path.join(root, ".gitlab-ci.yml"), "w") as f:
+                f.write("gate:\n  script: python scripts/truth invalidate-scan\n")
+            self.assertEqual(tm.ci_gate_names("invalidate-scan", root),
+                             ".gitlab-ci.yml")
+
+    def test_ci_gate_names_top_level_yaml_only(self):
+        """ADR-025 (H6 adversarial fix): CI runs only TOP-LEVEL *.yml/*.yaml
+        under .github/workflows/, so doctor must too -- a `disabled/` subdir
+        or a `.yml.disabled` rename is a gate CI never runs and must NOT
+        satisfy the MUST (else doctor reports a deliberately-off gate as OK)."""
+        with tempfile.TemporaryDirectory() as root:
+            wf = os.path.join(root, ".github", "workflows")
+            os.makedirs(os.path.join(wf, "disabled"))
+            # (a) workflow in a subdirectory -- GitHub never runs it
+            with open(os.path.join(wf, "disabled", "truth.yml"), "w") as f:
+                f.write("run: bash scripts/check-truth.sh\n")
+            self.assertIsNone(tm.ci_gate_names("check-truth", root))
+            # (b) rename-to-disable: the standard "turn this off" idiom
+            with open(os.path.join(wf, "truth.yml.disabled"), "w") as f:
+                f.write("run: bash scripts/check-truth.sh\n")
+            self.assertIsNone(tm.ci_gate_names("check-truth", root))
+            # (c) a genuine top-level .yaml (not just .yml) IS scanned
+            with open(os.path.join(wf, "gate.yaml"), "w") as f:
+                f.write("run: bash scripts/check-truth.sh\n")
+            self.assertEqual(tm.ci_gate_names("check-truth", root),
+                             os.path.join(".github", "workflows", "gate.yaml"))
 
 # ------------------------------------- quantifier-scope gate (ADR-007)
 

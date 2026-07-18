@@ -187,12 +187,21 @@ the snapshot cache is deliberately unbuilt until that warning fires).
 1. `.gitattributes` already sets `.truth/claims.jsonl merge=union`.
 2. Run `bash scripts/install-hooks.sh` after every `git init`/`git clone`
    (local hooks do not survive clones), or use CI instead — one of the
-   two MUST exist.
+   two MUST exist. This is the *commit gate* (`check-truth`); without it
+   INV-A/INV-B/INV-G/INV-N and the ADR-008 order detections do not run and
+   the ledger's append-only guarantee is unenforced. For CI, name the gate
+   scripts (`check-truth`, `invalidate-scan`) in a workflow `doctor` greps
+   (`.github/workflows/*`, `.gitlab-ci.yml`, `.circleci/config.yml`,
+   `Jenkinsfile`, …) so the installation stays decidable.
 3. `AGENTS.md` already carries the discovery snippet — copy it into
    `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`, etc.
    too (those are the exact paths `truth doctor` checks).
 4. `pip install jsonschema` — required so the drift detector runs armed.
-5. `scripts/truth doctor` — installation must pass.
+5. `scripts/truth doctor` — installation must pass. It exits 1 (fails)
+   unless, for each gate, an active hook OR a CI config naming the gate
+   script exists; the CI arm is self-certified (doctor greps for the name,
+   it cannot run your pipeline). A clean exit 0 is the decidable proof the
+   MUST in step 2 holds (ADR-025).
 6. `bash scripts/truth-canary.sh` — every fault CAUGHT, or stop.
 
 ## Work kernel (ADR-002, v0.5)
