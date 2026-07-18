@@ -82,12 +82,16 @@ command (`--include`, path arguments, `cd`) is refused unless
 `--scope-ok "<one sentence>"` states why the scope covers the
 quantifier (stored as `scope_basis`, attackable by verifiers);
 statically dead-tripwire paths — a whitespace-containing entry with no
-comma, or a **literal** path matching zero tracked files (INV-M, v0.5.4;
-explicit globs are exempt because they are *dormant, not dead* — a glob
-matching nothing yet fires when its namespace fills, ADR-023; the one
-permanent residual is a tracked **symlink** literal, which git tracks as
-an immutable link, so editing its target never fires — watch real paths;
-applies to every evidence class carrying paths); then, for
+comma, a **literal** path matching zero tracked files, or a **glob** over
+a statically-unreachable namespace (INV-M, v0.5.4; ADR-024). A glob over a
+*reachable* namespace is exempt because it is *dormant, not dead* — it
+fires when the namespace fills (ADR-023) — but a glob that is absolute,
+ends in `/`, has a `.`/`..`/empty component, or starts with `.git/` can
+never match a repo-relative diff path and is refused (`.git*` and
+`.github/**` are reachable and still pass). The one residual that is *not*
+statically decidable is a tracked **symlink** literal, which git tracks as
+an immutable link, so editing its target never fires — watch real,
+reachable paths; applies to every evidence class carrying paths); then, for
 VERIFIED: missing evidence command, neither paths nor TTL, no commit to
 anchor to, the evidence-command safety screen (ADR-009, v0.6 — quote-aware: every
 pipeline segment's program must be a bare name in

@@ -854,6 +854,32 @@ def dead_literal_paths(paths, tracked):
     return [p for p in paths
             if "*" not in p and "?" not in p and p not in tracked_set]
 
+def dead_glob_paths(paths):
+    """INV-M / ADR-024 (H5 follow-up): a glob is EXEMPT from
+    dead_literal_paths, but a glob whose pattern can match no path
+    `git diff --name-only` could ever emit is a dead tripwire all the same.
+    git-diff paths are repo-relative, '/'-separated and normalized: never
+    absolute, never under '.git/', with no '.'/'..'/empty component and no
+    trailing '/'. So a glob is statically dead when a path COMPONENT is
+    empty (absolute path, trailing slash, or '//'), is '.' or '..', or the
+    leading component is exactly '.git'. Unlike the tracked-symlink
+    residual (which needs link resolution) this is decidable from the
+    pattern alone. SOUND, not complete: every pattern returned is provably
+    unreachable -- no false refusals, since a wildcard component ('*',
+    'a*', '.git*', '.github/**') still matches real names -- but exotic
+    dead globs (e.g. a nested-submodule '.git') may still slip through;
+    that is INV-M's residual class, not a boundary claim (cf. ADR-021)."""
+    dead = []
+    for p in paths:
+        if "*" not in p and "?" not in p:
+            continue                       # a literal: dead_literal_paths owns it
+        comps = p.split("/")
+        if comps[0] == ".git":             # under the git dir -- never tracked
+            dead.append(p)
+        elif any(c in ("", ".", "..") for c in comps):  # absolute, trailing
+            dead.append(p)                 # slash, '//', or a '.'/'..' component
+    return dead
+
 def verified_intake_error(evidence_cmd, evidence_paths, ttl_days, head):
     if not evidence_cmd:
         return "truth: VERIFIED claims require --evidence-cmd (INV-B)"
@@ -1879,6 +1905,15 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
                      "a file git does not track, use --ttl-days instead "
                      "(untracked files never appear in diffs, so a path can "
                      "never invalidate them).")
+        dead_g = dead_glob_paths(paths)
+        if dead_g:
+            sys.exit("truth: --paths glob can match no path git could emit "
+                     f"(INV-M, ADR-024): {dead_g!r} -- a glob that is "
+                     "absolute, ends in '/', or has a '.', '..', empty, or "
+                     "leading '.git' component never matches a repo-relative, "
+                     "normalized diff path, so it is a dead tripwire despite "
+                     "the glob exemption. Use a reachable repo-relative "
+                     "pattern like 'dir/**' or 'dir/*.py'.")
 
     payload = {"text": text, "evidence_class": evidence_class,
                "cost_tier": tier, "ttl_days": ttl_days,

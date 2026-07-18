@@ -326,6 +326,29 @@ class TestIntake(unittest.TestCase):
         # residual: a tracked symlink literal passes the membership check
         self.assertEqual(tm.dead_literal_paths(["link.txt"], tracked), [])
 
+    def test_dead_glob_paths_refuses_unreachable(self):
+        """ADR-024 (H5 follow-up): a glob is exempt from the dead-literal
+        gate, but a glob matching no path git diff could emit is a dead
+        tripwire all the same. git-diff paths are repo-relative, normalized,
+        never under .git -- so an absolute pattern, a trailing slash, a
+        '.'/'..'/empty component, or a leading '.git' component is dead.
+        These are exactly the shapes an adversarial verifier found slipping
+        the exemption; each is flagged."""
+        for g in ["/etc/*.conf", "zone/*/", "a*/", "../*.txt", "./src/*.py",
+                  "a/./b*.py", "dbl//*.txt", ".git/*", ".git/**"]:
+            self.assertEqual(tm.dead_glob_paths([g]), [g], g)
+
+    def test_dead_glob_paths_keeps_reachable(self):
+        """ADR-024: SOUND, not complete -- no false refusals. Every glob
+        over a reachable namespace passes, including the two that look like
+        the dead shapes but are not: '.git*' matches .gitignore, and
+        '.github/**' is an ordinary tracked directory."""
+        for g in ["src/**", "src/*/test.py", "**/*.py", "*.txt", "src/?.py",
+                  "a/b*.py", "**", "*", ".git*", ".github/**"]:
+            self.assertEqual(tm.dead_glob_paths([g]), [], g)
+        # a plain literal is not this gate's concern (dead_literal_paths owns it)
+        self.assertEqual(tm.dead_glob_paths(["src/main.py"]), [])
+
 # ------------------------------------- quantifier-scope gate (ADR-007)
 
 class TestQuantifierScope(unittest.TestCase):

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm).
+# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -332,6 +332,22 @@ if $T list --stale --json | grep -q "$CID_TG"; then
   ok "empty glob $CID_TG fired once its namespace filled (dormant, not dead)"
 else
   miss "empty glob $CID_TG never fired after a matching file appeared (ADR-023 regression)"
+fi
+# ADR-024 (H5 follow-up): an UNREACHABLE glob is dead despite the exemption
+# -- '.git/*' contains '*' (so dead_literal_paths passes it) yet matches no
+# git-diff path. Intake must refuse it.
+if $T claim "git internals stay put" --class VERIFIED \
+     --evidence-cmd "echo ok" --paths ".git/*" --tier P1 --duplicate-ok >/dev/null 2>&1; then
+  miss "intake accepted an unreachable glob (.git/*) -- dead tripwire (ADR-024)"
+else
+  ok "intake refused the unreachable glob .git/* (ADR-024)"
+fi
+# and a reachable look-alike must still pass (no false refusal)
+if $T claim "workflow files stay watched" --class VERIFIED \
+     --evidence-cmd "echo ok" --paths ".github/**" --tier P1 --duplicate-ok >/dev/null 2>&1; then
+  ok "intake kept the reachable glob .github/** (ADR-024 sound, no false refusal)"
+else
+  miss "intake wrongly refused the reachable glob .github/**"
 fi
 
 say "FAULT H (G12): a verdict after retraction must not resurrect the claim"

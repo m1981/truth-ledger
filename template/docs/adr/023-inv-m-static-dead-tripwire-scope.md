@@ -10,6 +10,14 @@ canary FAULT T gains a dormant-glob-materializes arm.
 Date: 2026-07-19
 Supersedes: — (sharpens ADR-nothing; restates an invariant's guarantee to
 match what its gate actually decides)
+Amended by: ADR-024 (2026-07-19). This ADR's "over the `*`/`?`/`**` glob
+language no glob is permanently unmatchable" and "the tracked symlink is
+the lone residual" OVERCLAIM — an adversarial verifier found
+statically-unreachable globs (`.git/*`, `/etc/*.conf`, `zone/*/`,
+`../*.txt`, `dbl//*.txt`) that are exempt yet can never fire, and the
+completion claim tr-fe1169f4 diverged for it. ADR-024 refuses those at
+intake and corrects the wording. The dormant-glob result below (a glob
+over a REACHABLE namespace fires when it fills) stands unchanged.
 
 ## Context
 
