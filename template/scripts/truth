@@ -1118,6 +1118,12 @@ NO_EVIDENCE_VERDICT = ("cannot_verify",
 # reachability, then path diffs (matches v0.2 semantics).
 
 def _ttl_expired(entry, facts, now):
+    """ADR-019: TTL counts from the claim's own ts (not the anchor, not
+    the agree verdict) and the boundary is STRICT -- expired only when
+    (now - ts) > ttl_days, so at exactly ts + ttl_days it survives. Runs
+    inside the scan (an INVALIDATOR), which is the only clock reader; it
+    emits an invalidation record, and the fold demotes to stale off that
+    record. The fold never evaluates TTL itself -- purity/confluence."""
     p = entry["claim"]["payload"]
     ttl = p.get("ttl_days")
     claim_ts = parse_ts(entry["claim"].get("ts") or "")

@@ -623,6 +623,35 @@ class TestInvalidation(unittest.TestCase):
         e = entry(claim_p(ttl_days=30))
         self.assertIsNone(tm.decide_invalidation(e, {"head": "h"}, NOW))
 
+    def test_ttl_boundary_is_strict_from_claim_ts(self):
+        """ADR-019 (H2): expiry counts from the claim's own ts with a
+        STRICT boundary -- at exactly ts + ttl_days it survives; one unit
+        past, it expires. And the reference instant is per-claim ts, not a
+        fixed epoch, so a later-dated claim with the same ttl is not yet
+        expired at the same `now`."""
+        claim_dt = tm.parse_ts(TS)                       # 2026-07-01T00:00:00Z
+        exact = claim_dt + timedelta(days=4)             # ts + ttl_days
+        just_after = exact + timedelta(seconds=1)
+        e = entry(claim_p(ttl_days=4), ts=TS)
+        self.assertIsNone(                               # strict >: boundary survives
+            tm.decide_invalidation(e, {"head": "h"}, exact))
+        d = tm.decide_invalidation(e, {"head": "h"}, just_after)
+        self.assertEqual(d["label"], "ttl expired")      # one second past: expired
+        later = entry(claim_p(ttl_days=4),
+                      ts="2026-07-02T00:00:00.000000+00:00")
+        self.assertIsNone(                               # counted from ITS ts, not a global clock
+            tm.decide_invalidation(later, {"head": "h"}, just_after))
+
+    def test_fold_never_synthesizes_ttl_expiry(self):
+        """ADR-019 (H2): the fold reads no clock. A TTL'd claim with no
+        invalidation record folds non-stale however old -- only the scan
+        (the sole clock reader) emits the record that demotes it. Guards
+        against a future edit that makes the fold expire from wall-time
+        (which would destroy purity/confluence, INV-I)."""
+        old = "2020-01-01T00:00:00.000000+00:00"         # 6+ years before NOW
+        claims, _ = tm.fold(events(rec("claim", claim_p(ttl_days=1), ts=old)))
+        self.assertEqual(claims["tr-00000001"]["status"], "unverified")
+
     def test_anchor_unreachable(self):
         e = entry(verified_p())
         d = tm.decide_invalidation(e, {"head": "h", "anchor_reachable": False}, NOW)

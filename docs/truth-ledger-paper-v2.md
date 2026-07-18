@@ -90,6 +90,18 @@ verdict retracted       → retracted       (terminal — later events ignored)
 invalidation            → stale           (queued if P0/P1)
 ```
 
+`invalidation → stale` is the *only* path to `stale`, and it is complete:
+even TTL expiry reaches `stale` only through an invalidation **record**.
+TTL is not folded from the clock — the invalidation scan counts elapsed
+time from the claim's own `ts` (not the anchor, not the verdict that made
+it live) and, when *strictly more than* `ttl_days` have passed
+(`now - ts > ttl_days`; at exactly the boundary it has not yet expired),
+writes an invalidation naming the claim. A TTL'd claim the scan has not
+yet visited is not stale, however old the fact. This keeps the fold a
+pure, confluent function of the log while still letting time demote a
+claim — the clock's effect is frozen into a record, never recomputed on
+read (ADR-019).
+
 A claim is born `unverified` regardless of its `evidence_class` — filing a
 VERIFIED claim runs and hashes the evidence command at intake, but that
 double-run is a gate, not a verdict; only an explicit `agree` event (via
@@ -354,8 +366,11 @@ idempotent; degenerate ledgers fold cleanly; the readiness matrix matches
 its design record (ADR-001, not reproduced here) cell-for-cell;
 anchor-loss demotion fails toward distrust; the
 dispatch seam leaks no author reasoning; the core is a pure function of
-time and touches no I/O, which is what made unit-level attacks on it cheap
-in the first place.
+the **log** and touches no I/O — even TTL expiry, the one demotion that
+needs a wall-clock, enters only at the *scan* boundary, which reads the
+clock and writes an invalidation record; the fold itself never reads a
+clock (ADR-019). That log-purity is what made unit-level attacks on the
+core cheap in the first place.
 
 **A prediction the evidence refuted:** F1's root cause was predicted to be
 fixture-corpus omission. Wrong — the corpus contained both cases, and the
@@ -805,7 +820,7 @@ between "fault lands" and "row lands" is exactly the decay §5 predicts.
 | INV-B | VERIFIED claims carry command, hash, anchor, paths-or-TTL | One bare VERIFIED accepted | Intake tests |
 | INV-C | Evidence-path changes demote before re-trust | One stale claim rendered live | Seeded fault |
 | INV-D | Recheck detects non-reproducing evidence | One hash mismatch scored agree | Seeded fault |
-| INV-E | TTL'd claims expire | One claim outliving its TTL | Seeded fault |
+| INV-E | TTL'd claims expire: the scan writes an invalidation when `now - ts > ttl_days` (counted from the claim `ts`, strict boundary), and only that record demotes the claim — the fold never expires from the clock (ADR-019) | One claim outliving its TTL; or a claim expired at fold time with no invalidation record | Seeded fault (FAULT D, incl. the fold-clock-free arm); core boundary + fold-purity tests |
 | INV-F | History rewrites invalidate, with reason | One orphaned anchor still trusted | Seeded fault |
 | INV-G | Retraction is terminal at both layers: the claim's *status* stays `retracted` under any event, and the readiness *block* it imposes is released only by matching human authority | One resurrected tombstone; or a retracted premise's HELD block released without the human gate (C3) | Seeded fault (verdict path, append path); duplicate-id content substitution under a retracted id is detected at commit — backdated (strictly-earlier `ts`) since v0.6 (ADR-008), and copied-`ts` (equal, non-identical content) since v0.9.1 (ADR-016, canary B5); the readiness-layer supersede release is human-gated since v0.9.3 (ADR-017, canary R11) — residual: fresh-id timestamp forgery, accepted per §8 item 6; see §1 "Fold semantics, precisely" |
 | INV-H | Broken premises hold work: a premise that is `stale`, `diverged`, `retracted`, or missing HOLDs its issue (the full ADR-001 blocking set, not just `stale`) | One issue ready on a premise in any of those four states | Seeded fault (FAULT J covers `stale`; the ADR-001 matrix — reused verbatim by the work kernel, ADR-002 — blocks all four identically). The `cannot_verify` P0-only rule and the `unverified` warn-pass are the matrix's two non-blocking cells |

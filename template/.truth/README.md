@@ -43,7 +43,14 @@ union-merged branches derive identical status (confluence). The fold
 sorts the raw `ts` string, so `ts` must be the canonical profile
 `YYYY-MM-DDTHH:MM:SS.ssssss+00:00` — fixed-width UTC microseconds,
 exactly what the CLI mints; any other offset, `Z` suffix, or precision
-fails `validate` (ADR-015: string order must equal time order). Duplicate
+fails `validate` (ADR-015: string order must equal time order). The fold
+reads **no clock**: even TTL expiry is not folded from wall-time — the
+`invalidate-scan` (the sole clock reader) counts elapsed time from the
+claim's own `ts` and, when *strictly more than* `ttl_days` have passed
+(`now - ts > ttl_days`; the exact boundary has not yet expired), appends
+an **invalidation record**; only that record demotes the claim to
+`stale`. A TTL'd claim the scan has not visited is not stale, however old
+(ADR-019 — this is what keeps the fold pure and confluent). Duplicate
 claim and issue ids are first-wins (F6, ADR-006): a later append bearing
 an existing id is inert. `retracted` (claims) and `cancelled` (issues)
 are terminal and human-gated (ADR-011; the full requirement is stated

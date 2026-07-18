@@ -147,6 +147,18 @@ if $T list --stale --json | grep -q "$CID_D"; then
 else
   miss "ttl_days is still a dead field: $CID_D outlived its ttl"
 fi
+# ADR-019 (H2): the fold reads no clock -- a TTL'd claim is NOT stale
+# until a scan writes the invalidation record. File one already long past
+# its ttl and do NOT scan: it must stay non-stale. An implementer whose
+# fold expired from wall-time would wrongly show it stale here.
+CID_DF=$(TRUTH_NOW="2026-01-01T00:00:00+00:00" $T claim \
+         "external rate limit was 50 req per min" --class INFERRED \
+         --basis "vendor docs read 2026-01-01" --ttl-days 7 --tier P2)
+if $T list --stale --json | grep -q "$CID_DF"; then
+  miss "fold synthesized TTL expiry with no scan record (clock leaked into the fold)"
+else
+  ok "TTL'd claim stays non-stale until a scan emits the record (fold clock-free, ADR-019)"
+fi
 
 say "FAULT G (G6): nondeterministic evidence command must be refused"
 if $T claim "the clock ticks" --class VERIFIED \
