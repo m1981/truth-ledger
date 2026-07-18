@@ -42,6 +42,11 @@ _skip_if_exists:
   # may re-run inside verifier sessions); an update must never revert a
   # consumer's conscious additions or removals.
   - .truth/evidence-allow
+  # ADR-022: NOTE the deliberate asymmetry -- .truth/evidence-deny is the
+  # opposite: TEMPLATE-owned. It is intentionally NOT skipped here, so a
+  # `copier update` keeps the shell/executor deny baseline current for
+  # every consumer. You own what you ALLOW; the template owns the baseline
+  # DENY. (A consumer who never edits the deny file fast-forwards cleanly.)
   # A consumer with an existing .gitattributes (their own merge/lfs
   # rules) must merge the union line by hand; doctor nags until they do.
   - .gitattributes
