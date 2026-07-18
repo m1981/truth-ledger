@@ -4,7 +4,7 @@ Status: Accepted (2026-07-18, operator) — source: independent review
 finding H4 (High), whose spec-precision framing concealed a live
 security bypass confirmed in a sandbox and by an independent adversarial
 review. Amends ADR-009. Implemented in CLI v0.9.6. Canary FAULT ES;
-core tests test_screen_rejects_control_chars, test_screen_arg_deny_table.
+core tests test_screen_rejects_control_chars, test_arg_deny_covers_h4_gaps.
 Date: 2026-07-18
 Supersedes: — (hardens ADR-009's evidence screen; the allowlist model is
 unchanged)
@@ -107,7 +107,7 @@ delegates to the one function — the F1/F5 drift lesson).
   escaped separators, redirection tricks all refused or inert).
 - Locked mechanically: core `test_screen_rejects_control_chars` (newline,
   CR, and the `#comment\ncmd` variant refused; tab and legitimate
-  pipelines/quoted-pipes still pass) and `test_screen_arg_deny_table`
+  pipelines/quoted-pipes still pass) and `test_arg_deny_covers_h4_gaps`
   (the table's contents pinned, including git `-o` and sort
   `--compress-program`); canary FAULT ES (a newline-smuggled command is
   refused at the CLI). The FS-2-style intent: the screen's decisions are
