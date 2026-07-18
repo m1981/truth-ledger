@@ -148,21 +148,28 @@ flowchart TD
     A1 -->|yes| SAFE2["no contention ✅"]
     A1 -->|"no — both append"| OA{"POSIX O_APPEND<br/>atomicity (single write call)"}
     OA -->|"same filesystem"| OK2["interleaved, not corrupted<br/>(field evidence: paper §2)"]
-    OA -->|"backdated duplicate id<br/>(content substitution attempt)"| DET["DETECTED at commit<br/>(ADR-008 order coherence, v0.6)"]
+    OA -->|"backdated OR copied-ts duplicate id<br/>(content substitution attempt)"| DET["DETECTED at commit<br/>(ADR-008 order coherence v0.6;<br/>ADR-016 equal-ts gate + total order v0.9.1)"]
     OA -.->|"forged ts on a FRESH id"| RESID["accepted residual ⚠<br/>(§8 item 6 — signed records or<br/>hash-linking, behind a growth gate)"]
 ```
 
-**Loophole:** the duplicate-id-with-backdated-timestamp substitution —
-the paper's one admitted-undefended attack — is **no longer
-undefended**: since v0.6, `validate` (and therefore the commit gate)
-fails any duplicate id whose timestamp sorts before the record it
-duplicates (ADR-008, canary B-faults; file order is append order under
-the INV-A prefix gate, so backdating is visible). The residual that
-remains *accepted, not detected*, is timestamp forgery on a fresh,
-non-duplicate id — closable only by signed records or hash-linking
-(paper §10), deferred behind the growth gate: build it when the first
-forged timestamp is found in the wild. Not reachable by an honest
-agent.
+**Loophole:** the duplicate-id content-substitution attack — the paper's
+one admitted-undefended attack — is **no longer undefended** in either
+of its two `ts` shapes. Since v0.6, `validate` (and therefore the commit
+gate) fails any duplicate id whose timestamp sorts *before* the record
+it duplicates (ADR-008, backdated shape). Since v0.9.1 it also fails any
+duplicate id whose timestamp is *equal* to the genuine one but whose
+content differs (ADR-016, the copied-`ts` shape an independent review
+found: an equal `ts` ties the fold's `(ts, id)` order, so a union merge
+could seat the pair either way and substitute content by file order —
+now blocked at the gate, and the fold's order made total by a
+content-derived third key besides). File order is append order under the
+INV-A prefix gate, so both shapes are visible; the byte-identical
+union-merge line is the one legitimate equal-`ts` case and still passes.
+The residual that remains *accepted, not detected* is timestamp forgery
+on a fresh, non-duplicate id — closable only by signed records or
+hash-linking (paper §10), deferred behind the growth gate: build it when
+the first forged timestamp is found in the wild. Not reachable by an
+honest agent.
 
 ---
 
@@ -174,7 +181,7 @@ agent.
 | B. Assert | Talks without filing | Behavioral | Known, §1 |
 | C. Finish | `done` trusts the acceptance criterion (no `--accept-cmd`); a supersede can free HELD work with an unverified replacement (warned, auditable) | Behavioral | accept-cmd: proposed-next (upstream #1); HELD exit: ADR-013, v0.6.4 |
 | D. Verify | Self-`agree` refused; session identity self-attested | Enforced as refusal; bypass is one visible export (F4 class) | ADR-010, v0.6 |
-| E. Concurrent | Fresh-id timestamp forgery (dup-id substitution now detected) | Accepted residual | §8.6, ADR-008 |
+| E. Concurrent | Fresh-id timestamp forgery (dup-id substitution now detected in both backdated and copied-ts shapes) | Accepted residual | §8.6, ADR-008, ADR-016 |
 
 ---
 

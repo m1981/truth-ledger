@@ -1,5 +1,22 @@
 #!/usr/bin/env python3
-"""truth v0.9.0 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.1 -- append-only claims ledger with a native work kernel.
+
+v0.9.1 (ADR-016, wk-280e0b76): total fold order + equal-ts gate. Source:
+  independent spec review finding C1 (Critical) -- the fold's (ts, id)
+  order is NOT total: a duplicate id carrying a COPIED (equal) ts ties
+  both components, and Python's stable sort then resolves the tie by
+  file position -- the one thing section 1 promises the fold ignores.
+  ADR-008's order_check keyed on strictly-earlier ts, so an equal-ts
+  forgery passed validate, and a union merge could seat the tie in
+  either file order -> two repositories, two fold results, content
+  substitution on one side, validate green everywhere (INV-I falsified;
+  ADR-008's own named falsifier reached with NO backdated ts). Two
+  complementary fixes: (a) fold_key() appends canon() -- the canonical
+  record serialization -- as a third, content-derived sort key, so
+  distinct records never tie and every permutation folds identically;
+  (b) order_check refuses a duplicate id with equal ts and non-identical
+  content, the byte-identical union-merge shape (B2) still passing.
+  Canary FAULTS B5-B6; permutation + validate core tests.
 
 v0.9.0 (issue #4, wk-3a8a725f): `contradicts` -- 29148 set consistency
   made syntax (conformance rule R5). Near-dup intake catches
@@ -392,6 +409,29 @@ HALF_LIFE_MIN_OBS = 5  # FS-1: below this, intake suggests nothing (noise)
 
 # ------------------------------------------------------------ primitives
 
+def canon(ev):
+    """The canonical serialization of a record -- a deterministic
+    function of content, identical for byte-identical records and
+    distinct for any field difference. Records are appended with the
+    same sort_keys=True dump, so this reproduces the on-disk bytes for a
+    CLI-written line."""
+    return json.dumps(ev, sort_keys=True)
+
+def fold_key(ne):
+    """ADR-016: the fold's TOTAL order. (ts, id) alone is not total --
+    a duplicate id carrying a copied (equal) ts ties on both components,
+    and a stable sort then breaks the tie by file position, the one
+    thing the fold must ignore to be confluent (INV-I). The third key is
+    canon(): distinct records never tie, so every event permutation --
+    including the two file orders a union merge can produce -- folds to
+    one state. Byte-identical records (git's union-merge duplicate, B2)
+    tie on all three keys and coincide, so which wins is immaterial.
+    order_check (a gate, not the fold) separately refuses a NON-identical
+    equal-ts duplicate id, so an attacker cannot use this key to pick a
+    substitution winner in a committed ledger."""
+    ev = ne[1]
+    return (ev.get("ts") or "", ev.get("id") or "", canon(ev))
+
 def tokens(text):
     return set(re.findall(r"[a-z0-9]+", text.lower()))
 
@@ -468,8 +508,7 @@ def fold(events):
         across subsequent invalidate-scans instead of re-staling forever.
     `retracted` remains terminal (G12).
     """
-    ordered = sorted(events, key=lambda ne: (ne[1].get("ts") or "",
-                                             ne[1].get("id") or ""))
+    ordered = sorted(events, key=fold_key)  # ADR-016: total, content-derived
     claims, premises, edges = {}, {}, []
     def set_status(cid, status, ts):
         if claims[cid]["status"] == "retracted":
@@ -554,8 +593,7 @@ def fold_issues(events):
     while `closed` is not (work is cyclical; closing asserts completion,
     not falsity) -- that rule, unlike first-wins, does differ from claim
     folding and is decided in ADR-002."""
-    ordered = sorted(events, key=lambda ne: (ne[1].get("ts") or "",
-                                             ne[1].get("id") or ""))
+    ordered = sorted(events, key=fold_key)  # ADR-016: total, content-derived
     issues = {}
     for _, ev in ordered:
         kind, p = ev.get("kind"), ev.get("payload", {})
@@ -610,8 +648,7 @@ def fold_supersedes(events):
     last-wins in the same confluent (ts, id) total order every other
     fold uses. A redirect is scoped to ONE issue: superseding a claim
     for wk-A never touches wk-B's link to the same claim."""
-    ordered = sorted(events, key=lambda ne: (ne[1].get("ts") or "",
-                                             ne[1].get("id") or ""))
+    ordered = sorted(events, key=fold_key)  # ADR-016: total, content-derived
     out = {}
     for _, ev in ordered:
         p = ev.get("payload", {})
@@ -880,9 +917,12 @@ def order_check(events):
     order (INV-A prefix gate), so a backdated duplicate id is *visible*:
     it appears later in the file than the record it sorts before.
     Returns (errors, warnings). Errors: duplicate id with strictly
-    earlier ts (the canonical-order substitution attack); an identical
-    line duplicated by union merge carries an equal ts and passes, and
-    the stable fold sort keeps the genuine-first record winning.
+    earlier ts (the backdated substitution attack, ADR-008); duplicate
+    id with an EQUAL ts but non-identical content (the equal-ts
+    substitution forgery, ADR-016/C1 -- a copied timestamp ties the
+    fold's (ts, id) order, so file order alone would pick the winner and
+    two union-merge directions could disagree). A byte-identical line
+    duplicated by union merge shares id and ts legitimately and passes.
     Warnings only for clock regression beyond tolerance -- a branch
     ledger union-merged into main legitimately places older records
     after newer ones, and failing there would punish the exact merge
@@ -899,22 +939,36 @@ def order_check(events):
         ts_raw = ev.get("ts") or ""
         ts = parse_ts(ts_raw)
         if eid in first_seen:
-            f_ts_raw, f_line = first_seen[eid]
+            f_ts_raw, f_line, f_canon = first_seen[eid]
             # fold() orders by the raw ts STRING then id (a duplicate id
             # ties on id, so the ts string alone decides the winner). Test
             # substitution exactly as fold sorts -- string-comparing, not
             # parsing -- so a tz-naive or non-ISO forged ts cannot slip
             # past a parsed comparison the way it did before v0.6.2 (F2).
-            # Equal strings = the union-merge shape; stable sort keeps the
-            # genuine first-appended record, so it stays legal.
             if ts_raw < f_ts_raw:
                 errors.append(
                     f"line {n}: duplicate id {eid} with ts sorting before "
                     f"line {f_line}'s -- canonical-order substitution "
                     "(ADR-008): a later append may not sort before the "
                     "record it duplicates")
+            # ADR-016 (C1): an EQUAL ts no longer passes on the ts test
+            # alone. Equal ts + duplicate id is legal ONLY for the git
+            # union-merge shape -- a byte-identical line. A duplicate id
+            # carrying a COPIED ts but different content is the equal-ts
+            # substitution forgery: it ties (ts, id) with the genuine
+            # record, so file order alone would decide the winner, and
+            # two union-merge directions can seat the tie both ways
+            # (non-confluence, INV-I). Refuse it; canon() equality is the
+            # byte-identity test the union-merge shape passes.
+            elif ts_raw == f_ts_raw and canon(ev) != f_canon:
+                errors.append(
+                    f"line {n}: duplicate id {eid} with an EQUAL ts but "
+                    f"different content from line {f_line} -- equal-ts "
+                    "substitution (ADR-016): a copied timestamp ties the "
+                    "fold's order, so only a byte-identical union-merge "
+                    "duplicate may share both id and ts")
         elif eid:
-            first_seen[eid] = (ts_raw, n)
+            first_seen[eid] = (ts_raw, n, canon(ev))
         if ts and max_ts and cmp_ok(ts, max_ts) \
                 and (max_ts - ts).total_seconds() > SKEW_TOLERANCE_SECONDS:
             warnings.append(
@@ -934,8 +988,7 @@ def half_life_observations(events):
     order and the same status rules as fold(); fold stays authoritative
     for status, and test-truth-core cross-checks the two never disagree
     on final state. Returns a list of (tier, days_live) tuples."""
-    ordered = sorted(events, key=lambda ne: (ne[1].get("ts") or "",
-                                             ne[1].get("id") or ""))
+    ordered = sorted(events, key=fold_key)  # ADR-016: total, content-derived
     state = {}   # cid -> {"tier", "status", "since": datetime|None}
     obs = []
     verdict_map = {"agree": "live", "diverge": "diverged",

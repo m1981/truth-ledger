@@ -470,6 +470,57 @@ else
 fi
 mv claims.b4.bak .truth/claims.jsonl
 
+say "FAULT B5 (ADR-016, C1): an EQUAL-ts duplicate id with different content must fail validate"
+cp .truth/claims.jsonl claims.b5.bak
+python3 - "$CID_H" <<'PYEOF'
+import json, sys
+cid = sys.argv[1]
+# copy the genuine record's ts byte-for-byte -- NOT backdated. It ties
+# (ts, id) with the genuine claim, so file order alone would decide the
+# fold winner and two union-merge directions could disagree (INV-I).
+# ADR-008's strictly-earlier rule passed this; ADR-016 refuses it.
+genuine = next(json.loads(l) for l in open(".truth/claims.jsonl")
+               if json.loads(l).get("id") == cid)
+rec = {"id": cid, "kind": "claim", "actor": "agent-x", "session": "s-evil",
+       "ts": genuine["ts"],
+       "payload": {"text": "substitution via equal-ts copied-timestamp duplicate",
+                   "evidence_class": "UNVERIFIED", "cost_tier": "P0",
+                   "ttl_days": None, "evidence_paths": []}}
+open(".truth/claims.jsonl", "a").write(json.dumps(rec, sort_keys=True) + "\n")
+PYEOF
+if ! grep -q "equal-ts copied-timestamp" .truth/claims.jsonl; then
+  miss "fault injection failed: equal-ts duplicate was never appended"
+elif $T validate >/dev/null 2>&1; then
+  miss "validate passed an equal-ts substitution duplicate (C1 open -- INV-I falsifiable)"
+else
+  ok "validate failed the equal-ts substitution duplicate (C1 closed at the gate)"
+fi
+mv claims.b5.bak .truth/claims.jsonl
+
+say "FAULT B6 (ADR-016, C1): the fold's order is total -- a tied pair folds identically both ways"
+B6_OUT=$(python3 - <<'PYEOF'
+import json
+from importlib.machinery import SourceFileLoader
+tm = SourceFileLoader("truth", "scripts/truth").load_module()
+# two DISTINCT records tied on (ts, id): the fold must not depend on
+# which one the file lists first (canon() is the total third key)
+a = {"id":"tr-aaaaaaaa","kind":"claim","actor":"x","session":"s1",
+     "ts":"2026-07-01T00:00:00.000000+00:00",
+     "payload":{"text":"alpha","evidence_class":"UNVERIFIED","cost_tier":"P2",
+                "ttl_days":None,"evidence_paths":[]}}
+b = dict(a); b = json.loads(json.dumps(a)); b["payload"] = dict(a["payload"], text="beta")
+def winner(evs):
+    c = tm.fold([(i,e) for i,e in enumerate(evs)])[0]["tr-aaaaaaaa"]["claim"]
+    return c.get("text") or c.get("payload",{}).get("text")
+print("SAME" if winner([a,b]) == winner([b,a]) else "DIVERGED")
+PYEOF
+)
+if [ "$B6_OUT" = "SAME" ]; then
+  ok "fold is confluent on a tied (ts,id) pair -- file order does not decide the winner"
+else
+  miss "fold picked different winners by file order ($B6_OUT) -- (ts,id) not total"
+fi
+
 # ---- FAULTS TS1-TS3 (ADR-015): canonical timestamp profile ---------------
 say "FAULT TS1 (ADR-015): a fresh-id record with a Z-suffix ts must fail validate"
 cp .truth/claims.jsonl claims.ts1.bak

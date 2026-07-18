@@ -103,26 +103,30 @@ human decision to kill a claim cannot be undone by any later event —
 
 **Fold semantics, precisely.** The fold replays every event — claim,
 verdict, invalidation, premise — in the canonical total order
-`(timestamp, id)`, ascending, regardless of file position (this is what
-makes replay order-independent; §4, F3). Within that order, the *first*
-claim record to establish a given id fixes that claim's text and evidence
-capsule; any later claim record bearing the same id is ignored for content
-(§4, F6) — its append is permitted (the log is append-only, not
-edit-only) but has no effect on derived state. Composing this with the
-accepted timestamp-forgery threat (§8 item 6) yields one composition
-gap, stated plainly rather than left implicit: an appender who backdates a
-duplicate-id claim record to sort *before* the genuine one in canonical
-order becomes "first," silently substituting its text and evidence
-capsule under an id that may already carry a live verdict. Verdicts and
-invalidations still apply correctly to whichever content wins — no
-verdict is lost or misattributed — but the claim's *substance* was not
-protected against this specific composition of two individually-documented
-behaviors. As of v0.6 this composition is **detected at commit**
-(ADR-008): within one repository's history, file order is append order —
-a guarantee the INV-A prefix gate already provides — so `truth validate`
-(and therefore the commit gate) fails any record whose envelope id
-duplicates an earlier line's with a strictly earlier `ts`. Identical
-duplicated lines (git's union-merge shape) still pass. The residual that
+`(timestamp, id, canonical-serialization)`, ascending, regardless of
+file position (this is what makes replay order-independent; §4, F3). The
+third key matters and was added late (ADR-016, v0.9.1): `(timestamp, id)`
+alone is **not** total — a duplicate id carrying a *copied*, byte-equal
+`ts` ties both components, at which point a stable sort silently decides
+the winner by file position, the one thing the fold must ignore. The
+canonical record serialization is a deterministic function of content,
+so distinct records never tie and every event order — including the two
+a union merge can produce — folds identically. Within that order, the
+*first* claim record to establish a given id fixes that claim's text and
+evidence capsule; any later claim record bearing the same id is ignored
+for content (§4, F6) — its append is permitted (the log is append-only,
+not edit-only) but has no effect on derived state. Composing first-wins
+with the accepted timestamp-forgery threat (§8 item 6) once yielded two
+substitution gaps, both now closed by detection at commit: an appender
+who **backdates** a duplicate-id record sorts it *before* the genuine one
+(ADR-008, detected since v0.6 — within one repository's history file
+order is append order, the INV-A guarantee, so `truth validate` fails any
+duplicate id with a strictly earlier `ts`); and an appender who **copies
+the ts byte-for-byte** ties the order and lets a union merge seat the
+pair either way (ADR-016, detected since v0.9.1 — `validate` fails any
+duplicate id with an *equal* `ts` and non-identical content). Identical
+duplicated lines (git's union-merge shape — same id, same ts, same
+content) still pass, the one legitimate equal-ts case. The residual that
 remains accepted, not detected, is timestamp forgery on a *fresh*
 (non-duplicate) id — §8 item 6.
 
@@ -777,14 +781,14 @@ the safe default) instead of running unarmed and silently skipping.
 | INV-D | Recheck detects non-reproducing evidence | One hash mismatch scored agree | Seeded fault |
 | INV-E | TTL'd claims expire | One claim outliving its TTL | Seeded fault |
 | INV-F | History rewrites invalidate, with reason | One orphaned anchor still trusted | Seeded fault |
-| INV-G | Retraction is terminal, on every path *tested* | One resurrected tombstone | Seeded fault (verdict path, append path); the backdated duplicate-id append that could substitute claim content under a retracted id is detected at commit since v0.6 (ADR-008, canary B-faults) — residual: fresh-id timestamp forgery, accepted per §8 item 6; see §1 "Fold semantics, precisely" |
+| INV-G | Retraction is terminal, on every path *tested* | One resurrected tombstone | Seeded fault (verdict path, append path); duplicate-id content substitution under a retracted id is detected at commit — backdated (strictly-earlier `ts`) since v0.6 (ADR-008), and copied-`ts` (equal, non-identical content) since v0.9.1 (ADR-016, canary B5) — residual: fresh-id timestamp forgery, accepted per §8 item 6; see §1 "Fold semantics, precisely" |
 | INV-H | Broken premises hold work | One issue ready on a stale premise | Seeded fault |
-| INV-I | Fold is confluent: any event order, same state | Two orders, two statuses | Permutation property test |
+| INV-I | Fold is confluent: any event order, same state | Two orders, two statuses (or two contents) | Permutation property test. The order key is `(ts, id, canonical-serialization)`: the third key is load-bearing (ADR-016, v0.9.1) — `(ts, id)` alone is not total, so a duplicate id with a copied equal `ts` folded to different *content* by file order until the content-derived tie-break closed it (canary B6; core `test_duplicate_id_equal_ts_folds_to_one_content`) |
 | INV-J | Re-verification is durable across scans | One re-verified claim re-staled with no new changes | Seeded fault |
 | INV-K | Retraction requires `TRUTH_HUMAN=1` **plus** an interactive typed-id confirmation or `TRUTH_HUMAN_ACK=<exact-id>` (ADR-011, v0.6) | One retraction accepted with the variable alone, headless | Seeded fault (H-faults) — still self-attested rather than identity-verified, but the one-export bypass is closed; see F4, §4 |
 | INV-L | The drift detector is armed or the suite fails | One green run with the schema unchecked | Armed-detector test |
 | INV-M | Every `evidence_path` on an accepted claim matches ≥1 tracked file at filing time, or is an explicit glob | One accepted claim whose tripwire can never fire | Seeded fault (`FAULT T`), shipped v0.5.4. Known residual (found by inspection, meta-repo, 2026-07-13): a tracked **symlink** passes the literal-path check but can never fire — git tracks the link, which never changes, not the target. Watch real paths; an intake warning on symlink literals is a candidate hardening if the class recurs |
-| INV-N | Issue-fold premise protection (ADR-001) cannot be stripped by an appended duplicate `wk-` id | One HELD issue silently flipped to READY | Seeded fault (FAULT R9) — fixed at the fold level (ADR-006): duplicate issue ids are first-wins, identical to INV-G's claims-side mechanism; the backdated-duplicate composition is detected at commit since v0.6 (ADR-008), with INV-G's same residual — fresh-id forgery while `ts`/`actor` remain unsigned (§8 item 6) |
+| INV-N | Issue-fold premise protection (ADR-001) cannot be stripped by an appended duplicate `wk-` id | One HELD issue silently flipped to READY | Seeded fault (FAULT R9) — fixed at the fold level (ADR-006): duplicate issue ids are first-wins, identical to INV-G's claims-side mechanism; the backdated- and copied-`ts` duplicate compositions are detected at commit (ADR-008 v0.6, ADR-016 v0.9.1 — the equal-ts gate and total order apply to every kind, `wk-` included), with INV-G's same residual — fresh-id forgery while `ts`/`actor` remain unsigned (§8 item 6) |
 
 ## Appendix B. Reproduction
 
