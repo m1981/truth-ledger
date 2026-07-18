@@ -180,10 +180,11 @@ a universally quantified claim text over a scoped evidence command
 (ADR-007, v0.6 — the §2 dominant-failure countermeasure §10 once listed
 as unbuilt; refused unless `--scope-ok "<one sentence>"` states why the
 scope covers the quantifier, stored as an attackable `scope_basis`);
-dead-tripwire evidence paths (INV-M, v0.5.4 — a whitespace-containing
-entry with no comma, or a literal path matching zero tracked files;
-explicit globs exempt; applies to *any* evidence class carrying paths,
-and has no override); VERIFIED claims with no evidence command, with
+*statically* dead-tripwire evidence paths (INV-M, v0.5.4 — a
+whitespace-containing entry with no comma, or a **literal** path matching
+zero tracked files; explicit globs are exempt because they are dormant
+watches, not dead — they fire when their namespace fills (ADR-023);
+applies to *any* evidence class carrying paths, and has no override); VERIFIED claims with no evidence command, with
 neither paths nor TTL, or filed in a repository with no commits to anchor
 to (these three checks are VERIFIED-only; UNVERIFIED and INFERRED claims
 may omit evidence, paths, and TTL); evidence commands failing the
@@ -448,7 +449,14 @@ site, 2026-07-12):
   releases that followed, the tripwires forced doc re-review each time;
   the residual, learned the same week: recipes narrower than their
   sentences survive intake (one was retracted for it), and a watch on a
-  symlink can never fire (Appendix A, INV-M).
+  tracked symlink can never fire — git tracks the immutable link, not its
+  target (Appendix A, INV-M). A later review (H5, ADR-023) tested the
+  neighbouring worry — that an explicit glob matching nothing is a second
+  dead tripwire — and found the opposite: an empty glob is *dormant*, not
+  dead, firing the moment its namespace is populated, because the
+  invalidator re-evaluates the pattern against every scan's diff rather
+  than freezing its matches at filing time. The symlink is the lone
+  residual; INV-M's gate decides *static* deadness, not liveness.
 
 That last result is evidence for a claim the original design never
 explicitly made: this isn't only a detector of decayed facts after the
@@ -863,7 +871,7 @@ between "fault lands" and "row lands" is exactly the decay §5 predicts.
 | INV-J | Re-verification is durable across scans | One re-verified claim re-staled with no new changes | Seeded fault |
 | INV-K | Retraction requires `TRUTH_HUMAN=1` **plus** an interactive typed-id confirmation or `TRUTH_HUMAN_ACK=<exact-id>` (ADR-011, v0.6) | One retraction accepted with the variable alone, headless | Seeded fault (H-faults) — still self-attested rather than identity-verified, but the one-export bypass is closed; see F4, §4 |
 | INV-L | The drift detector is armed or the suite fails | One green run with the schema unchecked | Armed-detector test |
-| INV-M | Every `evidence_path` on an accepted claim matches ≥1 tracked file at filing time, or is an explicit glob | One accepted claim whose tripwire can never fire | Seeded fault (`FAULT T`), shipped v0.5.4. Known residual (found by inspection, meta-repo, 2026-07-13): a tracked **symlink** passes the literal-path check but can never fire — git tracks the link, which never changes, not the target. Watch real paths; an intake warning on symlink literals is a candidate hardening if the class recurs |
+| INV-M | No `evidence_path` on an accepted claim is *statically* dead at filing time: every **literal** matches ≥1 tracked file and no entry is a whitespace-no-comma literal. (A static-dead-tripwire gate, **not** a liveness guarantee — see the two residual notes.) | One accepted claim carrying a *statically* dead tripwire (a comma-typo literal, or a literal matching zero tracked files) | Seeded fault (`FAULT T`), shipped v0.5.4; scope sharpened ADR-023 (v0.9.8). Two cases lie outside what the gate decides. **(1) Globs are dormant, not dead** — an explicit glob (`*`/`?`/`**`) matching nothing yet is exempt because it fires when its namespace fills: a claim on `src/ghost/*.py` goes stale the moment a tracked `src/ghost/*.py` file is touched (sandbox-verified, ADR-023). Over this glob language no glob is permanently unmatchable, so a glob is never a dead tripwire, only a dormant one — refuting the reading that "an empty glob can never fire." **(2) The tracked symlink is the lone residual** (found by inspection, meta-repo, 2026-07-13): it passes the literal-path check but can never fire — git tracks the immutable link object (mode `120000`), not the target, so editing the target never diffs the link. Watch real paths; an intake warning on symlink literals is a candidate hardening if the class recurs |
 | INV-N | Issue-fold premise protection (ADR-001) cannot be stripped by an appended duplicate `wk-` id | One HELD issue silently flipped to READY | Seeded fault (FAULT R9) — fixed at the fold level (ADR-006): duplicate issue ids are first-wins, identical to INV-G's claims-side mechanism; the backdated- and copied-`ts` duplicate compositions are detected at commit (ADR-008 v0.6, ADR-016 v0.9.1 — the equal-ts gate and total order apply to every kind, `wk-` included), with INV-G's same residual — fresh-id forgery while `ts`/`actor` remain unsigned (§8 item 6) |
 | INV-O | A verifier cannot `agree` with a claim from that claim's own authoring session; a `diverge` from the own session IS allowed (self-incrimination) (ADR-010, v0.6) | One same-session `agree` accepted, or one same-session `diverge` refused | Seeded fault (FAULTS V1/V2/V3). Self-attested session identity (`TRUTH_SESSION`), same class as F4/INV-K — the bypass is one visible env export, not an identity check |
 | INV-P | A supersede redirect re-targets premise validity, never bypasses it: the replacement is judged by the same ADR-001 matrix, the redirect is refused while the old premise still passes `ready`, and superseding a `retracted` premise requires the ADR-011 human gate (ADR-017 — the mechanical dead states stay ungated) | One issue made READY by redirecting a live/unverified premise; a retracted premise redirected without human authority (C3); or a redirect resolving non-deterministically | Seeded fault (FAULT R10, R11); cycle resolution pinned by core tests (ADR-013 amended 2026-07-18, first-repeated-value rule) |

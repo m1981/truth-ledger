@@ -81,9 +81,13 @@ claim text ("only", "no … anywhere", "the repo") over a scoped evidence
 command (`--include`, path arguments, `cd`) is refused unless
 `--scope-ok "<one sentence>"` states why the scope covers the
 quantifier (stored as `scope_basis`, attackable by verifiers);
-dead-tripwire paths — a whitespace-containing entry with no comma, or a
-literal path matching zero tracked files (INV-M, v0.5.4; explicit globs
-exempt; applies to every evidence class carrying paths); then, for
+statically dead-tripwire paths — a whitespace-containing entry with no
+comma, or a **literal** path matching zero tracked files (INV-M, v0.5.4;
+explicit globs are exempt because they are *dormant, not dead* — a glob
+matching nothing yet fires when its namespace fills, ADR-023; the one
+permanent residual is a tracked **symlink** literal, which git tracks as
+an immutable link, so editing its target never fires — watch real paths;
+applies to every evidence class carrying paths); then, for
 VERIFIED: missing evidence command, neither paths nor TTL, no commit to
 anchor to, the evidence-command safety screen (ADR-009, v0.6 — quote-aware: every
 pipeline segment's program must be a bare name in

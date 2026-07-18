@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn).
+# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -315,11 +315,23 @@ if CID_T=$($T claim "watched and fabricated are fine" --class VERIFIED \
 else
   miss "intake wrongly refused legitimate comma-separated paths"
 fi
-if $T claim "future docs stay clean" --class VERIFIED \
-     --evidence-cmd "echo ok" --paths "ghost-dir/*.md" --tier P1 --duplicate-ok >/dev/null 2>&1; then
+if CID_TG=$($T claim "future docs stay clean" --class VERIFIED \
+     --evidence-cmd "echo ok" --paths "ghost-dir/*.md" --tier P1 --duplicate-ok 2>/dev/null); then
   ok "explicit glob matching nothing yet is exempt (legitimate intent)"
 else
   miss "intake wrongly refused an explicit glob with zero current matches"
+fi
+# ADR-023 (H5): that empty glob is DORMANT, not dead -- it must fire once
+# its namespace fills, refuting 'an empty glob can never fire'. The
+# invalidator re-evaluates the pattern against each scan's diff.
+git add .truth/claims.jsonl && git commit -qm "canary: empty-glob claim T" --no-verify
+mkdir -p ghost-dir && echo "# appeared" > ghost-dir/appeared.md
+git add ghost-dir/appeared.md && git commit -qm "canary: materialize ghost-dir/*.md" --no-verify
+$T invalidate-scan --quiet
+if $T list --stale --json | grep -q "$CID_TG"; then
+  ok "empty glob $CID_TG fired once its namespace filled (dormant, not dead)"
+else
+  miss "empty glob $CID_TG never fired after a matching file appeared (ADR-023 regression)"
 fi
 
 say "FAULT H (G12): a verdict after retraction must not resurrect the claim"

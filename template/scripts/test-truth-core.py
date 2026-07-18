@@ -308,6 +308,24 @@ class TestIntake(unittest.TestCase):
             tm.dead_literal_paths(["a.sh", "missing.sh", "docs/*.md"], tracked),
             ["missing.sh"])
 
+    def test_dead_literal_is_the_decidable_case(self):
+        """ADR-023 (H5): the gate decides STATIC deadness of LITERALS only.
+        A literal has exactly one referent, so a zero-match literal can
+        never fire and is refused; a glob names a namespace that can fill,
+        so it is exempt even at zero current matches (dormant, not dead).
+        The lone residual is a tracked symlink literal -- it IS in the
+        tracked set, so the membership check passes; the gate is blind to
+        the fact that git tracks the link, not its target (ADR-023 leaves
+        this to guidance: watch real paths)."""
+        tracked = ["a.sh", "link.txt"]        # link.txt stands in for a tracked symlink
+        # a literal absent from the tracked set is statically dead -> refused
+        self.assertEqual(tm.dead_literal_paths(["missing.sh"], tracked),
+                         ["missing.sh"])
+        # a glob is never refused for zero current matches -- it is dormant
+        self.assertEqual(tm.dead_literal_paths(["src/ghost/*.py"], tracked), [])
+        # residual: a tracked symlink literal passes the membership check
+        self.assertEqual(tm.dead_literal_paths(["link.txt"], tracked), [])
+
 # ------------------------------------- quantifier-scope gate (ADR-007)
 
 class TestQuantifierScope(unittest.TestCase):
@@ -805,6 +823,29 @@ class TestInvalidation(unittest.TestCase):
         self.assertIsNone(tm.decide_invalidation(
             e, {"head": "h", "anchor_reachable": True,
                 "changed_files": ["other.py"], "diff_error": None}, NOW))
+
+    def test_empty_glob_is_dormant_not_dead(self):
+        """ADR-023 (H5): a glob matching zero tracked files at filing time
+        is EXEMPT from the intake dead-literal gate, and -- the crux --
+        still FIRES once its namespace fills, because the invalidator
+        re-evaluates the pattern against each scan's diff rather than
+        freezing its matches at filing time. So an empty glob is *dormant*,
+        not dead; the finding that 'an empty glob can never fire' is
+        refuted right here."""
+        glob = "src/ghost/*.py"
+        # (1) intake exempts the zero-match glob -- it has no single referent
+        self.assertEqual(tm.dead_literal_paths([glob], []), [])
+        e = entry(verified_p(evidence_paths=[glob]))
+        # (2) dormant while the namespace stays empty: an unrelated change misses
+        self.assertIsNone(tm.decide_invalidation(
+            e, {"head": "h", "anchor_reachable": True,
+                "changed_files": ["src/other/x.py"], "diff_error": None}, NOW))
+        # (3) fires the moment a matching file is created and diffed
+        d = tm.decide_invalidation(
+            e, {"head": "h", "anchor_reachable": True,
+                "changed_files": ["src/ghost/appeared.py"], "diff_error": None}, NOW)
+        self.assertEqual(d["label"], "paths changed")
+        self.assertEqual(d["payload"]["touched"], ["src/ghost/appeared.py"])
 
     def test_diff_error_fails_toward_distrust(self):
         e = entry(verified_p())
