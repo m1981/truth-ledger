@@ -153,14 +153,43 @@ class TestPrimitives(unittest.TestCase):
         self.assertEqual(tm.jaccard("", "a"), 0.0)
 
     def test_duplicate_conflicts_only_active(self):
-        claims = {
-            "tr-0000000a": {"status": "live",
-                            "claim": rec("claim", claim_p(text="payments module handles currency conversion"))},
-            "tr-0000000b": {"status": "stale",
-                            "claim": rec("claim", claim_p(text="payments module handles currency conversion"))},
-        }
+        # ADR-018: "active" is exactly {live, unverified}; every other
+        # status is dead-for-intake and a correcting refile is allowed.
+        base = "payments module handles currency conversion"
+        claims = {"tr-0000000a": {"status": "live",
+                                  "claim": rec("claim", claim_p(text=base))}}
+        for i, dead in enumerate(("stale", "diverged", "cannot_verify",
+                                  "retracted", "disputed")):
+            claims[f"tr-0000010{i}"] = {"status": dead,
+                                        "claim": rec("claim", claim_p(text=base))}
         hits = tm.duplicate_conflicts("payments module handles all currency conversion", claims)
-        self.assertEqual([cid for cid, _ in hits], ["tr-0000000a"])  # stale exempt
+        self.assertEqual([cid for cid, _ in hits], ["tr-0000000a"])  # only the live one
+
+    def test_near_dup_metric_is_jaccard_not_overlap(self):
+        """ADR-018 (H1): the near-dup metric is symmetric Jaccard, not the
+        overlap coefficient a vague "overlap >= 0.6" reading invites. The
+        two diverge on a strict token-subset (an elaboration of an
+        existing claim): Jaccard accepts it, overlap-coefficient refuses
+        it. Pin the reference to Jaccard so two implementers cannot
+        diverge across the 0.6 boundary."""
+        a = "auth module owns login"
+        b = "auth module owns login and also owns logout and session refresh handling"
+        ta, tb = tm.tokens(a), tm.tokens(b)
+        self.assertTrue(ta <= tb)  # a's tokens are a strict subset of b's
+        inter = len(ta & tb)
+        # Reference metric: Jaccard = 4/10 = 0.4 -> below 0.6 -> NOT a duplicate.
+        self.assertAlmostEqual(tm.jaccard(a, b), 0.4)
+        self.assertLess(tm.jaccard(a, b), tm.DUPLICATE_THRESHOLD)
+        # The overlap coefficient on the same tokens is 1.0 -> a conforming
+        # implementer who read "overlap" literally would REFUSE. Proof the
+        # spec ambiguity was real and is now resolved away from it.
+        overlap_coeff = inter / min(len(ta), len(tb))
+        self.assertEqual(overlap_coeff, 1.0)
+        self.assertGreaterEqual(overlap_coeff, tm.DUPLICATE_THRESHOLD)
+        # At the gate: b is accepted against an active a (no conflict row).
+        claims = {"tr-0000000a": {"status": "live",
+                                  "claim": rec("claim", claim_p(text=a))}}
+        self.assertEqual(tm.duplicate_conflicts(b, claims), [])
 
 # ---------------------------------------------------- intake decisions
 

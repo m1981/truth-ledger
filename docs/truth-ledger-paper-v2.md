@@ -147,7 +147,12 @@ remains accepted, not detected, is timestamp forgery on a *fresh*
 **Intake gates.** `truth claim` refuses, before anything is written:
 empty claim text (v0.5.5 — an assertion with no sentence cannot be
 verified, diverged from, or cited); near-duplicates of active claims by
-word-level, case-folded token overlap ≥ 0.6 against claim text
+**Jaccard** token overlap ≥ 0.6 against claim text (ADR-018 pins the
+conformance surface, v0.4: the metric is `|A∩B|/|A∪B|` — symmetric, so a
+strict elaboration is *not* a duplicate — not the overlap coefficient a
+vague "overlap" reading invites; tokens are the *set* of maximal
+`[a-z0-9]+` runs of the lowercased text; "active" is exactly the
+`{live, unverified}` statuses, so the other five are dead-for-intake)
 (overridable, and always allowed for corrections of dead claims);
 a universally quantified claim text over a scoped evidence command
 (ADR-007, v0.6 — the §2 dominant-failure countermeasure §10 once listed

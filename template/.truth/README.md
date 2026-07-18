@@ -52,7 +52,13 @@ under v0.6 solo-regime hardening below); `closed` is not terminal
 its effective anchor, so re-verified claims stay live across scans.
 
 Intake gates, in refusal order: empty claim text (v0.5.5); near-duplicate
-of an active claim (≥0.6 token overlap; `--duplicate-ok` overrides);
+of an active claim (Jaccard token overlap ≥ 0.6; `--duplicate-ok`
+overrides) — ADR-018 pins the conformance surface: metric is Jaccard
+`|A∩B|/|A∪B|` (not the overlap coefficient), tokens are the *set* of
+maximal `[a-z0-9]+` runs of the lowercased text, and "active" is exactly
+the `{live, unverified}` statuses (the other five — `stale`, `diverged`,
+`cannot_verify`, `retracted`, `disputed` — are dead-for-intake, so a
+correcting refile against them is always allowed);
 quantifier–scope mismatch (ADR-007, v0.6) — a universally quantified
 claim text ("only", "no … anywhere", "the repo") over a scoped evidence
 command (`--include`, path arguments, `cd`) is refused unless

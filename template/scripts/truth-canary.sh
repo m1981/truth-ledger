@@ -326,6 +326,18 @@ sys.exit(1)" 2>/dev/null; then
 else
   miss "the --duplicate-ok override left no overridden_duplicates trace"
 fi
+# ADR-018 (H1): the metric is Jaccard, NOT the overlap coefficient. A
+# strict token-superset of an active claim (an elaboration) is Jaccard
+# 0.5/0.375 against the two active payments claims -- below 0.6, so it
+# must be ACCEPTED with no --duplicate-ok. An overlap-coefficient
+# implementer would compute 1.0 and refuse it: this arm fails if the
+# metric ever drifts to overlap-coefficient/Dice.
+if $T claim "the payments module handles all currency conversion logic and also validates refund tax rounding audit trails" \
+     --tier P2 >/dev/null 2>&1; then
+  ok "a token-superset elaboration is accepted (metric is Jaccard, ADR-018)"
+else
+  miss "intake refused a Jaccard<0.6 elaboration -- metric drifted off Jaccard"
+fi
 
 say "FAULT J (ADR-001): issue premised on a stale claim must be HELD"
 cat > bd <<'EOF'

@@ -723,8 +723,13 @@ def native_ready_issues(issues):
 # ------------------------------------------------- intake decisions (G1/6/8)
 
 def duplicate_conflicts(text, claims):
-    """G8: near-duplicates among ACTIVE claims only; corrections of
-    stale/diverged/retracted/cannot_verify claims are legitimate (UC-4)."""
+    """G8 / ADR-018: near-duplicates among ACTIVE claims only. "Active" is
+    exactly {live, unverified} (positive form -- stays correct as the
+    status vocabulary grows); every other status (stale, diverged,
+    cannot_verify, retracted, disputed) is dead-for-intake, so a
+    correcting refile against it is legitimate (UC-4). Metric is jaccard()
+    -- symmetric |A n B|/|A u B|, NOT the overlap coefficient -- so a
+    strict elaboration (subset) is not a duplicate. Threshold >= 0.6."""
     return [(cid, e["claim"]["payload"].get("text", ""))
             for cid, e in claims.items()
             if e["status"] in ("live", "unverified")
