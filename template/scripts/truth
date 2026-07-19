@@ -1609,6 +1609,18 @@ def validate_events(events):
                                   "provenance (INV-B)")
             if p.get("evidence_class") == "INFERRED" and not p.get("basis"):
                 errors.append(f"line {n}: INFERRED claim missing basis")
+            # ADR-027: a git SHA prefix is >=7 everywhere the system emits
+            # one. The schema floors anchor_commit's string branch at 7
+            # (null still allowed for non-VERIFIED); mirror the floor for
+            # ANY claim, not just the VERIFIED branch -- the FS-2 mutant
+            # generator cannot reach this (it emits no null and its junk
+            # literal is 7 chars), so an explicit check and corpus fixture
+            # carry it. VERIFIED-null is already an INV-B error above.
+            anc = p.get("anchor_commit")
+            if isinstance(anc, str) and len(anc) < 7:
+                errors.append(f"line {n}: claim anchor_commit must be a git "
+                              "SHA prefix of at least 7 chars when present "
+                              "(ADR-027, schema minLength 7)")
         elif kind == "verdict":
             if p.get("verdict") not in VERDICTS or not p.get("claim") \
                     or not p.get("basis"):
@@ -1618,11 +1630,24 @@ def validate_events(events):
             if "subtype" in p and p["subtype"] != "mechanical":
                 errors.append(f"line {n}: verdict subtype must be "
                               "'mechanical' when present (ADR-012)")
+            # ADR-027: schema requires verdict.anchor_commit be a string
+            # >=7; the mirror had no length check (was weaker than schema).
+            if "anchor_commit" in p and (not isinstance(p["anchor_commit"], str)
+                                         or len(p["anchor_commit"]) < 7):
+                errors.append(f"line {n}: verdict anchor_commit must be a "
+                              "string of at least 7 chars (ADR-027, schema "
+                              "minLength 7)")
         elif kind == "invalidation":
             if not p.get("claim") or not p.get("commit"):
                 errors.append(f"line {n}: malformed invalidation")
             elif not ID_RE.match(str(p.get("claim"))):
                 errors.append(f"line {n}: invalidation claim ref not tr-hex8")
+            # ADR-027: schema floors invalidation.commit at 7; mirror had
+            # only the truthiness check above (was weaker than schema).
+            elif isinstance(p.get("commit"), str) and len(p["commit"]) < 7:
+                errors.append(f"line {n}: invalidation commit must be a git "
+                              "SHA of at least 7 chars (ADR-027, schema "
+                              "minLength 7)")
         elif kind == "contradicts":
             if not p.get("a") or not p.get("b") \
                     or not (p.get("basis") or "").strip():

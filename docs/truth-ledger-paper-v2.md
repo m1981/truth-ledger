@@ -6,11 +6,13 @@
 `truth-ledger-field-notes.md` (deployment, formerly living) — both now
 retired to `docs/archive/`. Artifact version audited:
 v0.4. Artifact version deployed in the pilot: v0.5.3 at day-0 (the
-template has since moved to v0.6.4 — the v0.6 solo-regime hardening
-batch, ADR-007 through ADR-012 plus FS-1/FS-2, then ADR-013's premise
-supersede — which converts several of this paper's "accepted" and
-"future work" items below into shipped mechanisms, noted inline where
-they land; the pilot synced to v0.6.4 on 2026-07-13, §2). Pilot: one multi-component
+template has since moved well beyond that — it states its own version in
+`scripts/truth`, and the ADRs below note where each mechanism landed. The
+v0.6 solo-regime hardening batch (ADR-007 through ADR-012 plus FS-1/FS-2),
+ADR-013's premise supersede, and the subsequent batch-2 spec-precision
+ADRs (014 onward) convert several of this paper's "accepted" and "future
+work" items below into shipped mechanisms, noted inline where they land;
+the pilot first synced past day-0 to v0.6.4 on 2026-07-13, §2). Pilot: one multi-component
 kitchen-manufacturing monorepo (domain core, catalog service, ERP, CAM, two
 adapters), one solo developer, LLM agent sessions doing the implementation
 work, day-0 2026-07-08. All quantitative claims in §2 are self-reported by

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI).
+# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -673,6 +673,45 @@ if [ "$B6_OUT" = "SAME" ]; then
 else
   miss "fold picked different winners by file order ($B6_OUT) -- (ts,id) not total"
 fi
+
+# ---- FAULTS AN (ADR-027): anchor_commit/commit git-SHA-prefix floor ------
+# A git SHA prefix is >=7 chars everywhere the system emits one. Each arm
+# appends a record that is well-formed EXCEPT the anchor length, so a failed
+# validate can only be the anchor floor -- a mutant that drops the check is
+# caught. Schema + mirror are asserted in lockstep by the core corpus; these
+# arms gate the same floor at the acceptance layer, across all three kinds.
+H64="sha256:0000000000000000000000000000000000000000000000000000000000000000"
+an_reject() {  # $1=label  $2=jsonl-record : validate MUST fail
+  cp .truth/claims.jsonl claims.an.bak
+  printf '%s\n' "$2" >> .truth/claims.jsonl
+  if $T validate >/dev/null 2>&1; then
+    miss "validate passed $1 (anchor floor open)"
+  else
+    ok "validate rejected $1 (ADR-027 anchor floor)"
+  fi
+  mv claims.an.bak .truth/claims.jsonl
+}
+say "FAULT AN1 (ADR-027): a VERIFIED claim with a sub-7 anchor must fail validate"
+an_reject "a VERIFIED claim with a 6-char anchor" \
+  "{\"id\":\"tr-a11c0001\",\"kind\":\"claim\",\"actor\":\"a\",\"session\":\"s\",\"ts\":\"2026-07-01T00:00:00.000000+00:00\",\"payload\":{\"text\":\"short anchor\",\"evidence_class\":\"VERIFIED\",\"cost_tier\":\"P0\",\"anchor_commit\":\"abc123\",\"ttl_days\":5,\"evidence\":{\"command\":\"true\",\"output_hash\":\"$H64\"}}}"
+say "FAULT AN2 (ADR-027): a VERIFIED claim with a null anchor must fail validate"
+an_reject "a VERIFIED claim with a null anchor" \
+  "{\"id\":\"tr-a11c0002\",\"kind\":\"claim\",\"actor\":\"a\",\"session\":\"s\",\"ts\":\"2026-07-01T00:00:00.000000+00:00\",\"payload\":{\"text\":\"null anchor\",\"evidence_class\":\"VERIFIED\",\"cost_tier\":\"P0\",\"anchor_commit\":null,\"ttl_days\":5,\"evidence\":{\"command\":\"true\",\"output_hash\":\"$H64\"}}}"
+say "FAULT AN3 (ADR-027): a verdict with a sub-7 anchor must fail validate"
+an_reject "a verdict with a 3-char anchor" \
+  "{\"id\":\"tr-a11c0003\",\"kind\":\"verdict\",\"actor\":\"a\",\"session\":\"s\",\"ts\":\"2026-07-01T00:00:00.000000+00:00\",\"payload\":{\"claim\":\"tr-00000001\",\"verdict\":\"agree\",\"basis\":\"b\",\"anchor_commit\":\"abc\"}}"
+say "FAULT AN4 (ADR-027): an invalidation with a sub-7 commit must fail validate"
+an_reject "an invalidation with a 3-char commit" \
+  "{\"id\":\"tr-a11c0004\",\"kind\":\"invalidation\",\"actor\":\"a\",\"session\":\"s\",\"ts\":\"2026-07-01T00:00:00.000000+00:00\",\"payload\":{\"claim\":\"tr-00000001\",\"commit\":\"abc\"}}"
+say "FAULT AN5 (ADR-027): the floor is exactly 7 -- a 7-char anchor must PASS validate"
+cp .truth/claims.jsonl claims.an5.bak
+printf '%s\n' "{\"id\":\"tr-a11c0005\",\"kind\":\"claim\",\"actor\":\"a\",\"session\":\"s\",\"ts\":\"2026-07-01T00:00:00.000000+00:00\",\"payload\":{\"text\":\"seven char anchor\",\"evidence_class\":\"VERIFIED\",\"cost_tier\":\"P0\",\"anchor_commit\":\"abc1234\",\"ttl_days\":5,\"evidence\":{\"command\":\"true\",\"output_hash\":\"$H64\"}}}" >> .truth/claims.jsonl
+if $T validate >/dev/null 2>&1; then
+  ok "validate accepted a 7-char anchor (floor is 7, not over-tightened)"
+else
+  miss "validate rejected a valid 7-char anchor (floor over-tightened past 7)"
+fi
+mv claims.an5.bak .truth/claims.jsonl
 
 # ---- FAULTS TS1-TS3 (ADR-015): canonical timestamp profile ---------------
 say "FAULT TS1 (ADR-015): a fresh-id record with a Z-suffix ts must fail validate"

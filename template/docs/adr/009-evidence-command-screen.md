@@ -13,6 +13,15 @@ this ADR's "read-only by construction" claim. v0.6.2 adds a per-program
 argument-deny table and drops git from the shipped default allowlist
 (its exec surface is unbounded); find and sort stay, their write/exec
 flags refused (canary E5).
+Amended by: ADR-027 (2026-07-19, M2) — states that the JSON Schema is
+deliberately silent on this screen's semantics: `evidence.screened` is a
+bare optional boolean with no `if/then`, because the property "a
+screened=true was actually screened / is safe to re-execute" is enforced
+OPERATIONALLY here (screen at filing; recheck trusts the stored flag only
+to refuse, and re-screens everything else fresh before executing), not
+structurally at `validate`. The silence is also a backward-compat
+necessity (pre-ADR-009 records carry no `screened` key). The schema is a
+necessary-not-sufficient gate.
 Date: 2026-07-11
 Supersedes: —
 
