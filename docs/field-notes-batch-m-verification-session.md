@@ -57,10 +57,13 @@ work. Note the two distinct adversary jobs: PRE-build refutes the *disposition*
 for a mechanical guard (see Proposal).
 
 **What happened.** Two of the author's own completion claims were VERIFIED but
-proved nothing, both caught by the independent verifier and neither by filing:
-(a) `tr-3b69f8ff`'s evidence grepped `"sorts before its issue record"`, a phrase
+proved nothing, both caught by the independent verifier and neither by filing
+(cited here as historical defect examples with the doc-health wildcard
+convention — both mechanically diverged 2026-07-19 and their facts live on in
+successors tr-bbdff732 and tr-da868d5c):
+(a) the `tr-3b69f8…` recipe grepped `"sorts before its issue record"`, a phrase
 the source splits across two lines, so `grep -q` never matched and the
-`&& echo OK` chain silently failed; (b) `tr-22853f21`'s evidence hardcoded the
+`&& echo OK` chain silently failed; (b) the `tr-22853f…` recipe hardcoded the
 README string `"v0.9.8"`, which the v0.9.9 bump broke. `claim --class VERIFIED`
 files on *determinism* (two intake runs hash-match), not on exit 0 — so a
 stably-failing command files clean and "rechecks" forever by stable failure. It
