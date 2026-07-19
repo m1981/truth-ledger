@@ -136,8 +136,8 @@ Each fact class has exactly one normative home; everything else links.
 - [`.truth/README.md`](template/.truth/README.md) — the layer's operational
   manual and CLI contract, installed into every child repo
 - [ADRs](template/docs/adr/) — decision records (001 premise validity
-  … 012 divergence subtype); amendments land as status-block pointers,
-  never body edits
+  onward through the batch-2 spec-precision set; the directory lists the
+  current set); amendments land as status-block pointers, never body edits
 - [Beads integration](template/docs/beads-integration-guide.md) — external
   tracker wiring (single source; the `docs/` copy is a pointer stub)
 - `docs/archive/` — superseded documents, frozen verbatim with
