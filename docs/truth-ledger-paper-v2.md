@@ -123,7 +123,11 @@ confirmed are kept as two distinct events in the log, never conflated.
 The negative states are the mirror image of that terminality: `diverged`,
 `cannot_verify`, and `stale` are all **recoverable** — a later `agree`
 (the higher-key event) returns the claim to `live`, and a `stale` claim
-re-anchors as it does so. Status is one total function of the log
+re-anchors as it does so. That recovery is the *path-anchored* path: a
+claim staled by TTL expiry goes `live` again under `agree` too, but its
+TTL clock still counts from the original claim `ts` (never from a
+verdict — ADR-019's stated non-goal), so the next scan re-stales it at
+once. An expired TTL claim is re-filed, not re-verified. Status is one total function of the log
 (§6.3, ADR-020): fold in `(ts, id, canon)` order and take the
 last-writer-wins effect of each verdict/invalidation, with `retracted`
 alone absorbing. Only a human retraction is a dead end; a machine's "I
@@ -593,7 +597,8 @@ in `(ts, id, canon)` order; each verdict/invalidation sets the status
 once the folded status is `retracted` every later setter is ignored
 (absorbing, tested on the folded status, not on `ts`). So `cannot_verify`,
 `diverged`, and `stale` are **recoverable** — a later `agree` returns the
-claim to `live` (a `stale` claim re-anchors) — while `retracted` is the
+claim to `live` (a path-staled claim re-anchors; a TTL-staled claim is
+re-filed instead, ADR-019) — while `retracted` is the
 **sole terminal** verdict (intake also refuses any verdict on a retracted
 claim). The worked worry "cannot_verify@ts=5 then a backdated agree@ts=3"
 folds to `cannot_verify` by this function (5 is the higher key). Because
@@ -908,7 +913,7 @@ between "fault lands" and "row lands" is exactly the decay §5 predicts.
 | INV-G | Retraction is terminal at both layers: the claim's *status* stays `retracted` under any event, and the readiness *block* it imposes is released only by matching human authority | One resurrected tombstone; or a retracted premise's HELD block released without the human gate (C3) | Seeded fault (verdict path, append path); duplicate-id content substitution under a retracted id is detected at commit — backdated (strictly-earlier `ts`) since v0.6 (ADR-008), and copied-`ts` (equal, non-identical content) since v0.9.1 (ADR-016, canary B5); the readiness-layer supersede release is human-gated since v0.9.3 (ADR-017, canary R11) — residual: fresh-id timestamp forgery, accepted per §8 item 6; see §1 "Fold semantics, precisely". The commit-time detections here are **conditional on the commit gate running** (INV-A / ADR-025); the human-gated readiness release is not |
 | INV-H | Broken premises hold work: a premise that is `stale`, `diverged`, `retracted`, or missing HOLDs its issue (the full ADR-001 blocking set, not just `stale`) | One issue ready on a premise in any of those four states | Seeded fault (FAULT J covers `stale`; the ADR-001 matrix — reused verbatim by the work kernel, ADR-002 — blocks all four identically). The `cannot_verify` P0-only rule and the `unverified` warn-pass are the matrix's two non-blocking cells |
 | INV-I | Fold is confluent: any event order, same state | Two orders, two statuses (or two contents) | Permutation property test. The order key is `(ts, id, canonical-serialization)`: the third key is load-bearing (ADR-016, v0.9.1) — `(ts, id)` alone is not total, so a duplicate id with a copied equal `ts` folded to different *content* by file order until the content-derived tie-break closed it (canary B6; core `test_duplicate_id_equal_ts_folds_to_one_content`) |
-| INV-J | Re-verification is durable across scans | One re-verified claim re-staled with no new changes | Seeded fault |
+| INV-J | Re-verification is durable across scans **for path-anchored claims**: `agree` advances the effective anchor, so an unchanged tree cannot re-stale the claim. TTL'd claims are exempt by design — the TTL clock counts from the claim `ts` and no verdict restarts it (ADR-019 non-goal), so an expired TTL claim is re-filed, not re-verified | One re-verified **path-anchored** claim re-staled with no new changes | Seeded fault; ADR-019 amendment note (2026-07-19) records the TTL exemption after an independent review demonstrated the re-stale loop on a TTL'd claim |
 | INV-K | Retraction requires `TRUTH_HUMAN=1` **plus** an interactive typed-id confirmation or `TRUTH_HUMAN_ACK=<exact-id>` (ADR-011, v0.6) | One retraction accepted with the variable alone, headless | Seeded fault (H-faults) — still self-attested rather than identity-verified, but the one-export bypass is closed; see F4, §4 |
 | INV-L | The drift detector is armed or the suite fails | One green run with the schema unchecked | Armed-detector test |
 | INV-M | No `evidence_path` on an accepted claim is *statically* dead at filing time: every **literal** matches ≥1 tracked file, no entry is a whitespace-no-comma literal, and no **glob** is statically unreachable. (A static-dead-tripwire gate, **not** a liveness guarantee — one undecidable residual remains.) | One accepted claim carrying a *statically* dead tripwire (a comma-typo literal, a literal matching zero tracked files, or an unreachable glob) | Seeded fault (`FAULT T`), shipped v0.5.4; scope sharpened ADR-023 and the glob case closed ADR-024 (v0.9.8). **(1) A glob over a *reachable* namespace is dormant, not dead** — an explicit glob (`*`/`?`/`**`) matching nothing yet is exempt because it fires when the namespace fills: a claim on `src/ghost/*.py` goes stale the moment a tracked `src/ghost/*.py` file is touched (sandbox-verified). This refutes the universal reading that "an empty glob can never fire." **(2) A glob over an *unreachable* namespace is dead, and now refused (ADR-024)** — an adversarial verifier found that `.git/*`, `/etc/*.conf`, `zone/*/`, `../*.txt`, `dbl//*.txt` are exempt (they contain `*`) yet match no repo-relative, normalized `git diff` path, so they can never fire; INV-M now refuses a glob whose leading component is `.git` or that has an absolute/trailing-slash/`.`/`..`/empty component. This is *sound* (no false refusals: `.git*`, `.github/**` still pass) but *not complete*. **(3) The tracked symlink literal is the undecidable residual** (found by inspection, 2026-07-13): it passes the literal check but can never fire — git tracks the immutable link object (mode `120000`), not the target — and unlike the unreachable glob its deadness needs link resolution, so it stays guidance ("watch real, reachable paths"), not a gate |
@@ -1000,8 +1005,11 @@ rather than one current belief state.
 **7. Mockapetris, P. (1987). Domain Names — Concepts and Facilities.
 RFC 1034 (STD 13), IETF, November 1987.**
 → `ttl_days`: decay model for facts the source cannot push to you.
-(Exact fit: DNS caching TTLs exist precisely because authoritative
-servers cannot invalidate resolver caches.)
+(Motivational fit: DNS caching TTLs exist precisely because authoritative
+servers cannot invalidate resolver caches. One semantic divergence,
+deliberate: a DNS re-fetch restarts the TTL; here re-verification never
+does — the clock counts from the claim's own `ts` and only re-filing
+starts a new one, ADR-019.)
 - DOI: https://doi.org/10.17487/RFC1034
 - Canonical/OA: https://www.rfc-editor.org/rfc/rfc1034
 
