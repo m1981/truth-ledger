@@ -933,38 +933,229 @@ the append-only property doing double duty as a research instrument.
 
 ## References
 
-*(Indicative; verify before any external submission. Entries added
-2026-07-12 with §6.3 were checked against publisher records at addition
-time — volume/issue/pages confirmed — but re-verify DOIs before
-submission all the same.)*
+*(Annotated. Entries 2–19 were verified against publisher records on
+2026-07-19 — volume/issue/pages, DOIs, and open-access links checked at
+that date; re-verify before any external submission. Entries marked
+**[proposed]** are candidate citations not yet load-bearing in the body
+text. The → line states what each work is cited for.)*
 
-- Castro, M., & Liskov, B. (1999). Practical Byzantine Fault Tolerance.
-  *OSDI '99*.
-- Claessen, K., & Hughes, J. (2000). QuickCheck: A Lightweight Tool for
-  Random Testing of Haskell Programs. *ICFP '00*.
-- Fowler, M. (2005). Event Sourcing. martinfowler.com/eaaDev/
-  EventSourcing.html (development draft, December 2005).
-- Haber, S., & Stornetta, W. S. (1991). How to Time-Stamp a Digital
-  Document. *Journal of Cryptology*, 3(2), 99–111.
-- Hardy, N. (1988). The Confused Deputy (or why capabilities might have
-  been invented). *ACM SIGOPS Operating Systems Review*, 22(4), 36–38.
-- Helland, P. (2015). Immutability Changes Everything. *CIDR 2015*;
-  reprinted in *ACM Queue*, 13(9).
-- Kleppmann, M., Wiggins, A., van Hardenberg, P., & McGranaghan, M.
-  (2019). Local-First Software: You Own Your Data, in spite of the
-  Cloud. *Onward! 2019*, 154–178.
-- Kung, H. T., & Robinson, J. T. (1981). On Optimistic Methods for
-  Concurrency Control. *ACM Transactions on Database Systems*, 6(2),
-  213–226.
-- Lamport, L., Shostak, R., & Pease, M. (1982). The Byzantine Generals
-  Problem. *ACM TOPLAS*, 4(3).
-- Lehman, M. M. (1980). Programs, Life Cycles, and Laws of Software
-  Evolution. *Proceedings of the IEEE*, 68(9).
-- Mockapetris, P. (1987). Domain Names — Concepts and Facilities.
-  RFC 1034, IETF.
-- Popper, K. (1959). *The Logic of Scientific Discovery.*
-- Shapiro, M., Preguiça, N., Baquero, C., & Zawirski, M. (2011a).
-  Conflict-free Replicated Data Types. *SSS 2011*.
-- Shapiro, M., Preguiça, N., Baquero, C., & Zawirski, M. (2011b). A
-  Comprehensive Study of Convergent and Commutative Replicated Data
-  Types. INRIA Research Report RR-7506.
+### Epistemic frame
+
+**1. Popper, K. (1959). *The Logic of Scientific Discovery.***
+→ §7's framing: the paper states its own claims and the observations
+that would falsify them. *(Retained from the prior list; not part of
+the 2026-07-19 verification batch.)*
+
+### Derived belief status, justification tracking, and trust
+
+**2. [proposed] Doyle, J. (1979). A Truth Maintenance System.
+*Artificial Intelligence*, 12(3), 231–272.**
+→ Status is subordinate to justifications and repaired whenever they
+change. Note: Doyle's TMS *stores* in/out labels and incrementally
+repairs them; the artifact is stricter — it re-derives status from the
+log on every read. Cite for the principle, not the mechanism.
+- DOI: https://doi.org/10.1016/0004-3702(79)90008-0
+- OA: https://dspace.mit.edu/handle/1721.1/5733 — MIT AI Memo 521
+  (June 1979) version; PDF is a scan with no text layer:
+  https://dspace.mit.edu/bitstream/handle/1721.1/5733/AIM-521.pdf
+
+**3. Lehman, M. M. (1980). Programs, Life Cycles, and Laws of Software
+Evolution. *Proceedings of the IEEE*, 68(9), 1060–1076.**
+→ Cited as **analogy, not evidence**: Laws II/VII concern E-type
+*programs* (complexity grows, quality declines, unless explicit effort
+is spent). §5 transfers the shape of that claim to restated facts; the
+paper itself says nothing about recorded facts.
+- DOI: https://doi.org/10.1109/PROC.1980.11805
+- OA (course mirror, UT Austin; no author/institutional copy exists):
+  https://users.ece.utexas.edu/~perry/education/SE-Intro/lehman.pdf
+
+**4. Kung, H. T., & Robinson, J. T. (1981). On Optimistic Methods for
+Concurrency Control. *ACM Transactions on Database Systems*, 6(2),
+213–226.**
+→ ADR-008's never-block-append, validate-at-commit stance. (Exact fit:
+unrestricted work phase, validation at commit, abort on conflict.)
+- DOI: https://doi.org/10.1145/319566.319567
+- OA (Kung's Harvard page):
+  https://www.eecs.harvard.edu/~htk/publication/1981-tods-kung-robinson.pdf
+
+**5. Lamport, L., Shostak, R., & Pease, M. (1982). The Byzantine
+Generals Problem. *ACM TOPLAS*, 4(3), 382–401.**
+→ §6.1's design stance — specifically via the **signed-messages**
+result: unforgeable messages turn trust from an assumption into a
+checkable property. (The oral-messages 3m+1 bound is not the part §6.1
+uses.) Also supplies the arbitrary-failure model for §6.1's taxonomy.
+- DOI: https://doi.org/10.1145/357172.357176
+- OA (Lamport's page): https://lamport.azurewebsites.net/pubs/byz.pdf
+
+**6. [proposed] de Kleer, J. (1986). An Assumption-based TMS.
+*Artificial Intelligence*, 28(2), 127–162.**
+→ Companion to Doyle if the TMS lineage is taken seriously — with the
+caveat that the ATMS is a different machine: it labels each datum with
+minimal assumption sets and maintains all consistent contexts at once,
+rather than one current belief state.
+- DOI: https://doi.org/10.1016/0004-3702(86)90080-9
+- OA (author's site):
+  https://dekleer.org/Publications/An%20Assumption-Based%20TMS.pdf
+
+**7. Mockapetris, P. (1987). Domain Names — Concepts and Facilities.
+RFC 1034 (STD 13), IETF, November 1987.**
+→ `ttl_days`: decay model for facts the source cannot push to you.
+(Exact fit: DNS caching TTLs exist precisely because authoritative
+servers cannot invalidate resolver caches.)
+- DOI: https://doi.org/10.17487/RFC1034
+- Canonical/OA: https://www.rfc-editor.org/rfc/rfc1034
+
+**8. Hardy, N. (1988). The Confused Deputy (or why capabilities might
+have been invented). *ACM SIGOPS Operating Systems Review*, 22(4),
+36–38.**
+→ ADR-011's designated-object authorization
+(`TRUTH_HUMAN_ACK=<exact-id>`): binding the ack to a specific id
+removes ambient authority. Residual: an env var is designation without
+unforgeability — it prevents confusion, not forgery.
+- DOI: https://doi.org/10.1145/54289.871709
+- OA (author's site; **HTTP only** — the HTTPS vhost 404s on this
+  path): http://cap-lore.com/CapTheory/ConfusedDeputy.html
+
+**9. Haber, S., & Stornetta, W. S. (1991). How to Time-Stamp a Digital
+Document. *Journal of Cryptology*, 3(2), 99–111.**
+→ §10's hash-linking alternative for the timestamp-forgery residual.
+Note: their linking scheme still has a signing timestamp service — the
+hash chain *reduces trust in* the signer rather than eliminating
+signatures; the fully signature-free reading is this artifact's design
+choice, closest to their distributed-trust variant.
+- DOI: https://doi.org/10.1007/BF00196791 (journal version; distinct
+  from the CRYPTO '90 proceedings version, 10.1007/3-540-38424-3_32)
+- OA (publisher-served, free):
+  https://link.springer.com/content/pdf/10.1007/bf00196791.pdf
+
+**10. Castro, M., & Liskov, B. (1999). Practical Byzantine Fault
+Tolerance. *Proc. 3rd USENIX Symp. on Operating Systems Design and
+Implementation (OSDI '99)*, 173–186.**
+→ *Moved here from "Verification, testing, and oracles" (it is a
+replication protocol, not a testing method).* Cited alongside #5 for
+the **practicality** of tolerating arbitrary faults (3f+1 replicas,
+asynchronous networks, low overhead) — not for a failure taxonomy,
+which #5 already carries.
+- No DOI (USENIX proceedings). Landing:
+  https://www.usenix.org/conference/osdi-99/practical-byzantine-fault-tolerance
+- OA (publisher full text):
+  https://www.usenix.org/publications/library/proceedings/osdi99/full_papers/castro/castro_html/castro.html
+- Canonical PDF (MIT PMG; host blocks some networks — verify
+  reachability before relying on it):
+  https://pmg.csail.mit.edu/papers/osdi99.pdf
+
+### Verification, testing, and oracles
+
+**11. Claessen, K., & Hughes, J. (2000). QuickCheck: A Lightweight
+Tool for Random Testing of Haskell Programs. *Proc. ICFP '00*,
+268–279.**
+→ §3 instrument 3: confluence as a universally quantified property.
+(Exact fit: algebraic laws under random generation with shrinking.)
+- DOI: https://doi.org/10.1145/351240.351266
+- OA (stable course-archive mirror, Tufts):
+  https://www.cs.tufts.edu/~nr/cs257/archive/john-hughes/quick.pdf
+
+**12. [proposed] Barr, E. T., Harman, M., McMinn, P., Shahbaz, M., &
+Yoo, S. (2015). The Oracle Problem in Software Testing: A Survey.
+*IEEE Transactions on Software Engineering*, 41(5), 507–525.**
+→ §6.1's scope-overreach analysis: the evidence command as a weaker
+(partial) oracle than the claim text. *(Title corrected: includes
+": A Survey".)*
+- DOI: https://doi.org/10.1109/TSE.2014.2372785
+- OA (UCL Discovery institutional repository):
+  https://discovery.ucl.ac.uk/id/eprint/1471263/1/06963470.pdf
+
+### Event logs, immutability, and append-only structure
+
+**13. Fowler, M. (2005). Event Sourcing. martinfowler.com, 12 December
+2005.**
+→ §1's derive-don't-store status fold: state = fold(log), rebuildable
+at will. Cite as what it is — an unfinished development draft (Fowler's
+own caveat on the page), not maintained guidance.
+- URL: https://martinfowler.com/eaaDev/EventSourcing.html
+
+**14. [proposed] Laurie, B., Langley, A., & Kasper, E. (2013).
+Certificate Transparency. RFC 6962 (Experimental), IETF, June 2013.
+Obsoleted by RFC 9162 (CT v2.0, December 2021).**
+→ INV-A's append-only gate: CT's consistency proof establishes exactly
+"old log is a prefix of new log." INV-A checks the same *invariant* by
+direct prefix comparison rather than Merkle proof — same property,
+weaker (first-party) trust model. Also the middle option for §10's
+signing item.
+- DOI: https://doi.org/10.17487/RFC6962
+- Canonical/OA: https://www.rfc-editor.org/rfc/rfc6962 (successor:
+  https://www.rfc-editor.org/rfc/rfc9162)
+
+**15. Helland, P. (2015). Immutability Changes Everything. *CIDR
+2015*; reprinted in *ACM Queue*, 13(9), November/December 2015.**
+→ Appendix B: the append-only file as research instrument ("accountants
+don't use erasers"; the log is truth, everything else a derived cache).
+- OA (CIDR proceedings PDF):
+  https://www.cidrdb.org/cidr2015/Papers/CIDR15_Paper16.pdf
+- Queue version DOI: https://doi.org/10.1145/2857274.2884038
+
+### Convergence and staleness under replication
+
+**16. Shapiro, M., Preguiça, N., Baquero, C., & Zawirski, M. (2011a).
+Conflict-free Replicated Data Types. *SSS 2011*, LNCS 6976, 386–400.**
+→ Cited for the **theory**: strong eventual consistency via semilattice
+join / commuting operations — why F3/F6's per-field merge disciplines
+converge at all. The type catalog is #17's, not this paper's. The FWW
+register is **not** in either paper: it is this artifact's derived
+write-once (min-timestamp) variant, built on the same convergence
+argument.
+- DOI: https://doi.org/10.1007/978-3-642-24550-3_29
+- OA (HAL; the RR-7687 technical-report version of the same paper):
+  https://inria.hal.science/inria-00609399/document
+
+**17. Shapiro, M., Preguiça, N., Baquero, C., & Zawirski, M. (2011b).
+A Comprehensive Study of Convergent and Commutative Replicated Data
+Types. INRIA Research Report RR-7506, 50 pp.**
+→ The catalog reference for F3/F6's named types: LWW register (status)
+and 2P-Set tombstone (§6.3). No DOI; HAL is the publisher of record.
+- OA: https://inria.hal.science/inria-00555588/document (landing:
+  https://inria.hal.science/inria-00555588)
+
+**18. [proposed] Mokhov, A., Mitchell, N., & Peyton Jones, S. (2018).
+Build Systems à la Carte. *Proc. ACM Program. Lang.*, 2(ICFP),
+Article 79.**
+→ `evidence_paths` as tracked dependencies; the invalidation scan as a
+**verifying-traces rebuilder** *(corrected — the paper's whole point is
+that rebuilders and schedulers are orthogonal; "verifying traces" is a
+rebuilder; the scan's in-order walk is the trivial topological
+scheduler)*.
+- DOI: https://doi.org/10.1145/3236774 (CC BY — the ACM DL copy is
+  open access)
+- OA (Microsoft Research):
+  https://www.microsoft.com/en-us/research/wp-content/uploads/2018/03/build-systems.pdf
+
+**19. Kleppmann, M., Wiggins, A., van Hardenberg, P., & McGranaghan,
+M. (2019). Local-First Software: You Own Your Data, in spite of the
+Cloud. *Onward! 2019*, 154–178.**
+→ The artifact's overall shape: plain user-owned files, git as sync
+layer, no server. (The paper's own evaluation rates Git among the
+closest existing approximations of local-first.)
+- DOI: https://doi.org/10.1145/3359591.3359737
+- OA (author's page): https://martin.kleppmann.com/papers/local-first.pdf
+- Essay version: https://www.inkandswitch.com/essay/local-first/
+  *(URL corrected — the old `/local-first/` path is dead)*
+
+### Standards
+
+All catalog pages verified live with status **Published**; texts are
+paywalled.
+
+| Standard | Used for | Catalog |
+|---|---|---|
+| ISO/IEC/IEEE 29148:2018 — Requirements engineering (Ed. 2) | Individual requirement characteristics; set completeness; set consistency | https://www.iso.org/standard/72089.html |
+| ISO/IEC/IEEE 24765:2017 — Systems and software engineering vocabulary (Ed. 2) | Forward / backward traceability definitions | https://www.iso.org/standard/71952.html |
+| ISO/IEC/IEEE 12207:2017 — Software life cycle processes (Ed. 1) | Verification vs. validation; requirements analysis process | https://www.iso.org/standard/63712.html |
+| ISO 10007:2017 — Guidelines for configuration management (Ed. 3) | Configuration status accounting | https://www.iso.org/standard/70400.html |
+| ISO/IEC 25010:2023 — SQuaRE product quality model (Ed. 2) | Functional completeness (sub-characteristic) | https://www.iso.org/standard/78176.html |
+| ISO/IEC 25023:2016 — Measurement of product quality (Ed. 1) | Functional completeness (the measure) | https://www.iso.org/standard/35747.html |
+| ISO/IEC/IEEE 29119-1:2022 / -2:2021 / -3:2021 / -4:2021 — Software testing (Ed. 2) | Requirement-based coverage | Part 1: https://www.iso.org/standard/81291.html · Part 2: https://www.iso.org/standard/79428.html · Part 3: https://www.iso.org/standard/79429.html · Part 4: https://www.iso.org/standard/79430.html |
+| ISO/IEC/IEEE 42010:2022 — **Software, systems and enterprise** — Architecture description (Ed. 2) | Correspondence rules | https://www.iso.org/standard/74393.html |
+
+Note on 42010: the 2022 edition changed the title from "Systems and
+software engineering" to "Software, systems and enterprise" — use the
+new title when citing the current edition.
