@@ -59,7 +59,7 @@ racing to the same file rely on POSIX `O_APPEND` atomicity for
 single-write-call, single-filesystem safety — stated here as a load-bearing
 assumption, not only as the caveat it also appears as in §8.
 
-**Six record kinds**, sharing an envelope (`id`, `kind`, `actor`,
+**Seven record kinds**, sharing an envelope (`id`, `kind`, `actor`,
 `session`, `ts`):
 
 - **claim** — an assertion with an `evidence_class` (VERIFIED / INFERRED /
@@ -78,6 +78,14 @@ assumption, not only as the caveat it also appears as in §8.
   work items are folded the same way claims are, so premise-at-birth and
   claim-at-death are more events in the same log rather than a second
   system.
+- **contradicts** (v0.9.0) — a *declared* edge between two claims that
+  cannot both hold (`a`, `b`, and a required `basis`). No NLP is
+  involved, by design: the near-duplicate gate catches restatement,
+  this catches incompatibility an author or verifier chooses to put on
+  the record — the moment a gate would need a model to fire, it is a
+  review, not a refusal. Intake refuses self-edges, unknown ids, edges
+  to a retracted claim, and duplicates in either direction. Its fold
+  effect is the `disputed` post-pass described below.
 
 **Derivation.** The fold below covers claim status; the work kernel adds a
 fold for issue status (`fold_issues`; the state machine ADR-002 described in
@@ -99,7 +107,20 @@ verdict diverge        → diverged        (queued for attention)
 verdict cannot_verify   → cannot_verify   (queued if P0)
 verdict retracted       → retracted       (terminal — later events ignored)
 invalidation            → stale           (queued if P0/P1)
+contradicts edge,       → disputed        (both sides; queued naming the
+  both sides live                           counterpart; HOLDs premised work)
 ```
+
+The `disputed` row is a **post-pass**, not a per-record setter (v0.9.0):
+after the replay above, every `contradicts` edge is judged against the
+*underlying* statuses the replay produced — never against statuses the
+post-pass itself changes — so the result is independent of edge order
+and the fold stays confluent. An edge fires only while *both* endpoints
+would otherwise be `live`; any other endpoint status (unverified, stale,
+diverged, dead, missing) leaves it dormant, and it resumes firing if
+both sides return to live. `disputed` is therefore recoverable by
+construction: retracting, superseding, or re-filing either side resolves
+it — no new verb exists for resolution, deliberately.
 
 `invalidation → stale` is the *only* path to `stale`, and it is complete:
 even TTL expiry reaches `stale` only through an invalidation **record**.
@@ -244,7 +265,8 @@ Verifiers cannot retract.
 **Policy.** `truth ready` intersects the work tracker's unblocked issues
 with premise validity, tier-sensitive: `live` passes; `unverified` passes
 with a warning; `cannot_verify` blocks only P0 premises; `stale`,
-`diverged`, `retracted`, and missing claims always block. Work may proceed
+`diverged`, `disputed` (v0.9.0), `retracted`, and missing claims always
+block. Work may proceed
 on an unverified premise that later proves false — a stated trade for low
 filing friction, with a named fallback if warning fatigue appears. Since
 v0.6.4 (ADR-013) a *genuinely dead* premise — the fact was wrong and its
@@ -595,7 +617,13 @@ in `(ts, id, canon)` order; each verdict/invalidation sets the status
 (`agree→live`, `diverge→diverged`, `cannot_verify→cannot_verify`,
 `invalidation→stale`, `retracted→retracted`) last-writer-wins, EXCEPT that
 once the folded status is `retracted` every later setter is ignored
-(absorbing, tested on the folded status, not on `ts`). So `cannot_verify`,
+(absorbing, tested on the folded status, not on `ts`). One derivation
+runs *after* the setters (v0.9.0): the `disputed` post-pass evaluates
+declared `contradicts` edges against the underlying statuses just
+computed — never against its own output — deriving `disputed` for both
+endpoints of any edge whose sides would otherwise both be live;
+evaluating against pre-edge statuses is what keeps the composition
+confluent under any edge order. So `cannot_verify`,
 `diverged`, and `stale` are **recoverable** — a later `agree` returns the
 claim to `live` (a path-staled claim re-anchors; a TTL-staled claim is
 re-filed instead, ADR-019) — while `retracted` is the
@@ -893,7 +921,7 @@ the safe default) instead of running unarmed and silently skipping.
 
 ---
 
-## Appendix A. Invariant table (v0.4 core through v0.9.1)
+## Appendix A. Invariant table (v0.4 core through v0.9.10)
 
 Every shipped property that a seeded fault gates belongs here — a row is
 added when the property ships, not later. INV-O/P/Q were backfilled
@@ -901,6 +929,10 @@ added when the property ships, not later. INV-O/P/Q were backfilled
 with canary faults but no table row; the table is itself an admitted
 artifact class that needs its own freshness discipline (§5), and a lag
 between "fault lands" and "row lands" is exactly the decay §5 predicts.
+INV-R repeats the pattern: backfilled 2026-07-19 after a second
+independent review found the v0.9.0 contradicts mechanism canary-gated
+(FAULTS C1–C5) but row-less here and absent from §1 entirely — the
+second data point for that decay thesis landing on this table itself.
 
 | ID | Property | Falsified by | Gate |
 |----|----------|--------------|------|
@@ -911,7 +943,7 @@ between "fault lands" and "row lands" is exactly the decay §5 predicts.
 | INV-E | TTL'd claims expire: the scan writes an invalidation when `now - ts > ttl_days` (counted from the claim `ts`, strict boundary), and only that record demotes the claim — the fold never expires from the clock (ADR-019) | One claim outliving its TTL; or a claim expired at fold time with no invalidation record | Seeded fault (FAULT D, incl. the fold-clock-free arm); core boundary + fold-purity tests |
 | INV-F | History rewrites invalidate, with reason | One orphaned anchor still trusted | Seeded fault |
 | INV-G | Retraction is terminal at both layers: the claim's *status* stays `retracted` under any event, and the readiness *block* it imposes is released only by matching human authority | One resurrected tombstone; or a retracted premise's HELD block released without the human gate (C3) | Seeded fault (verdict path, append path); duplicate-id content substitution under a retracted id is detected at commit — backdated (strictly-earlier `ts`) since v0.6 (ADR-008), and copied-`ts` (equal, non-identical content) since v0.9.1 (ADR-016, canary B5); the readiness-layer supersede release is human-gated since v0.9.3 (ADR-017, canary R11) — residual: fresh-id timestamp forgery, accepted per §8 item 6; see §1 "Fold semantics, precisely". The commit-time detections here are **conditional on the commit gate running** (INV-A / ADR-025); the human-gated readiness release is not |
-| INV-H | Broken premises hold work: a premise that is `stale`, `diverged`, `retracted`, or missing HOLDs its issue (the full ADR-001 blocking set, not just `stale`) | One issue ready on a premise in any of those four states | Seeded fault (FAULT J covers `stale`; the ADR-001 matrix — reused verbatim by the work kernel, ADR-002 — blocks all four identically). The `cannot_verify` P0-only rule and the `unverified` warn-pass are the matrix's two non-blocking cells |
+| INV-H | Broken premises hold work: a premise that is `stale`, `diverged`, `retracted`, or missing HOLDs its issue (the full ADR-001 blocking set, not just `stale`; since v0.9.0 `disputed` joins the blocking set — INV-R) | One issue ready on a premise in any of those states | Seeded fault (FAULT J covers `stale`; the ADR-001 matrix — reused verbatim by the work kernel, ADR-002 — blocks all identically; FAULT C1 covers `disputed`). The `cannot_verify` P0-only rule and the `unverified` warn-pass are the matrix's two non-blocking cells |
 | INV-I | Fold is confluent: any event order, same state | Two orders, two statuses (or two contents) | Permutation property test. The order key is `(ts, id, canonical-serialization)`: the third key is load-bearing (ADR-016, v0.9.1) — `(ts, id)` alone is not total, so a duplicate id with a copied equal `ts` folded to different *content* by file order until the content-derived tie-break closed it (canary B6; core `test_duplicate_id_equal_ts_folds_to_one_content`) |
 | INV-J | Re-verification is durable across scans **for path-anchored claims**: `agree` advances the effective anchor, so an unchanged tree cannot re-stale the claim. TTL'd claims are exempt by design — the TTL clock counts from the claim `ts` and no verdict restarts it (ADR-019 non-goal), so an expired TTL claim is re-filed, not re-verified | One re-verified **path-anchored** claim re-staled with no new changes | Seeded fault; ADR-019 amendment note (2026-07-19) records the TTL exemption after an independent review demonstrated the re-stale loop on a TTL'd claim |
 | INV-K | Retraction requires `TRUTH_HUMAN=1` **plus** an interactive typed-id confirmation or `TRUTH_HUMAN_ACK=<exact-id>` (ADR-011, v0.6) | One retraction accepted with the variable alone, headless | Seeded fault (H-faults) — still self-attested rather than identity-verified, but the one-export bypass is closed; see F4, §4 |
@@ -921,6 +953,7 @@ between "fault lands" and "row lands" is exactly the decay §5 predicts.
 | INV-O | A verifier cannot `agree` with a claim from that claim's own authoring session; a `diverge` from the own session IS allowed (self-incrimination) (ADR-010, v0.6) | One same-session `agree` accepted, or one same-session `diverge` refused | Seeded fault (FAULTS V1/V2/V3). Self-attested session identity (`TRUTH_SESSION`), same class as F4/INV-K — the bypass is one visible env export, not an identity check |
 | INV-P | A supersede redirect re-targets premise validity, never bypasses it: the replacement is judged by the same ADR-001 matrix, the redirect is refused while the old premise still passes `ready`, and superseding a `retracted` premise requires the ADR-011 human gate (ADR-017 — the mechanical dead states stay ungated) | One issue made READY by redirecting a live/unverified premise; a retracted premise redirected without human authority (C3); or a redirect resolving non-deterministically | Seeded fault (FAULT R10, R11); cycle resolution pinned by core tests (ADR-013 amended 2026-07-18, first-repeated-value rule) |
 | INV-Q | An acceptance oracle gates issue close: a non-zero exit refuses `done`, and an unscreened oracle is refused execution unless `--accept-unsafe-ok` stamps it visibly | One issue closed over a failing oracle, or an unscreened oracle executed silently | Seeded fault (FAULTS AC1–AC8, ADR-014, v0.7); `accept.executed=true` requires `returncode 0` in schema and mirror |
+| INV-R | Declared contradictions dispute both sides: while both endpoints of a `contradicts` edge would otherwise be `live`, both fold to `disputed` via a post-pass over the *underlying* statuses (order-independent, so INV-I's confluence survives the composition); `disputed` blocks premises like `diverged`; a dormant edge (either side not live) changes nothing; intake refuses self, unknown, retracted-endpoint, and duplicate-either-direction edges | One declared-contradictory pair both `live`; one issue ready on a `disputed` premise; or a dormant edge changing any status | Seeded fault (FAULTS C1–C5, v0.9.0) and six TestDisputed core tests. Row backfilled 2026-07-19 (see preamble) |
 
 ## Appendix B. Reproduction
 
