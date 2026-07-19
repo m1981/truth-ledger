@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""truth v0.9.8 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.9 -- append-only claims ledger with a native work kernel.
 
 v0.9.8 (INV-M glob scope + commit-gate decidability, batch-2 H5/H6): three
   spec-precision ADRs, one with a real gate. ADR-023 (H5): INV-M is a
