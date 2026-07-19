@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.9.9)
+# .truth — append-only claims ledger (v0.9.10)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 

@@ -1969,5 +1969,36 @@ class TestCrossSurfaceVersions(unittest.TestCase):
             "edit, just update PINNED_SHAPE_SHA256. This test exists because "
             "the $id silently lapsed three times when nobody could see it.")
 
+class TestAppendSingleWrite(unittest.TestCase):
+    # The sec-1 concurrent-append safety statement assumes a record line
+    # reaches the file in one write(2) call; the buffered text layer broke
+    # that for records longer than the stdio buffer (review B-min7).
+    def test_append_is_one_write_syscall_even_for_large_records(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, ".truth", "claims.jsonl")
+            orig_lp, orig_write = tm.ledger_path, tm.os.write
+            calls = []
+
+            def counting_write(fd, data):
+                calls.append(len(data))
+                return orig_write(fd, data)
+
+            tm.ledger_path = lambda: path
+            tm.os.write = counting_write
+            try:
+                big = claim_p(text="scope " * 4000)  # ~24KB > stdio buffer
+                tm.append_record("claim", big)
+            finally:
+                tm.os.write = orig_write
+                tm.ledger_path = orig_lp
+            self.assertEqual(len(calls), 1,
+                             "append_record must issue exactly one write(2)")
+            with open(path, encoding="utf-8") as f:
+                lines = f.read().splitlines()
+            self.assertEqual(len(lines), 1)
+            self.assertEqual(json.loads(lines[0])["kind"], "claim")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
