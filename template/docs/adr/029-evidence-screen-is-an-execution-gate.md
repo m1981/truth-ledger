@@ -42,8 +42,9 @@ run.
 
 The adversary also confirmed one caveat worth stating: `--evidence-unsafe-ok`
 bypasses the **whole** screen, including the ADR-022 deny baseline. A
-deny-listed program (e.g. `sh`) therefore executes once at intake under the
-override, though the deny message says it is "never valid evidence, even if
+deny-listed program (e.g. `sh`) therefore executes at intake under the override
+(twice, for the determinism double-run, unless `--single-run`), though the deny
+message says it is "never valid evidence, even if
 allowlisted." This is not a hole: the command runs in the **author's own
 session** (they typed it — no new capability), is stored `screened: false`, and
 `verdict --recheck` refuses to execute a `screened: false` command — so the
@@ -61,8 +62,9 @@ the screen refusal, never determinism) unless `--evidence-unsafe-ok` promotes
 it to run-twice-and-be-determinism-checked, stored `screened: false`.
 
 **2. The override's scope is stated.** `--evidence-unsafe-ok` bypasses the
-entire screen (allowlist and the ADR-022 deny baseline), runs the command once
-in the author's own session, and records `screened: false`; the
+entire screen (allowlist and the ADR-022 deny baseline), runs the command at
+intake in the author's own session (twice, for the determinism double-run,
+unless `--single-run`), and records `screened: false`; the
 deferred-execution protection is `recheck`'s refusal of a `screened: false`
 command, not the intake screen. ADR-009 and `.truth/README` say so; the deny
 baseline is not weakened (its purpose is the recheck/verifier boundary).
