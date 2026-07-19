@@ -700,7 +700,13 @@ so a lingering ambient variable (Hardy's ambient authority) can no
 longer be spent on an arbitrary later target. Correction: there are no
 actual capabilities here — identity remains self-attested (F4's class,
 §8 item 5); what is closed is only the ambient-authority channel an
-error message can teach.
+error message can teach. A corollary worth naming (promoted 2026-07-19
+from a code comment, at an external reviewer's suggestion): **agent-facing
+refusal text is itself attack surface** — an error message that names
+its bypass ritual is an instruction to a compliant agent, which is why
+the CLI's gates refuse without teaching the override. Prompt-injection
+literature treats instructions arriving in *content*; this is the same
+hazard arriving in the tool's own refusals.
 
 **The borrowed event loop.** Stated nowhere above and worth one honest
 paragraph: the system owns no process. All reactivity is borrowed from
@@ -716,6 +722,29 @@ exists (ADR-025) — so a clean run is the proof the one MUST holds. No
 canonical citation is claimed; the nearest kin (interception middleware,
 aspect weaving) share the mechanism but not the motive, and this stays
 a named observation rather than a borrowed authority.
+
+**Nearest functional kin (added 2026-07-19, from an external review;
+references 20–25).** The lineage above is ancestor-heavy and was
+sibling-blind: it named the theory the design converged on but no system
+that already mechanizes part of the job. The closest is assurance-case
+maintenance — evidence in a safety case going stale under change (Kelly
+& McDermid), and Dynamic Safety Cases proposing continuous, automated
+invalidation of assurance evidence (Denney, Pai & Habli) — the same
+concept, largely never shipped as day-to-day developer tooling. TUF's
+`expires` metadata is TTL demotion for facts a source cannot push to
+you; in-toto's link attestations are this design's evidence capsule
+(command plus artifact hashes), signed, but with no invalidation
+lifecycle; just-in-time comment-inconsistency detection (Panthaplackel
+et al.) mechanizes "this commit invalidated that sentence" for code
+comments; and a commercial doc-freshness family (Swimm, Dosu) ships
+watched-path staleness checks in CI. Against that field, what remains
+unclaimed is the **composition**: natural-language claims + executable
+evidence capsules + git-anchored content-diff demotion + TTL decay +
+independent re-verification + a confluent fold over a union-merged log,
+with a recoverable status lifecycle. Every element alone has named prior
+art; the §3 audit method is likewise fault seeding / mutation analysis
+by another name (Mills; DeMillo, Lipton & Sayward — ref. 25), previously
+uncredited here.
 
 **Older lineage, one breath each.** Derive-don't-store status (§1) is
 event sourcing (Fowler, 2005) and the append-only half of the
@@ -1036,7 +1065,11 @@ exercised exactly that.
 2026-07-19 — volume/issue/pages, DOIs, and open-access links checked at
 that date; re-verify before any external submission. Entries marked
 **[proposed]** are candidate citations not yet load-bearing in the body
-text. The → line states what each work is cited for.)*
+text. Entries 20–25 (the functional-kin block, §6.3) were added
+2026-07-19 from an external review and are **[unverified]** — their
+bibliographic details have NOT been checked against publisher records;
+verify before any submission. The → line states what each work is cited
+for.)*
 
 ### Epistemic frame
 
@@ -1071,8 +1104,14 @@ paper itself says nothing about recorded facts.
 **4. Kung, H. T., & Robinson, J. T. (1981). On Optimistic Methods for
 Concurrency Control. *ACM Transactions on Database Systems*, 6(2),
 213–226.**
-→ ADR-008's never-block-append, validate-at-commit stance. (Exact fit:
-unrestricted work phase, validation at commit, abort on conflict.)
+→ ADR-008's never-block-append, validate-at-commit stance. (The stance
+transfers — unrestricted work phase, validation at commit — but not the
+machinery, matching §6.3's own correction: nothing aborts or retries
+here (a failed validation feeds a human decision), the "work phase"
+writes the shared file directly rather than an isolated workspace, and
+the gate checks integrity invariants, not read/write-set conflicts —
+concurrent appends cannot conflict by construction. Annotation weakened
+2026-07-19; it previously claimed "exact fit … abort on conflict".)
 - DOI: https://doi.org/10.1145/319566.319567
 - OA (Kung's Harvard page):
   https://www.eecs.harvard.edu/~htk/publication/1981-tods-kung-robinson.pdf
@@ -1152,7 +1191,13 @@ which #5 already carries.
 Tool for Random Testing of Haskell Programs. *Proc. ICFP '00*,
 268–279.**
 → §3 instrument 3: confluence as a universally quantified property.
-(Exact fit: algebraic laws under random generation with shrinking.)
+(The property statement is QuickCheck's; the search is not — the shipped
+tests are bounded-exhaustive (`itertools.permutations` over 3–4-event
+logs, plus FS-2's constraint-enumerated mutant corpus), the SmallCheck
+lineage: stronger than sampling on the covered domain, unsampled beyond
+it. No random generation or shrinking anywhere. Annotation corrected
+2026-07-19; it previously claimed "exact fit … random generation with
+shrinking".)
 - DOI: https://doi.org/10.1145/351240.351266
 - OA (stable course-archive mirror, Tufts):
   https://www.cs.tufts.edu/~nr/cs257/archive/john-hughes/quick.pdf
@@ -1221,11 +1266,16 @@ and 2P-Set tombstone (§6.3). No DOI; HAL is the publisher of record.
 **18. [proposed] Mokhov, A., Mitchell, N., & Peyton Jones, S. (2018).
 Build Systems à la Carte. *Proc. ACM Program. Lang.*, 2(ICFP),
 Article 79.**
-→ `evidence_paths` as tracked dependencies; the invalidation scan as a
-**verifying-traces rebuilder** *(corrected — the paper's whole point is
-that rebuilders and schedulers are orthogonal; "verifying traces" is a
-rebuilder; the scan's in-order walk is the trivial topological
-scheduler)*.
+→ `evidence_paths` as tracked dependencies; the invalidation scan as
+the **verification half** of a verifying-traces rebuilder, with rebuild
+deferred to a human-dispatched `verdict --recheck` *(re-corrected
+2026-07-19 — "rebuilder" overstated: the scan never re-runs anything, it
+demotes and queues; the input check is genuinely content-based (`git
+diff` from the anchor, so a touch or change-and-revert does not demote),
+but the recorded output hash is never consulted at scan time. The
+missing piece, early cutoff, is explanatory, not incidental: its absence
+is exactly why "mechanical divergence" (§2, ADR-012) and
+blast-radius re-staling (§9) exist as phenomena)*.
 - DOI: https://doi.org/10.1145/3236774 (CC BY — the ACM DL copy is
   open access)
 - OA (Microsoft Research):
@@ -1241,6 +1291,55 @@ closest existing approximations of local-first.)
 - OA (author's page): https://martin.kleppmann.com/papers/local-first.pdf
 - Essay version: https://www.inkandswitch.com/essay/local-first/
   *(URL corrected — the old `/local-first/` path is dead)*
+
+### Functional kin (§6.3; all **[unverified]** — added 2026-07-19 by an
+external review; check every detail against publisher records before
+submission)
+
+**20. [unverified] Kelly, T. P., & McDermid, J. A. (2001). A Systematic
+Approach to Safety Case Maintenance. *Reliability Engineering & System
+Safety*, 71(3), 271–284. (Earlier version: SAFECOMP 1999.)**
+→ §6.3 functional kin: evidence in an assurance case going stale under
+system change, and maintenance as a first-class activity — manual where
+this design is mechanical.
+
+**21. [unverified] Denney, E., Pai, G., & Habli, I. (2015). Dynamic
+Safety Cases for Through-Life Safety Assurance. *Proc. ICSE 2015*,
+NIER track.**
+→ §6.3 functional kin: continuous monitoring invalidating assurance-case
+evidence — the invalidation-lifecycle concept, proposed for safety
+argumentation rather than shipped as developer tooling.
+
+**22. [unverified] Samuel, J., Mathewson, N., Cappos, J., & Dingledine,
+R. (2010). Survivable Key Compromise in Software Update Systems (TUF).
+*Proc. ACM CCS 2010*.**
+→ §6.3 functional kin: `expires` metadata as TTL demotion for facts the
+consumer cannot have pushed to it — TTL with signatures, no
+re-verification lifecycle.
+
+**23. [unverified] Torres-Arias, S., Afzali, H., Kuppusamy, T. K.,
+Curtmola, R., & Cappos, J. (2019). in-toto: Providing Farm-to-Table
+Guarantees for Bits and Bytes. *Proc. USENIX Security 2019*.**
+→ §6.3 functional kin: the link attestation is this design's evidence
+capsule (command run + artifact hashes), signed — and static: no
+invalidation, no staleness, no re-verification.
+
+**24. [unverified] Panthaplackel, S., Li, J. J., Gligoric, M., & Mooney,
+R. J. (2021). Deep Just-In-Time Inconsistency Detection Between Comments
+and Source Code. *Proc. AAAI 2021*.**
+→ §6.3 functional kin: commit-time detection that a code change
+invalidated a natural-language sentence — learned rather than declared,
+comments rather than claims, no ledger and no lifecycle. The commercial
+doc-freshness family (Swimm auto-sync, Dosu) is the shipped industrial
+neighbor; cited here as tools, not literature.
+
+**25. [unverified] DeMillo, R. A., Lipton, R. J., & Sayward, F. G.
+(1978). Hints on Test Data Selection: Help for the Practicing
+Programmer. *IEEE Computer*, 11(4), 34–41.**
+→ §3 instrument 2's lineage, previously uncredited: seeded-fault
+acceptance testing is mutation analysis / error seeding (the seeding
+idea reaching back to Mills' early-1970s IBM work) applied by hand at
+the defect-class level rather than by operator at the syntax level.
 
 ### Standards
 
