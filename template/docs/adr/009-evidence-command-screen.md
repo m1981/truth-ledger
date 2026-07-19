@@ -22,6 +22,12 @@ to refuse, and re-screens everything else fresh before executing), not
 structurally at `validate`. The silence is also a backward-compat
 necessity (pre-ADR-009 records carry no `screened` key). The schema is a
 necessary-not-sufficient gate.
+Amended by: ADR-029 (2026-07-19, M4) — states that this screen is a GATE ON
+EXECUTION, not a flat peer of the determinism double-run: a screen-failed
+command is not run (so it reports the screen refusal, never determinism)
+unless `--evidence-unsafe-ok` bypasses the whole screen (allowlist AND the
+ADR-022 deny baseline), running it once in the author's own session as
+`screened: false` for `recheck` to refuse.
 Date: 2026-07-11
 Supersedes: —
 

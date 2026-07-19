@@ -79,8 +79,17 @@ assumption, not only as the caveat it also appears as in §8.
   claim-at-death are more events in the same log rather than a second
   system.
 
-**Derivation.** The fold below covers claim status; the work kernel adds
-an analogous fold for issue status, described in §5. Status is never
+**Derivation.** The fold below covers claim status; the work kernel adds a
+fold for issue status (`fold_issues`; the state machine ADR-002 described in
+prose is reproduced in ADR-028). That machine has two layers: **intake is
+strict** — a fixed transition table (`open→claimed→closed`, `reopened` from
+`closed`, `cancelled` from any non-terminal state) refuses nonsense
+transitions loudly — while **the fold is permissive except that `cancelled`
+is terminal**: later events on a cancelled issue are ignored, exactly as the
+claim fold ignores events after `retracted`. Permissiveness is deliberate,
+for confluence across merged branches; intake is the gate. An `issue_event`
+must sort after its issue record, or the fold would drop it as a forward
+reference — enforced at intake and by `order_check` (ADR-028). Status is never
 stored; a pure function replays the log:
 
 ```
@@ -207,7 +216,13 @@ a VCS or interpreter, so `git`/`sed`/`awk`/test-runners are excluded from
 the allowlist by design, not merely flag-screened); evidence commands whose two intake
 runs hash differently (nondeterministic, overridable); and INFERRED
 claims with no `--basis`. The list is stated here in refusal
-order, which is observable when one claim trips several gates.
+order, which is observable when one claim trips several gates — but the
+safety screen is not a flat peer of the others: it is a **gate on
+execution**. A command that fails the screen is not run at all, so it never
+reaches the determinism double-run (it reports the screen refusal, never the
+determinism one) — unless `--evidence-unsafe-ok` bypasses the whole screen,
+which then runs the command twice, applies the determinism check, and stores
+it `screened: false` for `recheck` to refuse (ADR-029).
 
 **Invalidation.** A scan, wired to post-merge hooks or CI, demotes claims
 whose premises git can check. Anchor-loss after rebase/squash/gc demotes

@@ -744,6 +744,32 @@ class TestOrderCheck(unittest.TestCase):
         errors, _ = tm.order_check(evs)
         self.assertEqual(len(errors), 1)
 
+    def test_issue_event_before_its_issue_is_an_error(self):
+        """ADR-028: an issue_event sorting BEFORE its issue record is a
+        forward reference fold_issues silently drops -- the future-dated-
+        issue hole. A raw honest-clock event on a 2027-dated issue record
+        sorts first and must be refused at the commit gate."""
+        evs = events(
+            rec("issue", {"title": "future"}, rid="wk-0000f00d",
+                ts="2027-06-01T00:00:00+00:00"),
+            rec("issue_event", {"issue": "wk-0000f00d", "event": "closed",
+                                "basis": "raw"}, rid="tr-11110001",
+                ts="2026-07-19T00:00:00+00:00"))
+        errors, _ = tm.order_check(evs)
+        self.assertTrue(any("sorts before its issue record" in e
+                            for e in errors), errors)
+
+    def test_issue_event_after_its_issue_passes(self):
+        """No false positive: the normal order (issue then event) is fine."""
+        evs = events(
+            rec("issue", {"title": "ok"}, rid="wk-0000aaaa",
+                ts="2026-07-01T00:00:00+00:00"),
+            rec("issue_event", {"issue": "wk-0000aaaa", "event": "claimed",
+                                "basis": ""}, rid="tr-11110002",
+                ts="2026-07-02T00:00:00+00:00"))
+        errors, _ = tm.order_check(evs)
+        self.assertEqual(errors, [])
+
 # --------------------------------------------------------- stats (FS-1)
 
 class TestStats(unittest.TestCase):
@@ -1132,6 +1158,15 @@ class TestIssueEventError(unittest.TestCase):
             self.assertIsNone(tm.issue_event_error(st, ev), f"{st}->{ev}")
         for st, ev in bad:
             self.assertIsNotNone(tm.issue_event_error(st, ev), f"{st}->{ev}")
+
+    def test_future_dated_issue_refused_at_intake(self):
+        """ADR-028: acting on an issue whose record is dated beyond skew in
+        the future is refused -- an event filed now would sort before it and
+        the fold would drop it. NOW is the core's fixed clock (12:00)."""
+        future = {"id": "wk-00000001", "ts": "2027-06-01T00:00:00.000000+00:00"}
+        self.assertIsNotNone(tm.issue_event_ts_error(future, NOW))
+        present = {"id": "wk-00000002", "ts": "2026-07-05T11:59:00.000000+00:00"}
+        self.assertIsNone(tm.issue_event_ts_error(present, NOW))
 
 class TestNativeReady(unittest.TestCase):
     def _issues(self, *evs):
