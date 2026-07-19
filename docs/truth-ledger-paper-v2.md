@@ -286,19 +286,32 @@ above this line requires the word "Byzantine."
 
 One pilot repository, one solo developer, LLM agent sessions doing the
 implementation work — the regime the design targets. Day-0: 2026-07-08.
-Measured as of 2026-07-09:
+Measured as of 2026-07-09.
+
+**Counting rule (added 2026-07-19, after an independent review could not
+derive the verdict rows from the raw ledger).** "Dispatches" counts
+verdicts filed under the trial's dispatch protocol, as tracked by the
+running score in the pilot's `docs/truth-trial/TRIAL-LOG.md` — it
+excludes the author's own re-verification agrees after mechanical
+path-touch stalings, and it excludes decay-event triage verdicts. The
+raw ledger at the same snapshot contains 42 agree and 5 diverge
+verdicts; the delta is those exclusions, and two of the five diverges
+are a category the earlier revision's table lacked (the "decay" row
+below). Claim-side rows need no rule — they are the fold's output and
+reproduce exactly from the ledger.
 
 | Measure | Value |
 |---|---|
-| Verifier dispatches | 32 |
+| Verifier dispatches (per the counting rule above) | 32 |
 | — agree | 29 |
 | — diverge, genuine (claim actually wrong) | 2 |
 | — diverge, mechanical (evidence recipe changed, fact still true) | 1 |
 | — cannot_verify | 0 |
+| Diverges outside the dispatch protocol: decay (claim true when filed, later killed by a legitimate commit; triage verdicts, not dispatches) | 2 |
 | Claims in ledger | 21 (15 live, 6 retracted) |
 | Human retractions (`TRUTH_HUMAN=1`) | 6 — all by the human, none by an agent |
-| Concurrent agent sessions writing one ledger | 6 interleaved, zero corruption |
-| Tripwire recall & false-alarm rate (post-commit scan, one real refactor) | 1/1 staled when it should have (recall), 0 false alarms that round (precision signal; both n=1) |
+| Agent sessions writing one ledger in the window | dozens, zero corruption — but appends serialized: every session's records are contiguous in file order and no two sessions' time-ranges overlap, so the `O_APPEND` write race §1 provisions for was never exercised (corrected 2026-07-19; the earlier revision's "6 interleaved" is not supported by the ledger) |
+| Tripwire recall & false-alarm rate (post-commit scan, two real refactors in-window) | recall 2/2 — every fact-killing commit staled its claim; fact-level precision 1/3 in the first event (two coarse `kitchen-erp/**` tripwires fired on unrelated edits) and 1/1 in the second (the earlier revision reported only the second event; corrected 2026-07-19) |
 | Seeded faults, this repo's template canary | the suite prints its own count — no number restated here, since the suite has grown with every mechanism since v0.4's 19 (work kernel, spec-health/doc-health satellites, F7/ADR-006, INV-M, S4, the impact verb's W-faults, and the v0.6 hardening batch's Q/B/E/V/H/M faults) and is no longer frozen; Appendix B |
 | Seeded faults, the pilot's downstream canary | grew 19 → 42 → 45 → 48 → 49 in step with the pre-v0.5.4 merges, matching the template through v0.5.3 (F7/ADR-006 synced 2026-07-09); diverged from the template until the pilot re-synced via `copier update` — to v0.6.2 (released tag) and then to v0.6.4 on 2026-07-13, zero-conflict, all suites green post-update (Appendix B) |
 
@@ -307,8 +320,13 @@ Both genuine divergences shared one shape: a *correct* evidence command
 backing an *overreaching* claim text — a repo-wide clause ("the only
 occurrences in the repo are…") backed by a package-scoped grep whose
 `--include` filter was doing invisible work. Same author, same defect
-pattern, caught twice by independent verifiers (n=2, same author, same
-defect shape — a signal, not yet a distribution). Zero fabricated or
+pattern, caught twice under the dispatch protocol (n=2, same author, same
+defect shape — a signal, not yet a distribution). Attribution honesty
+(2026-07-19): one of the two catches carries its verifier session id in
+the verdict record (`s-mini-r3-1`); the other was recorded from the
+operator's terminal under a generic session id, so its "independent
+verifier" attribution rests on the trial log's narrative, not on the
+instrument. Zero fabricated or
 hallucinated claims were observed in this window. This matters beyond the
 pilot's small N: it is evidence about what kind of failure this tool is
 actually built to catch, addressed directly in §6.1.
@@ -321,7 +339,8 @@ enforcement to the actually-active hook manager rather than trusting a
 vestigial config path, unprompted skepticism about a norm dressed as an
 enforced property — the same pattern F4 names in §4.
 
-**A second deployment exists (2026-07-12).** A distinct agent in a
+**A second deployment exists (first ledger records 2026-07-10; the
+field-notes session 2026-07-12).** A distinct agent in a
 distinct repository (`temporal-go-agent-sdk`) reproduced the failure
 taxonomy above: one genuine divergence — again the quantifier/scope
 shape — one mechanical divergence (ADR-012's class), zero fabrications.
@@ -329,13 +348,18 @@ Same operator, so §8 item 1 extends to it unchanged: corroboration,
 not independent replication. Its findings and their adopted remedies
 are in `docs/field-notes-sdk-session.md` (one produced ADR-013).
 
-**The repairs held under real concurrency.** Re-verified claims stayed
+**The repairs held in the field window.** Re-verified claims stayed
 live across subsequent scans (no re-staling loop); human-gated retraction
 was exercised six times, always correctly; near-duplicate intake fired
-correctly once and was consciously overridden; six concurrent sessions
-interleaved appends with zero corruption and an order-independent fold.
-Small-scale evidence only — six sessions on one machine is not two humans
-on two machines, and the paper's single-regime caveat (§8) stands.
+correctly once and was consciously overridden; many sessions appended to
+one ledger with zero corruption and an order-independent fold (confluence
+re-confirmed 2026-07-19 by shuffling the full pilot ledger and refolding).
+But "held under real concurrency" — this heading's earlier wording — was
+an overclaim: the ledger shows every session's appends as one contiguous
+block with no overlapping session time-ranges, so the concurrent-append
+race was never exercised, only provisioned for (v0.9.10's single-write
+append keeps that provision honest). One machine, serialized sessions, and
+the paper's single-regime caveat (§8) stands.
 
 ---
 
@@ -480,8 +504,10 @@ site, 2026-07-12):
   item is invisible to the readiness check — now a warning.
 - **doc-health** — the same discipline applied to prose generally:
   forbidden post-rename names, broken relative links. A sweep of the
-  pilot's 105 live markdown files found decay **concentrated entirely in
-  pre-ledger prose** — every document written under the citation
+  pilot's live markdown corpus — 105 files per the sweep agents' count;
+  `git ls-files` at the same commit counts 99 non-archive `.md`, a
+  counting-set difference recorded 2026-07-19 — found decay
+  **concentrated entirely in pre-ledger prose** — every document written under the citation
   convention came back clean but one routing gap.
 - **doc-coverage claims** — a VERIFIED claim binding a document's
   load-bearing coverage to the code surface it describes, by watching
@@ -719,8 +745,22 @@ observation.
 |---|---|
 | Hallucination is not the dominant failure mode in this deployment regime | One confirmed fabricated claim (fact asserted with no basis in reality, not merely scope overreach) appearing anywhere in the pilot ledger's history |
 | Scope overreach, not fabrication, is the pilot's dominant real failure | A third genuine divergence whose cause is not a quantifier/evidence-domain mismatch |
-| The v0.4 repairs hold under real concurrent use | Any corruption, lost update, or non-confluent fold observed in the pilot's git history of `.truth/claims.jsonl` |
+| The v0.4 repairs hold under the pilot's use | Any corruption, lost update, or non-confluent fold observed in the pilot's git history of `.truth/claims.jsonl`, scoped to commits made under an installed commit gate (§8 item 5 — a pre-gate day-0 restructure in the template's own repository deleted one committed ledger line, the standing demonstration of why this scope clause is needed). "Real concurrent use" was dropped from this row 2026-07-19: §2's correction records that concurrency was never exercised |
 | Citation discipline is *hypothesized* to prevent documentation decay, not only detect it (§5 states this as a hypothesis, not a result) | A post-ledger-convention document found to contain undetected rot, discovered by any means other than the doc-health sweep itself |
+
+**Falsifier scoreboard (2026-07-19, first external audit).** Row 3's
+falsifier was actively attacked and survived: a parent-aware audit of
+every commit touching the pilot ledger (208 commits, merges included)
+found zero non-merge prefix violations and zero lost lines, and the full
+pilot and template ledgers fold identically under repeated random
+permutation. Row 4's tripwire **fired**: an independent scan found stale
+load-bearing script paths in this paper's own Appendix B and the README —
+post-rename rot in post-convention documents, invisible to the doc-health
+sweep *by design* (backtick path mentions are deliberately unchecked).
+Repaired the same day; the hypothesis now stands only with that
+blind-spot boundary stated: the sweep guards links and names, not
+backtick paths, and load-bearing paths in reproduction instructions are
+exactly where that exemption bites.
 
 The first two rows share one underlying dataset — 32 dispatches, 2 genuine
 divergences, same author — so they are two readings of one small sample,
@@ -766,11 +806,19 @@ though item 2 names the largest single *unanswered question*.
    built the thing being measured. Independent replication — a second
    team auditing the artifact, or a second deployment measuring the
    pilot's numbers — is the real check and has not happened.
-2. **Efficacy is unmeasured.** The largest open *question*, conditional
+2. **Efficacy is unmeasured — and the cost side is now partially
+   measured, unfavorably.** The largest open *question*, conditional
    on item 1's caveat being accepted. A monthly hand-audit against the
    day-0 baseline is the system's own prescribed check; the first is due
    ~2026-08-08 and will be recorded in a future revision of this
-   document, not asserted here.
+   document, not asserted here. What the template's own meta-repo ledger
+   already quantifies (as of 2026-07-19, ~11 days of use) is the
+   friction denominator any efficacy trial must divide by: on the order
+   of ten agree verdicts per claim, and `truth stats` half-life medians
+   of ~0.02 days in every tier — claims watching hot paths re-stale
+   within the hour, and re-verification churn, not filing, is the
+   dominant operating cost (§9's blast-radius convention exists because
+   of it).
 3. **The field window is short.** Every §2 number comes from roughly a
    24–48 hour window (day-0 2026-07-08, measured 2026-07-09). Language
    like "dominant failure mode" or "repeating pattern" describes what has
@@ -958,16 +1006,29 @@ second data point for that decay thesis landing on this table itself.
 ## Appendix B. Reproduction
 
 All findings and repairs are demonstrated by scripts driving the actual
-CLI in fresh sandbox repositories: `scripts/truth` (CLI, pure core over
-imperative shell), `scripts/check-truth.sh` (prefix-based commit gate),
-`scripts/truth-canary.sh` (the seeded-fault suite — it prints its own
-count rather than having it restated here; grown from 19 at v0.4 as the
-pilot's satellites, the work kernel, the impact verb, and the v0.6
-hardening batch merged upstream into this same template — see §2),
-`scripts/test-truth-core.py`, `scripts/test-truth-v04.py`, and
-`.truth/schema/claims.schema.json`. Field numbers in §2 are read
-directly from `git log -p .truth/claims.jsonl` in the pilot repository —
-the append-only property doing double duty as a research instrument.
+CLI in fresh sandbox repositories. Paths are relative to this
+repository's root (corrected 2026-07-19 — the earlier revision's
+`scripts/…` paths predate the day-0 restructure that moved the template
+payload under `template/`): `template/scripts/truth` (CLI, pure core
+over imperative shell; `scripts/truth` at the root is this repo's own
+symlink to it), `template/scripts/check-truth.sh` (prefix-based commit
+gate), `template/scripts/truth-canary.sh` (the seeded-fault suite — it
+prints its own count rather than having it restated here; grown from 19
+at v0.4 as the pilot's satellites, the work kernel, the impact verb, and
+the v0.6 hardening batch merged upstream into this same template — see
+§2), `template/scripts/test-truth-core.py` (needs `jsonschema`
+importable to run the drift detector armed — e.g.
+`PYTHONPATH=~/.cache/truth-ledger-pylib` where a wheel cache exists;
+without it the suite fails closed by design, F1),
+`template/scripts/test-truth-v04.py`, and
+`template/.truth/schema/claims.schema.json`. Field numbers in §2 are
+read from `git log -p .truth/claims.jsonl` in the pilot repository —
+which is **not part of this artifact**, so §2 is not reproducible from
+this repository alone — via the counting rule §2 now states (the raw
+ledger and the table differ without it; the rule lives in the pilot's
+`docs/truth-trial/TRIAL-LOG.md`). The append-only property still does
+double duty as a research instrument; the 2026-07-19 external audit
+exercised exactly that.
 
 ## References
 

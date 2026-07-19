@@ -93,7 +93,7 @@ made mechanical instead of vigilance-dependent.
 | `.github/workflows/` | PR gate · post-merge scan with bot commit-back · weekly seeded-fault canary |
 | `prompts/truth-verifier.md` | fixed prompt for independent verification (isolation is scripted) |
 | `docs/adr/001` | the readiness semantics: which premises block work, by cost tier |
-| `scripts/truth-canary.sh` | the seeded-fault suite — run weekly; it prints its own count; all CAUGHT, or stop trusting green (standing fact: tr-3a31bfcf in this repo's own ledger) |
+| `template/scripts/truth-canary.sh` | the seeded-fault suite — run weekly; it prints its own count; all CAUGHT, or stop trusting green (standing fact: tr-3a31bfcf in this repo's own ledger) |
 
 ## The non-interference contract (why scaffolding can't hurt you)
 
