@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor + ADR-028 FAULT IF future-dated-issue transition coherence + ADR-009/M4 FAULT SD screen-gates-execution ordering + v0.9.12 R3/ADR-030 FAULT RA reaffirm-mismatch-never-auto-filed + v0.9.13 R6/ADR-031 unified duplicate-id rule: B1/B3-B5 expect the one message, FAULT K2 later-ts distinct duplicate flips to refused).
+# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor + ADR-028 FAULT IF future-dated-issue transition coherence + ADR-009/M4 FAULT SD screen-gates-execution ordering + v0.9.12 R3/ADR-030 FAULT RA reaffirm-mismatch-never-auto-filed + v0.9.13 R6/ADR-031 unified duplicate-id rule: B1/B3-B5 expect the one message, FAULT K2 later-ts distinct duplicate flips to refused + v0.9.14 R12/ADR-032 FAULT SD-decay --scope-ok default-expiry (4 arms incl. negative control) + R13/ADR-033 FAULT OV override-velocity verbatim-repeat advisory (2 arms incl. negative control)).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -1770,6 +1770,109 @@ else
 fi
 cd "$RA_PREV"
 rm -rf "$RA"
+
+# ---- FAULT SD-decay (ADR-032, v0.9.14): --scope-ok default expiry -------
+# A scope_basis override (ADR-007) filed WITHOUT --ttl-days is stamped a
+# default 30-day expiry + ttl_default; it never refuses. Four arms: (1) the
+# default lands (arm goes red if override_decay is patched out -- the
+# assertion reads the exact ttl_days/ttl_default the mechanism writes);
+# (2) an explicit --ttl-days is preserved unflagged; (3) NEGATIVE CONTROL:
+# an equally old PLAIN claim gets no default and stays live after a scan;
+# (4) the expired override is stale and reaffirm lists it as re-file
+# (ADR-032 -> ADR-019 scan -> ADR-030 arm 1). Own sandbox; no subshell so
+# ok/miss mutate the counters; cwd restored via $SD_PREV.
+say "FAULT SD-decay (ADR-032): a --scope-ok override without --ttl-days must decay to a default 30-day expiry"
+SD="$(mktemp -d)"; SD_PREV="$PWD"
+mkrepo "$SD"
+echo "data" > f.txt
+git add -A && git commit -qm "sd: init" --no-verify -q
+SD_SB="the include filter deliberately covers the whole codebase"
+SD_EC="grep -rc data --include=f.txt ."
+CID_SD1=$($T claim "no occurrences remain anywhere in the codebase" \
+          --class VERIFIED --evidence-cmd "$SD_EC" --paths f.txt --tier P1 \
+          --scope-ok "$SD_SB" 2>/dev/null)
+if python3 -c "import json,sys; p=json.loads(open('.truth/claims.jsonl').read().splitlines()[-1])['payload']; sys.exit(0 if p.get('ttl_days')==30 and p.get('ttl_default') is True else 1)"; then
+  ok "scope-ok override without --ttl-days landed ttl_days=30 + ttl_default ($CID_SD1)"
+else
+  miss "scope-ok override did not decay to the default TTL (mechanism patched out?)"
+fi
+$T claim "no occurrences remain anywhere in the codebase" \
+   --class VERIFIED --evidence-cmd "$SD_EC" --paths f.txt --tier P1 \
+   --scope-ok "$SD_SB" --ttl-days 90 --duplicate-ok >/dev/null 2>&1
+if python3 -c "import json,sys; p=json.loads(open('.truth/claims.jsonl').read().splitlines()[-1])['payload']; sys.exit(0 if p.get('ttl_days')==90 and 'ttl_default' not in p else 1)"; then
+  ok "explicit --ttl-days 90 preserved unflagged (the visible opt-out)"
+else
+  miss "explicit --ttl-days was overwritten or flagged defaulted"
+fi
+CID_SD3=$(TRUTH_NOW="2026-06-01T00:00:00+00:00" $T claim \
+          "f.txt plainly contains data" --class VERIFIED \
+          --evidence-cmd "cat f.txt" --paths f.txt --tier P2 2>/dev/null)
+$T invalidate-scan --quiet
+if $T list --stale --json | grep -q "$CID_SD3"; then
+  miss "negative control failed: a plain claim got a default TTL and expired"
+else
+  ok "negative control: an equally old PLAIN claim has no default TTL, stays live after a scan"
+fi
+CID_SD4=$(TRUTH_NOW="2026-06-01T00:00:00+00:00" $T claim \
+          "no matches exist anywhere in the whole repo" --class VERIFIED \
+          --evidence-cmd "$SD_EC" --paths f.txt --tier P1 \
+          --scope-ok "$SD_SB" 2>/dev/null)
+$T invalidate-scan --quiet
+SD4OUT=$(TRUTH_SESSION=s-sd-reaffirm $T reaffirm --dry-run 2>/dev/null)
+if $T list --stale --json | grep -q "$CID_SD4" \
+   && printf '%s\n' "$SD4OUT" | grep -q "re-file required" \
+   && printf '%s\n' "$SD4OUT" | grep -q "$CID_SD4"; then
+  ok "expired scope-ok override is stale, reaffirm triages it to re-file ($CID_SD4)"
+else
+  miss "expired override not staled or not triaged to the ttl re-file arm"
+fi
+cd "$SD_PREV"
+rm -rf "$SD"
+
+# ---- FAULT OV (ADR-033, v0.9.14): override-velocity verbatim-repeat -------
+# `truth stats` raises a NON-blocking advisory when a scope justification
+# is re-filed verbatim (tokens() token-set-identical) after the prior claim
+# died. Two arms: (1) a verbatim re-justification after expiry produces the
+# advisory (red if the detector is patched out); (2) NEGATIVE CONTROL: a
+# genuinely narrowed re-file produces NO advisory.
+say "FAULT OV (ADR-033): a verbatim scope re-justification after expiry must raise the advisory; a narrowed one must not"
+OV="$(mktemp -d)"; OV_PREV="$PWD"
+mkrepo "$OV"
+echo "data" > f.txt
+git add -A && git commit -qm "ov: init" --no-verify -q
+OV_SB="the include filter deliberately covers the whole codebase"
+OV_EC="grep -rc data --include=f.txt ."
+CID_OV1=$(TRUTH_NOW="2026-06-01T00:00:00+00:00" $T claim \
+          "no occurrences remain anywhere in the codebase" --class VERIFIED \
+          --evidence-cmd "$OV_EC" --paths f.txt --tier P1 \
+          --scope-ok "$OV_SB" 2>/dev/null)
+$T invalidate-scan --quiet   # CID_OV1 -> stale (ttl, ttl_default)
+CID_OV2=$($T claim "no occurrences remain anywhere in the codebase" \
+          --class VERIFIED --evidence-cmd "$OV_EC" --paths f.txt --tier P1 \
+          --scope-ok "$OV_SB" 2>/dev/null)   # same sentence + justification
+OVOUT=$($T stats 2>/dev/null)
+if printf '%s\n' "$OVOUT" | grep -q "ADR-033" \
+   && printf '%s\n' "$OVOUT" | grep -q "$CID_OV2" \
+   && printf '%s\n' "$OVOUT" | grep -q "$CID_OV1"; then
+  ok "verbatim re-justification after expiry raised the advisory ($CID_OV2 vs $CID_OV1)"
+else
+  miss "override-velocity advisory missing for a verbatim re-justification (detector patched out?)"
+fi
+CID_OV3=$(TRUTH_NOW="2026-06-01T00:00:00+00:00" $T claim \
+          "every call site is covered by the services grep" --class VERIFIED \
+          --evidence-cmd "$OV_EC" --paths f.txt --tier P2 \
+          --scope-ok "services is the only place this pattern can appear" 2>/dev/null)
+$T invalidate-scan --quiet   # CID_OV3 -> stale
+CID_OV4=$($T claim "every call site is covered by the services grep" \
+          --class VERIFIED --evidence-cmd "$OV_EC" --paths f.txt --tier P2 \
+          --scope-ok "now narrowed to the single services subtree after refactor" 2>/dev/null)
+if $T stats --json 2>/dev/null | python3 -c "import json,sys; o=json.load(sys.stdin)['overrides']; ids=[r['claim'] for r in o['repeats']]; sys.exit(0 if '$CID_OV4' not in ids and '$CID_OV2' in ids else 1)"; then
+  ok "negative control: a genuinely narrowed re-file produced no advisory ($CID_OV4)"
+else
+  miss "override-velocity advisory false-fired on a genuinely narrowed re-file"
+fi
+cd "$OV_PREV"
+rm -rf "$OV"
 
 say ""
 say "canary result: $PASS caught, $FAIL missed"

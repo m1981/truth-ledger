@@ -1,6 +1,6 @@
 # The Loophole Map — Five Agent Events, Simulated
 
-> Reader: anyone assessing what the truth ledger can and cannot enforce against agent behavior | Enables: knowing, per event type, which gates are CLI refusals and which residuals are behavioral — and what the worst case actually is | Update-trigger: a gate ships or a residual closes (current: CLI v0.9.13 — content re-synced at v0.9.13 on 2026-07-20; header pinned in lockstep by TestCrossSurfaceVersions since v0.9.13)
+> Reader: anyone assessing what the truth ledger can and cannot enforce against agent behavior | Enables: knowing, per event type, which gates are CLI refusals and which residuals are behavioral — and what the worst case actually is | Update-trigger: a gate ships or a residual closes (current: CLI v0.9.14 — content re-synced at v0.9.13 on 2026-07-20; header pinned in lockstep by TestCrossSurfaceVersions since v0.9.13; ADR-032/033 override-decay content sync pending)
 
 Provenance: adapted from a second-deployment session walkthrough
 (repo `temporal-go-agent-sdk`, 2026-07 — the same session behind

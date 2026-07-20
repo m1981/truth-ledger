@@ -155,13 +155,22 @@ Statuses: TODO / IN-PROGRESS / DONE / OPERATOR (human-owned) / BLOCKED.
   test-tlr-fold.py (18/18 with negative controls, 2026-07-20)."
   Also: adopt the gate-vs-queue decision rule text into the ops guide.
 
-## Batch 5 — override decay + its instrument (effort S) — TODO
+## Batch 5 — override decay + its instrument (effort S) — DONE
 (From the 2026-07-20 candidate-adoption analysis of the clean-room six:
 C4+C6 adopted; C1/C2/C3/C5 deferred as obligation-ledger §9 amendments;
 rejected placements in docs/growth-gate/clean-room-convergence.md and
 the analysis's register of rejections.)
 
-- **R12 (C4, ADR-032) `--scope-ok` default expiry** — TODO (v0.9.14)
+- **R12 (C4, ADR-032) `--scope-ok` default expiry** — DONE
+  (v0.9.14, ADR-032: pure `DEFAULT_OVERRIDE_TTL_DAYS=30` + `override_decay`;
+  a scope_basis claim without --ttl-days is stamped ttl_days=30 +
+  ttl_default:true in build_claim_payload, notice printed by cmd_claim /
+  done --claim, never refused; expiry rides the UNCHANGED ADR-019 scan,
+  ADR-030 arm 1 → re-file → re-fires ADR-007. Schema gains typed optional
+  boolean ttl_default AND stdlib mirror gains it independently; $id bumped
+  v0.9→v0.10, FS-2 corpus +3 fixtures + generated-mutant lockstep. Core
+  TestOverrideDecay (4) + TestScopeDecayCLI (3); canary FAULT SD-decay
+  (4 arms incl. negative control).)
   A scope_basis claim filed without --ttl is stamped ttl_days=30 +
   ttl_default:true (notice printed, never refused); expiry rides the
   unchanged ADR-019 scan path; ADR-030 arm 1 routes it to re-file,
@@ -173,14 +182,18 @@ the analysis's register of rejections.)
   ops-guide touches. ADR carries its own adoption gate: widen or drop
   to opt-in if decay invalidations exceed genuine diverges across two
   rot-free reviews.
-- **R13 (C6, ADR-033) override-velocity report** — TODO (v0.9.14,
-  after R12 — reads the fields R12 stamps)
-  `stats` gains an overrides section: per-window override counts, decay
-  expiries, max ttl on override claims, and a non-blocking
-  token-set-identical re-justification advisory. NO threshold tripwire
-  until two R11 audit windows exist.
-  Accept: pure-function unit tests (5 arms), canary FAULT OV (+
-  negative control); suites green; INV-U row, §8/§10/ops-guide touches.
+- **R13 (C6, ADR-033) override-velocity report** — DONE
+  (v0.9.14, ADR-033: pure `override_report(events, now)` beside
+  stats_report — overall counts (house convention, no per-window split):
+  scope_basis filings, decay expiries (reason_code=ttl on ttl_default
+  claims), overridden_duplicates, screened:false filings, max scope ttl,
+  and verbatim-repeat detection reusing tokens() (token-set equal to an
+  EARLIER now-dead {stale,diverged,retracted} claim — 'superseded' isn't a
+  claim status here; a still-live prior is ADR-018 territory, not flagged).
+  `truth stats` prints an overrides section + a NON-blocking advisory line;
+  --json carries the structured section. NO threshold/gate. Core
+  TestOverrideReport (5) + TestOverrideReportCLI (1); canary FAULT OV
+  (2 arms incl. negative control).)
 
 ## Backlog
 
@@ -267,3 +280,24 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   with reopeners in the analysis output. Zero outright rejects is
   pre-screening, not miscalibration: the convergence doc had already
   quarantined the re-losing mechanisms.
+- 2026-07-20: Batch 5 (R12+R13) implemented as v0.9.14 + ADR-032/033; all
+  suites green: test-truth-core.py 214 (was 201: +4 override_decay,
+  +5 override_report, +3 scope-decay CLI, +1 report CLI; FS-2 corpus +3
+  fixtures ride the generated-mutant lockstep), test-truth-v04.py 13,
+  truth-canary.sh 176 caught / 0 missed (FAULT SD-decay +4, FAULT OV +2).
+  Schema $id bumped v0.9→v0.10 for the ttl_default field (EXPECTED_SCHEMA_ID
+  + PINNED_SHAPE_SHA256 updated). Docs owned by this batch done:
+  template/.truth/README.md (default-expiry daily-op + intake notes, title
+  v0.9.14), template/CHANGELOG.md v0.9.14; the lockstep `current: CLI`
+  stamps bumped to v0.9.14 in check-truth.sh + both satellite docs (stamp
+  only; content re-sync pending). PENDING docs touches (NOT edited, for a
+  later editing batch): paper v3 §1/§10/§8 + Appendix A INV-T (R12) / INV-U
+  (R13) rows; loophole-map §B row; ops-guide intake + stats paragraphs
+  (the satellite-doc bodies note "ADR-032/033 override-decay content sync
+  pending" in their headers). Left uncommitted for operator review.
+- 2026-07-20: Batch 5 red-team fixes applied (F1 FS-1 exclusion, F2
+  plain-text lock, F3 ADR-033 residual naming), still v0.9.14
+  uncommitted; all suites green: test-truth-core.py 218 (was 214: +3
+  F1 half-life TTL exclusion, +1 F2 plain-text lock), test-truth-v04.py
+  13, truth-canary.sh 176 caught / 0 missed. Left uncommitted for
+  operator review.

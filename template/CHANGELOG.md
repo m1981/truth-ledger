@@ -8,6 +8,53 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.14 (batch-5 override decay + its instrument, roadmap-v3 R12/R13,
+  ADR-032/033):
+  * R12 (ADR-032) -- `--scope-ok` default expiry. A scope_basis claim
+    (the ADR-007 quantifier-scope override) filed WITHOUT an explicit
+    --ttl-days is stamped ttl_days=30 + `ttl_default: true` and prints a
+    notice; it is never refused. Expiry then rides the UNCHANGED ADR-019
+    scan path (counted from the claim ts, strict boundary, scan-
+    materialized); ADR-030 arm 1 routes the stale claim to re-file, which
+    re-fires the ADR-007 gate -- so the mechanism mechanically re-asks
+    whether the scope judgment was ever real. Explicit --ttl-days (a
+    large value is the visible opt-out) is kept unflagged. New pure core:
+    `DEFAULT_OVERRIDE_TTL_DAYS`, `override_decay`. Schema AND stdlib
+    mirror gain optional boolean `ttl_default` (two independent surfaces,
+    FS-2 corpus + generated-mutant lockstep; schema $id bumped
+    v0.9->v0.10 for the field). Canary FAULT SD-decay (4 arms incl.
+    negative control). Deliberate exclusions: no decay for screened:false
+    claims, no --no-ttl flag. ADR-032 carries its own adoption gate.
+  * R13 (ADR-033) -- override-velocity report. `truth stats` gains an
+    `overrides` section (pure `override_report`): scope-ok filings,
+    override-decay expiries (reason_code=ttl on ttl_default claims),
+    dup-overrides, unscreened filings, max scope TTL, and a NON-blocking
+    advisory when a scope justification is re-filed verbatim (tokens()
+    token-set-identical, reusing the existing tokenizer) after the prior
+    claim died (stale/diverged/retracted) -- "review whether the scope
+    judgment was ever real". `--json` carries the structured section. No
+    threshold, no gate. Canary FAULT OV (2 arms incl. negative control).
+  * Batch-5 red-team fixes (still v0.9.14, pre-release polish): (F1)
+    `half_life_observations` now EXCLUDES TTL-reason invalidations
+    (structured `reason_code=="ttl"`, `is_ttl_reason` prefix fallback --
+    the same two-arm test as ttl_staleness, reused) so the FS-1 half-life
+    medians and `ttl_suggestion` measure OBSERVED drift (path/anchor)
+    only; a defaulted-TTL expiry no longer industrializes observations
+    that cluster at the default and make the suggestion circular. The
+    claim still transitions to stale (fold authoritative); TTL expiries
+    stay counted in ADR-033's `decay_expiries`. ADR-032 Consequences +
+    ADR-033 note the disjoint populations. (F2) plain-text lock: a
+    CLI-level test asserts the PLAIN `truth stats` render carries
+    `max scope ttl <N>d` (36500), not only the JSON field. (F3) ADR-033
+    gains a "Residual false negatives" subsection: one synonym swap or
+    appended junk token defeats the verbatim token-set advisory
+    (reorder/case/punctuation do not), so the raw counters -- not the
+    advisory -- are the evasion-proof volume signal the R11 audit reads;
+    plus the cosmetic note that repeated advisories name the earliest
+    dead prior and line count (no repeat counter) is the accumulation
+    signal. New core tests: TestStats +3 (F1), TestOverrideReportCLI +1
+    (F2).
+
 v0.9.13 (batch-3 self-consistency, roadmap-v3 R4/R5/R6, ADR-031):
   * R6 (ADR-031, TLR-013 adoption) -- order_check's two duplicate-id
     detections (ADR-008 backdated, ADR-016 equal-ts) collapse to ONE

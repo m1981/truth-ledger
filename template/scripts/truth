@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""truth v0.9.13 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.14 -- append-only claims ledger with a native work kernel.
 
 Facts are appended as JSONL records to .truth/claims.jsonl (INV-A:
 append-only, commit-gated by scripts/check-truth.sh); every status is
@@ -71,6 +71,12 @@ CI_GATE_FILES = (".gitlab-ci.yml", ".circleci/config.yml",
 CI_GATE_DIRS = (".github/workflows", ".woodpecker")
 DUPLICATE_THRESHOLD = 0.6
 QUEUE_AGE_WARN_DAYS = 14
+# ADR-032: a --scope-ok override (ADR-007) filed without an explicit
+# --ttl-days is stamped this default shelf life, so the scope judgment is
+# mechanically re-asked when it lapses (expiry rides the unchanged ADR-019
+# scan path -> ADR-030 arm 1 routes it to re-file -> ADR-007 re-fires).
+# Changed only with ADR-032's adoption gate.
+DEFAULT_OVERRIDE_TTL_DAYS = 30
 ID_RE = re.compile(r"^tr-[0-9a-f]{8}$")
 WK_ID_RE = re.compile(r"^wk-[0-9a-f]{8}$")
 # ADR-015: the canonical ts profile -- fixed-width UTC microseconds,
@@ -620,6 +626,36 @@ def quantifier_scope_conflict(text, evidence_cmd):
         return None
     return (q, s)
 
+def override_decay(scope_basis, ttl_days):
+    """ADR-032: a --scope-ok override (scope_basis, ADR-007) filed WITHOUT
+    an explicit --ttl-days decays -- it is stamped a default shelf life so
+    the scope judgment cannot rot silently: when the default TTL lapses the
+    unchanged ADR-019 scan materializes the expiry, ADR-030 arm 1 routes
+    the stale claim to re-file, and re-filing re-fires the ADR-007 gate,
+    mechanically re-asking whether the scope judgment was ever real.
+
+    Returns (ttl_days, ttl_default_flag, notice_or_None):
+      * scope_basis present AND ttl_days is None -> (DEFAULT_OVERRIDE_TTL_
+        DAYS, True, a one-line stderr notice explaining the default and how
+        to opt out);
+      * an explicit ttl_days -> (ttl_days, False, None) -- the visible
+        opt-out (a large --ttl-days is the deliberate long life), unchanged
+        even when a scope_basis is present;
+      * no scope_basis -> (ttl_days, False, None), unchanged.
+
+    Pure -- reads no clock; the expiry itself is counted from the claim's
+    ts by the scan (ADR-019), never here. Deliberately no decay for
+    screened:false claims and no --no-ttl flag: an explicit large
+    --ttl-days is the visible opt-out (ADR-032 exclusions)."""
+    if scope_basis and ttl_days is None:
+        return (DEFAULT_OVERRIDE_TTL_DAYS, True,
+                "note: --scope-ok override filed with no --ttl-days -- "
+                f"stamped a default {DEFAULT_OVERRIDE_TTL_DAYS}-day expiry "
+                "(ADR-032) so the scope judgment is re-asked when it "
+                "lapses. Pass an explicit --ttl-days (a large value is the "
+                "visible opt-out) to choose a different shelf life.")
+    return (ttl_days, False, None)
+
 _SCREEN_SEPARATORS = frozenset((";", "|", "||", "&&", "&"))
 _SCREEN_PUNCT = frozenset("();<>|&")
 
@@ -884,7 +920,23 @@ def half_life_observations(events):
             if not new:
                 continue
             ts = parse_ts(ev.get("ts") or "")
-            if e["status"] == "live" and new == "stale" \
+            # FS-1/ADR-032: a TTL expiry is administratively caused (the
+            # ttl_days value itself, defaulted to 30 by ADR-032), not
+            # observed drift, so it must NOT feed the half-life medians --
+            # otherwise defaulted overrides industrialize observations that
+            # cluster at the default and ttl_suggestion becomes circular
+            # (suggests ~= the default that caused the data). Cut here, at
+            # the single source of the tier streams both stats_report's
+            # medians and ttl_suggestion read, so the exclusion covers both.
+            # Prefer the v0.9.12+ structured `reason_code == "ttl"` stamp;
+            # fall back to is_ttl_reason's prefix (the SAME two-arm rule as
+            # ttl_staleness, reused not re-implemented) for pre-stamp
+            # records. The claim still transitions to stale -- fold stays
+            # authoritative on status, only the observation is withheld;
+            # TTL expiries are counted in override_report's decay_expiries.
+            is_ttl = kind == "invalidation" and (
+                p.get("reason_code") == "ttl" or is_ttl_reason(p.get("reason")))
+            if e["status"] == "live" and new == "stale" and not is_ttl \
                     and e["since"] and ts \
                     and (ts.tzinfo is None) == (e["since"].tzinfo is None):
                 obs.append((e["tier"],
@@ -929,6 +981,82 @@ def stats_report(events, now):
             "verdicts": verdicts, "half_life": half_life,
             "queue_size": len(queue),
             "queue_max_age_days": ages[-1] if ages else None}
+
+# ADR-033: 'dead' for the override-velocity repeat detector. A claim has
+# no 'superseded' status in this system (supersede is premise-scoped,
+# ADR-013), so the dead set is exactly the three terminal-for-now claim
+# statuses the fold produces below live/unverified.
+DEAD_CLAIM_STATUSES = frozenset(("stale", "diverged", "retracted"))
+
+def override_report(events, now):
+    """ADR-033: the override-velocity instrument that supplies ADR-007's
+    adoption gate its data. A pure fold consumer beside stats_report,
+    counting over the given events (the shell applies any --since window
+    before calling -- stats_report's overall-count convention, no
+    per-window split of its own). Returns a dict:
+      * scope_basis_filings -- ADR-007 --scope-ok overrides;
+      * decay_expiries -- ADR-032 override-decay invalidations
+        (reason_code=='ttl' on a ttl_default claim);
+      * overridden_duplicates -- G8/--duplicate-ok filings;
+      * screened_false_filings -- --evidence-unsafe-ok filings;
+      * max_scope_ttl_days -- the largest ttl among scope_basis claims
+        (None if none), so an operator can see the visible opt-out in use;
+      * repeats -- verbatim re-justification after expiry: a scope_basis
+        claim whose tokens() token set EQUALS that of an EARLIER claim now
+        DEAD (stale/diverged/retracted). A prior claim still live/unverified
+        is NOT flagged (that is ADR-018 near-duplicate territory). tokens()
+        is REUSED, never re-implemented -- the ADR-018/021 parity lesson.
+    Pure: no clock read (now is unused -- expiries are read from records,
+    not recomputed; kept for signature parity with stats_report)."""
+    del now  # signature parity; the report reads records, not the clock
+    claims, _ = fold(events)
+    scope_filings = overridden_dupes = screened_false = 0
+    max_scope_ttl = None
+    for e in claims.values():
+        p = e["claim"]["payload"]
+        if p.get("scope_basis"):
+            scope_filings += 1
+            t = p.get("ttl_days")
+            if isinstance(t, int) and not isinstance(t, bool):
+                max_scope_ttl = t if max_scope_ttl is None \
+                    else max(max_scope_ttl, t)
+        if p.get("overridden_duplicates"):
+            overridden_dupes += 1
+        if (p.get("evidence") or {}).get("screened") is False:
+            screened_false += 1
+    decay_expiries = 0
+    for _, ev in events:
+        if ev.get("kind") != "invalidation":
+            continue
+        p = ev.get("payload") or {}
+        if p.get("reason_code") != "ttl":
+            continue
+        c = claims.get(p.get("claim"))
+        if c and c["claim"]["payload"].get("ttl_default"):
+            decay_expiries += 1
+    # verbatim-repeat: walk claims in fold (ts, id) order, flagging a
+    # scope_basis claim whose token set matches an EARLIER dead one.
+    ordered = sorted(claims.values(),
+                     key=lambda e: (e["claim"].get("ts") or "",
+                                    e["claim"].get("id") or ""))
+    repeats, seen = [], []
+    for e in ordered:
+        sb = e["claim"]["payload"].get("scope_basis")
+        if not sb:
+            continue
+        toks, cid = frozenset(tokens(sb)), e["claim"].get("id")
+        for ptoks, pcid, pstatus in seen:
+            if ptoks == toks and pstatus in DEAD_CLAIM_STATUSES:
+                repeats.append({"claim": cid, "prior": pcid,
+                                "prior_status": pstatus})
+                break
+        seen.append((toks, cid, e["status"]))
+    return {"scope_basis_filings": scope_filings,
+            "decay_expiries": decay_expiries,
+            "overridden_duplicates": overridden_dupes,
+            "screened_false_filings": screened_false,
+            "max_scope_ttl_days": max_scope_ttl,
+            "repeats": repeats}
 
 def ttl_suggestion(observations, tier):
     """FS-1: observed median half-life for the tier, or None below the
@@ -1392,6 +1520,13 @@ def validate_events(events):
             if "scope_basis" in p and not p["scope_basis"]:
                 errors.append(f"line {n}: empty scope_basis (ADR-007: the "
                               "override carries a sentence, not a boolean)")
+            # ADR-032: ttl_default marks a --scope-ok override that took the
+            # default 30-day expiry. Optional; a boolean when present. Two
+            # INDEPENDENT contract surfaces (this mirror + the schema), held
+            # in lockstep by the FS-2 corpus.
+            if "ttl_default" in p and not isinstance(p["ttl_default"], bool):
+                errors.append(f"line {n}: ttl_default must be a boolean "
+                              "(ADR-032: it flags a defaulted override TTL)")
             if "overridden_duplicates" in p:
                 od = p["overridden_duplicates"]
                 if (not isinstance(od, list) or not od
@@ -1750,6 +1885,13 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
                  "re-file with --scope-ok \"<one sentence: why this scope "
                  "covers that quantifier>\".")
 
+    # ADR-032: a scope_basis override with no explicit --ttl-days decays --
+    # stamp the default shelf life BEFORE the VERIFIED intake check reads
+    # ttl_days, so the effective ttl rides the ordinary INV-B/ADR-019
+    # machinery untouched. Never refuses; the notice is printed by the
+    # shell after a successful append.
+    ttl_days, ttl_default, _ = override_decay(scope_basis, ttl_days)
+
     paths = split_csv(paths_csv)
     if paths:
         # INV-M applies to any claim carrying evidence_paths, not only
@@ -1787,6 +1929,11 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
                "evidence_paths": paths}
     if scope_basis:
         payload["scope_basis"] = scope_basis
+    if ttl_default:
+        # ADR-032: mark that this ttl_days was defaulted (not author-chosen)
+        # so the override-velocity report (ADR-033) and any auditor can tell
+        # a decay expiry from a real diverge.
+        payload["ttl_default"] = True
     if overridden_duplicates:
         payload["overridden_duplicates"] = overridden_duplicates
 
@@ -1838,6 +1985,11 @@ def cmd_claim(a):
                   "not a gate)", file=sys.stderr)
     rec = append_record("claim", payload)
     print(json.dumps(rec) if a.json else rec["id"])
+    # ADR-032: after the successful append, voice the default-expiry notice
+    # when a --scope-ok override took the default ttl (never a refusal).
+    _, _, decay_notice = override_decay(a.scope_ok, a.ttl_days)
+    if decay_notice:
+        print(decay_notice, file=sys.stderr)
     # field-notes-batch-m item 2 remedy: the filing already succeeded and
     # its exit code stands; the captured intake returncode (first run --
     # already in the evidence capsule, never re-run) just gets a voice.
@@ -2320,6 +2472,11 @@ def cmd_done(a):
         out += f"; filed {claim_rec['id']}"
     print(out)
     if claim_payload:
+        # ADR-032: claim-at-death shares build_claim_payload, so a
+        # --scope-ok override at death earns the same default-expiry notice.
+        _, _, decay_notice = override_decay(a.scope_ok, a.ttl_days)
+        if decay_notice:
+            print(decay_notice, file=sys.stderr)
         # field-notes-batch-m item 2: claim-at-death goes through the
         # identical VERIFIED intake, so it earns the identical
         # non-blocking warning after the successful close.
@@ -2564,7 +2721,11 @@ def cmd_stats(a):
         events = [(n, ev) for n, ev in events
                   if (ev.get("ts") or "") >= a.since]
     report = stats_report(events, now_dt())
+    # ADR-033: the override-velocity section rides alongside stats. No
+    # threshold, no gate -- a non-blocking advisory only.
+    overrides = override_report(events, now_dt())
     if a.json:
+        report["overrides"] = overrides
         print(json.dumps(report, indent=2))
         return
     print("claims by status: " + (", ".join(
@@ -2584,6 +2745,19 @@ def cmd_stats(a):
     age = report["queue_max_age_days"]
     print(f"queue: {report['queue_size']} item(s)"
           + (f", oldest {age}d" if age is not None else ""))
+    # ADR-033: override-velocity section (feeds ADR-007's adoption gate).
+    o = overrides
+    mx = o["max_scope_ttl_days"]
+    print(f"overrides: scope-ok={o['scope_basis_filings']} "
+          f"decay-expiries={o['decay_expiries']} "
+          f"dup-overrides={o['overridden_duplicates']} "
+          f"unscreened={o['screened_false_filings']}"
+          + (f", max scope ttl {mx}d" if mx is not None else ""))
+    for r in o["repeats"]:
+        print(f"  advisory: {r['claim']} re-files the scope justification of "
+              f"{r['prior']} (now {r['prior_status']}) verbatim -- same scope "
+              "justification re-filed unchanged after expiry -- review "
+              "whether the scope judgment was ever real (ADR-033)")
 
 def git_hooks_dir(root):
     """The hooks dir git actually consults: core.hooksPath when set, else

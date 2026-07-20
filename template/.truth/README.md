@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.9.13)
+# .truth — append-only claims ledger (v0.9.14)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -80,7 +80,13 @@ quantifier–scope mismatch (ADR-007, v0.6) — a universally quantified
 claim text ("only", "no … anywhere", "the repo") over a scoped evidence
 command (`--include`, path arguments, `cd`) is refused unless
 `--scope-ok "<one sentence>"` states why the scope covers the
-quantifier (stored as `scope_basis`, attackable by verifiers);
+quantifier (stored as `scope_basis`, attackable by verifiers). A
+`--scope-ok` override filed with **no** `--ttl-days` is stamped a default
+30-day expiry (`ttl_default: true`, ADR-032) and prints a notice — so the
+scope judgment cannot rot silently: when it lapses the ADR-019 scan stales
+the claim, `reaffirm` routes it to re-file, and re-filing re-fires this
+gate. An explicit `--ttl-days` (a large value is the visible opt-out) is
+kept unflagged;
 statically dead-tripwire paths — a whitespace-containing entry with no
 comma, a **literal** path matching zero tracked files, or a **glob** over
 a statically-unreachable namespace (INV-M, v0.5.4; ADR-024). A glob over a
@@ -392,8 +398,16 @@ When stale claims pile up, from a fresh session: `scripts/truth reaffirm`
 auto-files `agree` (the anchor advances), a mismatch files NOTHING and is
 listed for dispatch; TTL-staled (re-file, ADR-019), unscreened,
 never-agreed, and same-session claims are skipped with the reason
-(ADR-030). `--dry-run` reports without filing.
+(ADR-030). `--dry-run` reports without filing. A `--scope-ok` override
+you file without `--ttl-days` gets a default 30-day expiry (ADR-032), so
+expect scope overrides to surface for re-file about a month out — a
+re-file that re-fires the ADR-007 gate, not a silent renewal.
 Weekly (~30 s): `scripts/truth-canary.sh`.
+`scripts/truth stats` carries an `overrides` section (ADR-033): scope-ok
+filings, override-decay expiries, dup-overrides, unscreened filings, the
+max scope TTL, and a non-blocking advisory when a scope justification is
+re-filed verbatim after expiry (review whether that scope judgment was
+ever real).
 After repo surgery (rebase spree, hook changes, new agent runtime):
 `scripts/truth doctor`.
 Monthly: re-audit a few fresh sessions' claims by hand against your day-0

@@ -858,6 +858,64 @@ class TestStats(unittest.TestCase):
         self.assertEqual(tm.ttl_suggestion(enough, "P1"), 3.0)
         self.assertIsNone(tm.ttl_suggestion(enough, "P0"))
 
+    # ---- FS-1/ADR-032: TTL expiries must not feed the half-life medians
+    def _cycle(self, cid, rv, ri, tier, reason=None, reason_code=None):
+        """A claim that goes live (agree) at 07-01 then stale
+        (invalidation) at 07-05 -- 4.0 days of observed live-time."""
+        p = {"claim": cid, "commit": "c"}
+        if reason is not None:
+            p["reason"] = reason
+        if reason_code is not None:
+            p["reason_code"] = reason_code
+        return [
+            rec("claim", claim_p(cost_tier=tier), rid=cid,
+                ts="2026-07-01T00:00:00+00:00"),
+            rec("verdict", {"claim": cid, "verdict": "agree", "basis": "b"},
+                rid=rv, ts="2026-07-01T00:00:00+00:00"),
+            rec("invalidation", p, rid=ri, ts="2026-07-05T00:00:00+00:00")]
+
+    def test_ttl_expiry_excluded_but_path_invalidation_kept(self):
+        """N ttl-reason expiries + M path invalidations -> exactly M
+        observations. TTL expiry is administratively caused, not drift."""
+        raw = (
+            self._cycle("tr-000000p1", "tr-000000p2", "tr-000000p3", "P1",
+                        reason="path f.txt changed")
+            + self._cycle("tr-000000q1", "tr-000000q2", "tr-000000q3", "P1",
+                          reason="path g.txt changed")
+            + self._cycle("tr-000000t1", "tr-000000t2", "tr-000000t3", "P1",
+                          reason="ttl expired (30 days)", reason_code="ttl")
+            + self._cycle("tr-000000u1", "tr-000000u2", "tr-000000u3", "P1",
+                          reason="ttl expired (30 days)", reason_code="ttl")
+            + self._cycle("tr-000000w1", "tr-000000w2", "tr-000000w3", "P1",
+                          reason="ttl expired (30 days)", reason_code="ttl"))
+        obs, _ = tm.half_life_observations(events(*raw))
+        self.assertEqual(obs, [("P1", 4.0), ("P1", 4.0)])
+
+    def test_ttl_expiry_excluded_via_prefix_fallback_without_reason_code(self):
+        """Pre-stamp record: reason prefix 'ttl expired ...' with NO
+        reason_code is still excluded (the is_ttl_reason fallback arm)."""
+        raw = (
+            self._cycle("tr-000000a1", "tr-000000a2", "tr-000000a3", "P1",
+                        reason="ttl expired (30 days)")  # no reason_code
+            + self._cycle("tr-000000b1", "tr-000000b2", "tr-000000b3", "P1",
+                          reason="path f.txt changed"))
+        obs, _ = tm.half_life_observations(events(*raw))
+        self.assertEqual(obs, [("P1", 4.0)])  # only the path invalidation
+
+    def test_ttl_suggestion_none_over_only_ttl_expiries(self):
+        """A stream of only ttl expiries (well past HALF_LIFE_MIN_OBS)
+        yields no observations, so ttl_suggestion returns None -- the
+        circularity that would suggest ~= the default is broken."""
+        raw = []
+        for i in range(tm.HALF_LIFE_MIN_OBS + 1):
+            b = "tr-0000t%03d" % i
+            raw += self._cycle(b + "c", b + "v", b + "i", "P1",
+                               reason="ttl expired (30 days)",
+                               reason_code="ttl")
+        obs, _ = tm.half_life_observations(events(*raw))
+        self.assertEqual([d for t, d in obs if t == "P1"], [])
+        self.assertIsNone(tm.ttl_suggestion(obs, "P1"))
+
 class TestMechanicalSubtypeFold(unittest.TestCase):
     def test_subtype_surfaces_in_queue(self):
         evs = events(
@@ -1587,6 +1645,162 @@ class TestInverseReport(unittest.TestCase):
         rep = tm.inverse_report(list(reversed(self.TRACKED)), {})
         self.assertEqual(rep["dark"], sorted(self.TRACKED))
 
+class TestOverrideDecay(unittest.TestCase):
+    """R12 / ADR-032: override_decay is a pure function of two args, plus a
+    parity check that a defaulted TTL behaves identically under
+    _ttl_expired (ADR-019: strict boundary, counted from the claim ts)."""
+
+    def test_scope_basis_no_ttl_gets_default_flagged_with_notice(self):
+        ttl, flag, notice = tm.override_decay("scoped to services/", None)
+        self.assertEqual(ttl, tm.DEFAULT_OVERRIDE_TTL_DAYS)
+        self.assertEqual(ttl, 30)
+        self.assertTrue(flag)
+        self.assertIsNotNone(notice)
+        self.assertIn("--ttl-days", notice)
+        self.assertIn("ADR-032", notice)
+
+    def test_explicit_ttl_is_unchanged_and_unflagged_even_with_scope(self):
+        ttl, flag, notice = tm.override_decay("scoped to services/", 90)
+        self.assertEqual(ttl, 90)
+        self.assertFalse(flag)
+        self.assertIsNone(notice)
+
+    def test_no_scope_basis_is_untouched(self):
+        self.assertEqual(tm.override_decay(None, None), (None, False, None))
+        self.assertEqual(tm.override_decay(None, 7), (7, False, None))
+        self.assertEqual(tm.override_decay("", None), (None, False, None))
+
+    def test_defaulted_ttl_expires_exactly_like_an_authored_one(self):
+        # parity: the (30, True) default is an ordinary ttl_days to the
+        # ADR-019 scan -- strict boundary, from the claim ts, no special
+        # casing of ttl_default anywhere in the expiry path.
+        ttl, flag, _ = tm.override_decay("scoped", None)
+        claim_dt = tm.parse_ts(TS)
+        e = entry(claim_p(ttl_days=ttl, ttl_default=flag), ts=TS)
+        exact = claim_dt + timedelta(days=ttl)
+        self.assertIsNone(tm.decide_invalidation(e, {}, exact),
+                          "at exactly ts + ttl_days the claim survives")
+        d = tm.decide_invalidation(e, {}, exact + timedelta(seconds=1))
+        self.assertEqual(d["label"], "ttl expired")
+        self.assertEqual(d["payload"]["reason_code"], "ttl")
+        # a plain claim with the SAME ttl and no default flag expires
+        # identically -- ttl_default is inert to the scan
+        plain = entry(claim_p(ttl_days=ttl), ts=TS)
+        self.assertEqual(
+            tm.decide_invalidation(plain, {}, exact + timedelta(seconds=1)),
+            d, "ttl_default must not change expiry behavior (ADR-019)")
+
+
+class TestOverrideReport(unittest.TestCase):
+    """R13 / ADR-033: override_report counts + verbatim-repeat detection,
+    all as pure folds over fabricated event streams (no elapsed time)."""
+
+    def _claim(self, rid, ts, **over):
+        return rec("claim", claim_p(**over), rid=rid, ts=ts)
+
+    def _agree(self, rid, cid, ts):
+        return rec("verdict", {"claim": cid, "verdict": "agree",
+                               "basis": "b"}, rid=rid, ts=ts)
+
+    def _inval(self, rid, cid, ts, reason_code=None):
+        p = {"claim": cid, "commit": "abc1234", "reason": "x"}
+        if reason_code:
+            p["reason_code"] = reason_code
+        return rec("invalidation", p, rid=rid, ts=ts)
+
+    def test_counts_over_a_synthetic_stream(self):
+        evs = events(
+            self._claim("tr-00000001", "2026-07-01T00:00:00.000000+00:00",
+                        scope_basis="scoped to a", ttl_days=30,
+                        ttl_default=True),
+            self._claim("tr-00000002", "2026-07-01T00:00:01.000000+00:00",
+                        scope_basis="scoped to b", ttl_days=90),
+            self._claim("tr-00000003", "2026-07-01T00:00:02.000000+00:00",
+                        overridden_duplicates=["tr-00000001"]),
+            self._claim("tr-00000004", "2026-07-01T00:00:03.000000+00:00",
+                        evidence_class="VERIFIED", anchor_commit="abc1234",
+                        evidence_paths=["f.txt"],
+                        evidence={"command": "cat f.txt",
+                                  "output_hash": "sha256:" + "0" * 64,
+                                  "returncode": 0, "screened": False}),
+            # decay expiry: reason_code ttl on the ttl_default claim
+            self._inval("tr-00000010", "tr-00000001",
+                        "2026-07-02T00:00:00.000000+00:00",
+                        reason_code="ttl"),
+            # a ttl invalidation on a NON-default claim is not a decay
+            self._inval("tr-00000011", "tr-00000002",
+                        "2026-07-02T00:00:01.000000+00:00",
+                        reason_code="ttl"),
+        )
+        r = tm.override_report(evs, NOW)
+        self.assertEqual(r["scope_basis_filings"], 2)
+        self.assertEqual(r["decay_expiries"], 1)
+        self.assertEqual(r["overridden_duplicates"], 1)
+        self.assertEqual(r["screened_false_filings"], 1)
+        self.assertEqual(r["max_scope_ttl_days"], 90)
+        self.assertEqual(r["repeats"], [])
+
+    def test_max_scope_ttl_none_when_no_scope_claims(self):
+        r = tm.override_report(events(self._claim(
+            "tr-00000001", TS)), NOW)
+        self.assertEqual(r["scope_basis_filings"], 0)
+        self.assertIsNone(r["max_scope_ttl_days"])
+
+    def test_verbatim_repeat_detected_across_an_expiry(self):
+        # prior claim carries scope_basis, is TTL-expired (-> stale/dead),
+        # a later claim re-uses a token-set-identical justification
+        prior = self._claim("tr-00000001",
+                            "2026-07-01T00:00:00.000000+00:00",
+                            scope_basis="the include filter covers the repo",
+                            ttl_days=30, ttl_default=True)
+        expire = self._inval("tr-00000009", "tr-00000001",
+                            "2026-07-05T00:00:00.000000+00:00",
+                            reason_code="ttl")
+        repeat = self._claim("tr-00000002",
+                            "2026-07-06T00:00:00.000000+00:00",
+                            # same tokens, reordered + punctuation differ
+                            scope_basis="repo the covers filter include the")
+        r = tm.override_report(events(prior, expire, repeat), NOW)
+        self.assertEqual(len(r["repeats"]), 1)
+        self.assertEqual(r["repeats"][0]["claim"], "tr-00000002")
+        self.assertEqual(r["repeats"][0]["prior"], "tr-00000001")
+        self.assertEqual(r["repeats"][0]["prior_status"], "stale")
+
+    def test_not_a_repeat_when_texts_differ(self):
+        prior = self._claim("tr-00000001",
+                            "2026-07-01T00:00:00.000000+00:00",
+                            scope_basis="the include filter covers the repo",
+                            ttl_days=30, ttl_default=True)
+        expire = self._inval("tr-00000009", "tr-00000001",
+                            "2026-07-05T00:00:00.000000+00:00",
+                            reason_code="ttl")
+        narrowed = self._claim("tr-00000002",
+                            "2026-07-06T00:00:00.000000+00:00",
+                            scope_basis="now narrowed to services only")
+        r = tm.override_report(events(prior, expire, narrowed), NOW)
+        self.assertEqual(r["repeats"], [])
+
+    def test_not_a_repeat_when_prior_still_active(self):
+        # identical justification, but the prior claim is live (agreed) --
+        # that is ADR-018 near-dup territory, NOT an ADR-033 repeat
+        prior = self._claim("tr-00000001",
+                            "2026-07-01T00:00:00.000000+00:00",
+                            evidence_class="VERIFIED", anchor_commit="abc1234",
+                            evidence_paths=["f.txt"],
+                            evidence={"command": "cat f.txt",
+                                      "output_hash": "sha256:" + "0" * 64,
+                                      "returncode": 0},
+                            scope_basis="the include filter covers the repo")
+        agree = self._agree("tr-00000008", "tr-00000001",
+                            "2026-07-02T00:00:00.000000+00:00")
+        repeat = self._claim("tr-00000002",
+                            "2026-07-06T00:00:00.000000+00:00",
+                            scope_basis="the include filter covers the repo")
+        r = tm.override_report(events(prior, agree, repeat), NOW)
+        self.assertEqual(r["repeats"], [],
+                         "a still-live prior is not an ADR-033 repeat")
+
+
 # ------------------------------------------ schema conformance (shared corpus)
 
 # Each fixture: (name, record, expected_valid). This corpus is the single
@@ -1705,6 +1919,16 @@ CORPUS = [
      rec("claim", claim_p(overridden_duplicates=[])), False),
     ("claim overridden_duplicates bad ref",
      rec("claim", claim_p(overridden_duplicates=["nope"])), False),
+    # ---- ADR-032 override decay (v0.9.14): optional boolean ttl_default.
+    # The present-true seed also drives the FS-2 mutant generator to test
+    # junk-value rejection by BOTH surfaces (junk payload.ttl_default);
+    # 'absent' is the minimal claim above. ----
+    ("claim with ttl_default true",
+     rec("claim", claim_p(ttl_days=30, ttl_default=True)), True),
+    ("claim with ttl_default false",
+     rec("claim", claim_p(ttl_default=False)), True),
+    ("claim ttl_default non-boolean",
+     rec("claim", claim_p(ttl_default="yes")), False),
     ("verified evidence screened false",
      rec("claim", verified_p(evidence={"command": "cat f.txt",
                                        "output_hash": "sha256:" + "0" * 64,
@@ -2045,9 +2269,9 @@ class TestCrossSurfaceVersions(unittest.TestCase):
     # $id to the shape and no test could see it. This pins the shape: any
     # edit to the schema (minus its own $id) breaks the fingerprint, forcing
     # a conscious "is this a shape change? then bump $id" review.
-    EXPECTED_SCHEMA_ID = "truth-ledger-record.v0.9"
+    EXPECTED_SCHEMA_ID = "truth-ledger-record.v0.10"
     PINNED_SHAPE_SHA256 = \
-        "847c25d85d31aaed7f5b92358cb310ee9eec7aa83c5111d3703d9f11e9af47d9"
+        "7a3e49069335a965bec3240da33a07ec22c86748f13ef404fd6eb0d58a492df5"
 
     def _schema(self):
         import json as _json
@@ -2718,6 +2942,133 @@ class TestReaffirmCLI(unittest.TestCase):
             self.assertEqual(row["id"], cid)
             self.assertEqual(row["arm"], "match")
             self.assertRegex(row["filed"], r"^tr-[0-9a-f]{8}$")
+
+
+class TestScopeDecayCLI(unittest.TestCase):
+    """R12 / ADR-032 end-to-end in throwaway sandboxes: a --scope-ok
+    override without --ttl-days lands ttl'd + flagged, expires via the
+    unchanged ADR-019 scan, and reaffirm triages it to the ttl arm."""
+
+    SB = "the include filter deliberately covers the whole codebase"
+    QTEXT = "no occurrences remain anywhere in the codebase"
+    ECMD = "grep -rc data --include=f.txt ."
+
+    def _ledger(self, d):
+        with open(os.path.join(d, ".truth", "claims.jsonl")) as f:
+            return [json.loads(x) for x in f.read().splitlines()]
+
+    def _scope_claim(self, d, *extra, env_extra=None):
+        r = _truth(d, "claim", self.QTEXT, "--class", "VERIFIED",
+                   "--evidence-cmd", self.ECMD, "--paths", "f.txt",
+                   "--tier", "P1", "--scope-ok", self.SB, *extra,
+                   env_extra=env_extra)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r
+
+    def test_scope_ok_without_ttl_lands_ttl30_flagged_and_notices(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            r = self._scope_claim(d)
+            self.assertIn("ADR-032", r.stderr, "the decay notice must print")
+            self.assertIn("30-day", r.stderr)
+            p = self._ledger(d)[-1]["payload"]
+            self.assertEqual(p["ttl_days"], 30)
+            self.assertIs(p["ttl_default"], True)
+            self.assertEqual(p["scope_basis"], self.SB)
+
+    def test_explicit_ttl_is_preserved_and_unflagged_and_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            r = self._scope_claim(d, "--ttl-days", "90")
+            self.assertNotIn("ADR-032", r.stderr,
+                             "an explicit --ttl-days must not decay-notice")
+            p = self._ledger(d)[-1]["payload"]
+            self.assertEqual(p["ttl_days"], 90)
+            self.assertNotIn("ttl_default", p,
+                             "explicit ttl must not be flagged defaulted")
+
+    def test_backdated_scope_ok_expires_via_the_unchanged_scan(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            past = {"TRUTH_NOW": "2026-06-01T00:00:00+00:00"}  # >30d before now
+            r = self._scope_claim(d, env_extra=past)
+            cid = r.stdout.strip().splitlines()[-1]
+            r = _truth(d, "invalidate-scan")  # real now, long past ttl 30
+            self.assertIn(cid, r.stdout)
+            inval = self._ledger(d)[-1]
+            self.assertEqual(inval["kind"], "invalidation")
+            self.assertEqual(inval["payload"]["reason_code"], "ttl")
+            r = _truth(d, "list", "--stale")
+            self.assertIn(cid, r.stdout)
+            # ADR-030 arm 1: reaffirm triages the expired override to re-file
+            r = _truth(d, "reaffirm", "--dry-run",
+                       env_extra={"TRUTH_SESSION": "s-reaffirm"})
+            self.assertIn("re-file required", r.stdout)
+            self.assertIn("ADR-019", r.stdout)
+            self.assertIn("1 ttl (re-file)", r.stdout)
+
+
+class TestOverrideReportCLI(unittest.TestCase):
+    """R13 / ADR-033 end-to-end: a scope-ok override expires, the same
+    justification is re-filed, and `truth stats` raises the advisory."""
+
+    SB = "the include filter deliberately covers the whole codebase"
+    QTEXT = "no occurrences remain anywhere in the codebase"
+    ECMD = "grep -rc data --include=f.txt ."
+
+    def _scope_claim(self, d, env_extra=None):
+        r = _truth(d, "claim", self.QTEXT, "--class", "VERIFIED",
+                   "--evidence-cmd", self.ECMD, "--paths", "f.txt",
+                   "--tier", "P1", "--scope-ok", self.SB, env_extra=env_extra)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.strip().splitlines()[-1]
+
+    def test_verbatim_refile_after_expiry_raises_the_advisory(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            past = {"TRUTH_NOW": "2026-06-01T00:00:00+00:00"}
+            prior = self._scope_claim(d, env_extra=past)
+            _truth(d, "invalidate-scan")  # prior -> stale (ttl, ttl_default)
+            repeat = self._scope_claim(d)  # same sentence + scope_basis, now
+            r = _truth(d, "stats")
+            self.assertIn("overrides:", r.stdout)
+            self.assertIn("decay-expiries=1", r.stdout)
+            self.assertIn("ADR-033", r.stdout)
+            self.assertIn("review whether the scope judgment was ever real",
+                          r.stdout)
+            self.assertIn(repeat, r.stdout)
+            self.assertIn(prior, r.stdout)
+            # --json shape
+            r = _truth(d, "stats", "--json")
+            o = json.loads(r.stdout)["overrides"]
+            self.assertEqual(o["scope_basis_filings"], 2)
+            self.assertEqual(o["decay_expiries"], 1)
+            self.assertEqual(o["max_scope_ttl_days"], 30)
+            self.assertEqual(len(o["repeats"]), 1)
+            self.assertEqual(o["repeats"][0]["claim"], repeat)
+            self.assertEqual(o["repeats"][0]["prior"], prior)
+            self.assertEqual(o["repeats"][0]["prior_status"], "stale")
+
+    def test_max_scope_ttl_rendered_in_plain_text(self):
+        """F2: the `max scope ttl <N>d` suffix is part of the PLAIN
+        `truth stats` render, not only the JSON field. A large --ttl-days
+        (the visible opt-out) must surface in plain text; this fails if
+        the suffix is ever dropped while JSON stays intact."""
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            r = _truth(d, "claim", self.QTEXT, "--class", "VERIFIED",
+                       "--evidence-cmd", self.ECMD, "--paths", "f.txt",
+                       "--tier", "P1", "--scope-ok", self.SB,
+                       "--ttl-days", "36500")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = _truth(d, "stats")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("max scope ttl 36500d", r.stdout)
+            # and the JSON twin carries the same number (both surfaces)
+            rj = _truth(d, "stats", "--json")
+            self.assertEqual(
+                json.loads(rj.stdout)["overrides"]["max_scope_ttl_days"],
+                36500)
 
 
 if __name__ == "__main__":
