@@ -21,8 +21,10 @@ see §8 item 1.
 
 **How to read this paper.** Section headers are ordered by evidence class,
 not narrative convention: mechanism and measurement first, interpretation
-last. §6.2 and §6.3 are explicitly optional — skip them if you want the
-artifact, not the theory. §6.1 isn't: it's the analysis §2 promises and §10 builds on.
+last. §6.2–§6.4 are explicitly optional — skip them if you want the
+artifact, not the theory (§6.4 is the practitioner-facing motivation,
+mapping the References' Standards table to the developer/PM problems
+each mechanism answers). §6.1 isn't: it's the analysis §2 promises and §10 builds on.
 §7 applies the artifact's own discipline to this document: a table of what
 would falsify this paper's own claims.
 
@@ -757,6 +759,82 @@ balance (`validate`) is double-entry bookkeeping's, five centuries on —
 offered strictly as metaphor in §6.2's sense, since no double entry
 exists here.
 
+### 6.4 Standards lineage — the obligations this mechanizes
+
+Added 2026-07-20. The References' Standards table is not decoration:
+each entry names an obligation the engineering standards have
+prescribed for decades and that teams satisfy, in practice, with
+meetings, wikis, and hope. Read as motivation, the artifact is not
+inventing new obligations — it is mechanizing existing ones at the one
+point where they have historically been unaffordable: per sentence, at
+the moment of authorship. Like §6.1–6.3, none of this is required to
+operate the artifact; unlike them, it states the *practitioner*
+problems the mechanism answers, each anchored to the standard that
+already names it.
+
+- **Knowledge outlives its validity** — a fact confirmed Tuesday is
+  silently falsified by Thursday's merge, and no artifact records the
+  transition. ISO 10007 names the remedy *configuration status
+  accounting*: at any time, the status of every item is known. The
+  ledger extends CSA from artifacts to *statements about* artifacts —
+  every claim has a derivable current status, and a code change
+  mechanically demotes what it may have invalidated (§1 Invalidation).
+- **"Checked" and "believed" are typeset identically** in standups, PR
+  summaries, and estimates. ISO/IEC/IEEE 12207 insists on separating
+  *verification* (was the check performed correctly) from *validation*
+  (is it the right check for the need). The artifact enforces that
+  split twice: evidence classes make belief-vs-check explicit at
+  filing, and the verifier protocol separates re-running the command
+  (verification) from judging whether its output supports the claim's
+  *sentence* (validation). §2's dominant failure — a correct grep
+  backing an overreaching quantifier — is a validation failure hiding
+  behind passing verification, which is why ADR-007 gates it at intake.
+- **"What breaks if this assumption is wrong?" is unanswerable in
+  either direction.** ISO/IEC/IEEE 24765's forward/backward
+  traceability, usually applied requirements↔code↔tests, is applied
+  here assumptions↔work: premise records give backward traceability
+  (this work rests on these claims, with evidence); `impact` and
+  watched paths give forward traceability (this change reaches these
+  claims, which block that work). `ready` is the traceability graph
+  evaluated as a gate rather than read as a report.
+- **Requirement hygiene is prescribed but never enforced at
+  authorship.** ISO/IEC/IEEE 29148's characteristics — unambiguous,
+  verifiable, singular; set-complete, set-consistent — are the intake
+  gates (§1) restated as refusals: empty text (not verifiable), a
+  universal quantifier over a scoped command (ambiguous as stated),
+  a near-duplicate (set consistency), VERIFIED-without-evidence
+  (unverifiable), a statically dead tripwire (unfalsifiable, so not a
+  requirement at all — INV-M).
+- **"Done" means someone said so.** ISO/IEC/IEEE 29119's
+  requirement-based coverage appears as the acceptance oracle
+  (ADR-014): `done` refuses unless the committed acceptance command
+  exits zero, and the completion claim files with evidence — closure
+  becomes a measured event.
+- **Descriptions decay into fiction with nobody assigned to notice.**
+  ISO/IEC/IEEE 42010's correspondence rules — an architecture
+  description must demonstrably correspond to the system — are
+  mechanized by doc-coverage claims watching both the document and the
+  code surface it describes (§5); ISO/IEC 25010/25023's functional
+  completeness gets the same treatment, an asserted "module X covers Y"
+  becoming a claim with an evidence command and a lifecycle.
+- **The agent-era amplifier.** Every standard above assumes a human
+  review loop; LLM agents produce confident codebase assertions faster
+  than any such loop scales, and §2's evidence says their dominant
+  failure is scope overreach, not fabrication. The artifact's answer is
+  to make the standards' obligations cheap enough to apply per
+  sentence: file with evidence in one command, demote mechanically,
+  verify independently, gate work on the result.
+
+The calibration this paper owes every framing applies here too: the
+mapping above is the *problem statement* the mechanisms answer, not
+evidence that they answer it economically. Whether the ledger
+net-helps — the value of caught staleness minus the re-verification
+churn §9's blast-radius convention exists to contain — is exactly §8
+item 2's open efficacy question, unresolved until the control
+comparison in §10 runs. The standards establish that the obligations
+are real; they do not establish that this is the cheapest way to meet
+them.
+
 ---
 
 ## 7. This paper's own claims, and what would falsify them
@@ -1344,7 +1422,8 @@ the defect-class level rather than by operator at the syntax level.
 ### Standards
 
 All catalog pages verified live with status **Published**; texts are
-paywalled.
+paywalled. §6.4 reads this table as motivation: the practitioner
+obligation each standard names, and the mechanism that mechanizes it.
 
 | Standard | Used for | Catalog |
 |---|---|---|
