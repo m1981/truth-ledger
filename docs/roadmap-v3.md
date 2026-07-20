@@ -217,11 +217,13 @@ the analysis's register of rejections.)
 
 ## Operator-owned (no agent can do these)
 
-- **R9 (A5) Re-home the meta-repo canary claim** — HALF-DONE
+- **R9 (A5) Re-home the meta-repo canary claim** — DONE
   (2026-07-21: old claim tr-3a31bfcf human-retracted, plus 6 superseded
-  diverged claims, all via the ADR-011 ceremony. REMAINING, operator:
-  file the canary as an ADR-014 acceptance oracle on a work item, e.g.
-  `truth issue "weekly canary" --accept-cmd "bash scripts/truth-canary.sh"`.)
+  diverged claims, all via the ADR-011 ceremony. Re-homed as an ADR-014
+  acceptance oracle: `wk-d13b8014` "weekly canary",
+  `--accept-cmd "bash scripts/truth-canary.sh"`, screened true against
+  `.truth/accept-allow`. Filed without --premise: nothing live to stand
+  it on since the old claim was retracted, not superseded.)
 - **R10 (A7) External referee run** of docs/independent-review.md by a
   genuinely external party; publish verbatim; cite in §8.1. — OPERATOR
 - **R11 Efficacy trial**: land Batches 1–2 first (honest churn
@@ -315,3 +317,18 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   R9 second half (oracle re-file), R10, R11 (first audit ~2026-08-08),
   paper v2 retirement to docs/archive/, Batch 5 paper doc touches
   (INV-T/INV-U rows etc., see 2026-07-20 entries).
+- 2026-07-21 (cont'd): AGENTS.md and README.md still named v2 the
+  normative/living spec after Batch 4 shipped v3 as its consolidation
+  successor — fixed, both now cite truth-ledger-paper-v3.md; post-commit
+  scan staled tr-6308173b and tr-f0ac802b as the pre-edit whisper
+  predicted. R9 second half done: filed `wk-d13b8014` "weekly canary" as
+  an ADR-014 acceptance oracle, `--accept-cmd "bash scripts/truth-canary.sh"`,
+  screened true (R9 entry above updated HALF-DONE -> DONE). Paper-v2 ->
+  docs/archive/ move itself still sits uncommitted in the working tree —
+  operator-approved but blocked pending the deliberate freeze lift
+  (.githooks/pre-commit). Still open: R10, R11 (first audit
+  ~2026-08-08), Batch 5 paper doc touches, and the un-fixed stale-v2
+  citations noted in review (docs/field-notes-sdk-session.md,
+  docs/independent-review.md's R10 review target) — left for operator
+  judgment since one's a historical field note and the other decides
+  what R10 actually reviews.
