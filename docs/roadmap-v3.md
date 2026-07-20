@@ -217,8 +217,11 @@ the analysis's register of rejections.)
 
 ## Operator-owned (no agent can do these)
 
-- **R9 (A5) Re-home the meta-repo canary claim** as an ADR-014
-  acceptance oracle (ledger operation in the meta-repo). — OPERATOR
+- **R9 (A5) Re-home the meta-repo canary claim** — HALF-DONE
+  (2026-07-21: old claim tr-3a31bfcf human-retracted, plus 6 superseded
+  diverged claims, all via the ADR-011 ceremony. REMAINING, operator:
+  file the canary as an ADR-014 acceptance oracle on a work item, e.g.
+  `truth issue "weekly canary" --accept-cmd "bash scripts/truth-canary.sh"`.)
 - **R10 (A7) External referee run** of docs/independent-review.md by a
   genuinely external party; publish verbatim; cite in §8.1. — OPERATOR
 - **R11 Efficacy trial**: land Batches 1–2 first (honest churn
@@ -301,3 +304,14 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   F1 half-life TTL exclusion, +1 F2 plain-text lock), test-truth-v04.py
   13, truth-canary.sh 176 caught / 0 missed. Left uncommitted for
   operator review.
+- 2026-07-21: human retraction round committed (R9 first half + 6
+  superseded claims); ledger fully groomed (0 stale, 0 diverged, empty
+  queue). v0.9.14 tagged and pushed; kuchnie pilot copier-updated
+  v0.9.9 -> v0.9.14 zero-conflict, all suites green there (core 218
+  w/ 2 consumer skips, v04 13, canary 176/0, validate 1139 OK, doctor
+  clean), committed on branch chore/copier-update-v0.9.14 and pushed —
+  PR + merge is the operator's. _skip_if_exists protected the pilot's
+  own CHANGELOG.md (first real-world test of R5's guard). Still open:
+  R9 second half (oracle re-file), R10, R11 (first audit ~2026-08-08),
+  paper v2 retirement to docs/archive/, Batch 5 paper doc touches
+  (INV-T/INV-U rows etc., see 2026-07-20 entries).
