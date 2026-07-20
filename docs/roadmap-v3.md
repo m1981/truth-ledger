@@ -155,8 +155,40 @@ Statuses: TODO / IN-PROGRESS / DONE / OPERATOR (human-owned) / BLOCKED.
   test-tlr-fold.py (18/18 with negative controls, 2026-07-20)."
   Also: adopt the gate-vs-queue decision rule text into the ops guide.
 
+## Batch 5 — override decay + its instrument (effort S) — TODO
+(From the 2026-07-20 candidate-adoption analysis of the clean-room six:
+C4+C6 adopted; C1/C2/C3/C5 deferred as obligation-ledger §9 amendments;
+rejected placements in docs/growth-gate/clean-room-convergence.md and
+the analysis's register of rejections.)
+
+- **R12 (C4, ADR-032) `--scope-ok` default expiry** — TODO (v0.9.14)
+  A scope_basis claim filed without --ttl is stamped ttl_days=30 +
+  ttl_default:true (notice printed, never refused); expiry rides the
+  unchanged ADR-019 scan path; ADR-030 arm 1 routes it to re-file,
+  which re-fires ADR-007. Schema AND mirror gain optional ttl_default
+  (FS-2 fixtures both ways).
+  Accept: pure-function unit tests (3 arms + _ttl_expired parity),
+  sandbox integration, canary FAULT SD (4 arms incl. negative control);
+  suites 201/13/170 + additions; INV-T row, §1/§10/loophole-map/
+  ops-guide touches. ADR carries its own adoption gate: widen or drop
+  to opt-in if decay invalidations exceed genuine diverges across two
+  rot-free reviews.
+- **R13 (C6, ADR-033) override-velocity report** — TODO (v0.9.14,
+  after R12 — reads the fields R12 stamps)
+  `stats` gains an overrides section: per-window override counts, decay
+  expiries, max ttl on override claims, and a non-blocking
+  token-set-identical re-justification advisory. NO threshold tripwire
+  until two R11 audit windows exist.
+  Accept: pure-function unit tests (5 arms), canary FAULT OV (+
+  negative control); suites green; INV-U row, §8/§10/ops-guide touches.
+
 ## Backlog
 
+- **R13 threshold tripwire** — only after two R11 hand-audit windows
+  establish the advisory's FP baseline.
+- **Decay for screened:false claims** — only if a stale-in-fact
+  unscreened claim is found unquestioned in the field (deliberately
+  excluded from R12).
 - **Content re-sync of the two satellite docs** (from R4, v0.9.13) —
   DONE (2026-07-20: both bodies re-synced to v0.9.13 against the CLI,
   CHANGELOG, ADRs 007–031, and paper v3; headers now state "content
@@ -228,3 +260,10 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   re-synced at v0.9.13", pin format unchanged. Editing-only change;
   test-truth-core.py 201 OK (version-pin tests green). Left uncommitted
   for operator review.
+- 2026-07-20: candidate-adoption analysis of the clean-room six (prompt
+  archived in session scratchpad): C4+C6 adopted as Batch 5 (R12/R13,
+  ADR-032/033 pending); C1/C2/C3/C5 deferred — written as
+  obligation-ledger-design.md §9 amendments; register of rejections
+  with reopeners in the analysis output. Zero outright rejects is
+  pre-screening, not miscalibration: the convergence doc had already
+  quarantined the re-losing mechanisms.

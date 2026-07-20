@@ -140,3 +140,64 @@ compute and human sampling load. Efficacy would need its own trial by
 the paper's own discipline (§7/§8): mechanism-exists ≠ net-helps. Which
 is why this stays demand-gated behind a real compliance adopter, and
 the current artifact's trial (roadmap R11) runs first.
+
+## 9. Adopted amendments — clean-room candidates (2026-07-20)
+
+Four of the six clean-room convergence candidates
+(`clean-room-convergence.md` §Divergences) were adjudicated
+DEFER-TO-GATE in the 2026-07-20 candidate-adoption analysis: they
+belong to this design, not the current artifact. Each amends a named
+row above; none is built before this document's trigger fires.
+
+**C1 → §6 "29148 individual characteristics" (judge duty).** The
+judge's ambiguity check at intake adopts the interpretation-divergence
+protocol: two tribunal sessions with different prompts each
+independently derive a paraphrase plus three concrete input/output
+examples from the requirement text; a deterministic comparator diffs
+the example sets; divergent examples constitute detected ambiguity and
+attach verbatim to the refusal or queue entry as evidence. Calibration
+per §4; the mechanism's own failure mode — both workers converging on
+a trivially-passable reading — is countered by a periodic audit asking
+"what obviously wrong reading would still converge?". Not for the
+current artifact: a per-claim LLM step at filing re-loses the
+friction-budget argument (paper §9, one command to file) and worsens
+the §2.2 cost side against zero measured demand (cannot_verify = 0 of
+614 verdicts).
+
+**C2 → §6 "29119 requirement-based coverage" (row upgrade).** The
+mechanical clause tightens: a witness test counts toward the frame's
+numerator only if it kills at least one LLM-authored requirement
+mutant — a plausible implementation violating that requirement
+specifically. The judge duty ("exercise or merely touch") becomes
+mutant cross-examination: rate whether each mutant would plausibly
+arise from a rushed implementation, so strawman mutants cannot inflate
+kill rates. The headline stays a list (zero-evidence obligations;
+never-shown-able-to-fail evidence), never a percentage. This is the
+artifact's own canary negative-control discipline lifted to the
+adopter's requirement level; in the current artifact its cheap 80%
+already ships as the verifier prompt's discriminating-search
+instruction and the seeded-fault suite.
+
+**C3 → §6 "29148 set consistency" (adversary duty).** The pairwise
+contradiction sweep adopts constraint sketches with neighborhood
+selection: each card compiles (LLM-drafted, author-verified) to a
+sketch — nouns/resources touched, typed unit-aware numeric claims,
+ordering/invariant claims; a shared-noun index scopes checking to the
+new card's neighborhood; numeric conflicts are decided by a
+deterministic unit-aware checker (mechanical tier), semantic pairs by
+a judge asked to construct one scenario satisfying both or explain why
+none exists. Vocabulary fragmentation, the mechanism's own failure
+mode, is countered by a scheduled human-approved synonym-merge pass.
+Demand evidence to require before building: the current ledger holds
+zero `contradicts` records ever filed and zero contradiction-shaped
+defects across both measurement windows.
+
+**C5 → §5 anti-rubber-stamping (fourth mandatory countermeasure).**
+**Forced-choice bundles** — every question routed to a human ceremony
+ships with two defensible candidate answers with visibly different
+consequences, drafted by the tribunal, so a nod is impossible: the
+human act is a choice, never an acknowledgement. Declining both in
+favor of a written third answer is allowed; silence or an unmarked nod
+is flagged to the review process, exactly as signing over a seeded
+challenge is. Complements one-screen bundles (compression), seeded
+challenges (detection), and decay (expiry).
