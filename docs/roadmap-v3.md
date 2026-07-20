@@ -332,3 +332,27 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   docs/independent-review.md's R10 review target) — left for operator
   judgment since one's a historical field note and the other decides
   what R10 actually reviews.
+- 2026-07-21 (cont'd): Batch 5 PENDING docs touches landed. Paper v3:
+  §1 gains an "Override decay" paragraph (ADR-032); §8 gains item 8
+  (ADR-033's verbatim-repeat advisory is evadable by one text edit —
+  raw counters are the real backstop); §10's scoping-fault bullet notes
+  what shipped vs. what's still unmeasured; Appendix A gains INV-T
+  (ADR-032) and INV-U (ADR-033), title bumped to v0.9.14. Loophole-map
+  §B gains a "closed since v0.9.14 — scope-ok rot" paragraph and a
+  ranked-table cell; header's content-sync-pending note cleared. Ops
+  guide: new "scope-ok default-expiry notice" paragraph (§2, exact
+  stderr string) + stats trigger-map row extended for the `overrides`
+  section; header note cleared. `bash scripts/fact-health.sh` run clean
+  on all three (zero new tr- citations added — cited by ADR number, the
+  ADRs' own home). Pre-existing, out of scope: fact-health flags
+  tr-3a31bfcf (README, field-notes-batch-m, this file) as retracted-but-
+  cited, from last session's R9 retraction not yet scrubbed from prose;
+  and tr-6308173b/tr-f0ac802b in this file's own Log narration of
+  today's staling, same past-tense-citation shape the Log already uses
+  for tr-3a31bfcf's retraction. Neither touched. Also found and
+  restored: the paper-v2→docs/archive/ move (left uncommitted for the
+  operator, see above) was sitting half-done in the working tree — file
+  physically gone from its old path with nothing staged — which crashed
+  fact-health.sh's first run (`open()` reads disk, not git's index).
+  Moved it back to match HEAD exactly; `git mv` is a clean one-step
+  redo whenever the freeze is deliberately lifted.

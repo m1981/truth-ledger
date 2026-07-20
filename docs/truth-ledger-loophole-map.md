@@ -1,6 +1,6 @@
 # The Loophole Map — Five Agent Events, Simulated
 
-> Reader: anyone assessing what the truth ledger can and cannot enforce against agent behavior | Enables: knowing, per event type, which gates are CLI refusals and which residuals are behavioral — and what the worst case actually is | Update-trigger: a gate ships or a residual closes (current: CLI v0.9.14 — content re-synced at v0.9.13 on 2026-07-20; header pinned in lockstep by TestCrossSurfaceVersions since v0.9.13; ADR-032/033 override-decay content sync pending)
+> Reader: anyone assessing what the truth ledger can and cannot enforce against agent behavior | Enables: knowing, per event type, which gates are CLI refusals and which residuals are behavioral — and what the worst case actually is | Update-trigger: a gate ships or a residual closes (current: CLI v0.9.14 — content re-synced at v0.9.13 on 2026-07-20, ADR-032/033 override-decay content added 2026-07-21; header pinned in lockstep by TestCrossSurfaceVersions since v0.9.13)
 
 Provenance: adapted from a second-deployment session walkthrough
 (repo `temporal-go-agent-sdk`, 2026-07 — the same session behind
@@ -70,6 +70,18 @@ namespaces are refused at intake (v0.9.8/ADR-024; a dormant glob over a
 `--duplicate-ok` override now stamps `overridden_duplicates` into the
 record — attackable ledger content instead of a traceless bypass
 (v0.9.2).
+
+**Also closed since v0.9.14 — scope-ok rot.** E2's `--scope-ok`
+override, once filed, used to sit live forever with nothing re-asking
+whether the scope judgment still held. ADR-032 stamps a default 30-day
+TTL on any `--scope-ok` filed without an explicit `--ttl-days`; on
+expiry ADR-030 arm 1 routes it to re-file, re-firing E2 rather than
+trusting the sentence permanently. ADR-033 gives the adoption gate its
+instrument: `truth stats`'s `overrides` section counts filings and
+decay expiries, and non-blockingly flags a justification re-filed with
+an identical token set after its prior died — evadable by a single
+word edit, so the raw counters, not the advisory, are what an audit
+actually reads (paper §8 item 8).
 
 One narrow residual *inside* the protection metadata remains open
 (found in the meta-repo, 2026-07-13; named the undecidable residual by
@@ -292,7 +304,7 @@ paper v3 §10.)*
 | Event | Loophole | Enforced or behavioral? | Status |
 |---|---|---|---|
 | A. Bootstrap | Agent never loads instructions, hook-less harness | Behavioral (mitigated: G2 check + v0.6.3 kernel warn, whisper, FS-4 digest) | Known, §8.5 — unchanged at v0.9.13 |
-| B. Assert | Talks without filing; hollow VERIFIED (stably-failing probe files on determinism, not exit 0) | Behavioral; hollow VERIFIED warned, never refused | Known, §1; warning v0.9.11. Symlink-tripwire residual open (ADR-024) |
+| B. Assert | Talks without filing; hollow VERIFIED (stably-failing probe files on determinism, not exit 0); `--scope-ok` justification rot (filed once, never re-examined) | Behavioral; hollow VERIFIED warned, never refused; scope-ok rot countered by default expiry, advisory non-blocking and evadable | Known, §1; warning v0.9.11. Symlink-tripwire residual open (ADR-024). Scope-ok decay ADR-032/033 v0.9.14 |
 | C. Finish | `done` trusts the word only where no oracle was declared (`--accept-cmd` shipped v0.7.0/ADR-014, closed upstream #1); a supersede can free HELD work with an unverified replacement — mechanical dead states only, warned, auditable | Oracle: enforced at close, opt-in per issue; supersede: retracted door human-gated | ADR-014 v0.7.0; ADR-017 v0.9.3; HELD exit ADR-013 v0.6.4 |
 | D. Verify | Self-`agree` refused; session identity self-attested; reaffirm adds batch self-verdict amplification (loud) + coverage-narrower-than-watch auto-clear (audited via `reaffirm_cleared`) | Enforced as refusal; bypass is one visible export (F4 class); mismatch never auto-agreed (INV-S) | ADR-010 v0.6; screen bypass closed ADR-021 v0.9.6; reaffirm ADR-030 v0.9.12 |
 | E. Concurrent | Fresh-id timestamp forgery (dup-id substitution refused in EVERY ts shape — one rule) | Accepted residual; detection gate-conditional (ADR-025, banner v0.9.11) | §8.6; ADR-031 v0.9.13 (subsumes ADR-008/016) |

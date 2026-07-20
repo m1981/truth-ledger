@@ -175,6 +175,15 @@ never run, unless `--evidence-unsafe-ok` bypasses it — which then
 double-runs, applies the determinism check, and stores `screened: false`
 for `recheck` to refuse forever (ADR-029).
 
+**Override decay.** Since v0.9.14, a `--scope-ok` claim filed without an
+explicit `--ttl-days` is stamped a default 30-day TTL (`ttl_default:
+true`) rather than living forever; it is never refused (ADR-032).
+Expiry rides the unchanged ADR-019 scan path, and ADR-030 arm 1 routes
+the resulting stale claim to re-file — re-firing this same ADR-007
+gate, so the scope judgment is mechanically re-asked on a schedule
+rather than trusted once. An explicit `--ttl-days` remains the visible
+opt-out.
+
 **Invalidation.** A scan, wired to post-merge hooks or CI, demotes
 claims whose premises git can check; anchor-loss after rebase/squash/gc
 demotes as "anchor unreachable" — failing toward distrust.
@@ -752,6 +761,17 @@ question*.
    queue and `stats` report the rates separately. Open: whether the
    distinction is applied consistently — shipped, calibration
    unmeasured.
+8. **Override decay's instrument is evadable, not just uncalibrated.**
+   ADR-033's verbatim-repeat advisory — flagging a `--scope-ok`
+   justification re-filed unchanged after a decay expiry — is defeated
+   by a single synonym swap or appended token; the red team demonstrated
+   this directly. The backstop is the raw counters
+   (`scope_basis_filings`, `decay_expiries`), which increment regardless
+   of text evasion; the advisory is a convenience pointer, not the
+   measurement. Both ADR-032's decay and ADR-033's report are new as of
+   v0.9.14 — outside every field window §2 covers, with their own
+   adoption-gate calibration debt folded into the same R11 clock as
+   item 2.
 
 ---
 
@@ -794,8 +814,14 @@ default).
   plus a second arm, reaffirm's leak rate against the labor it
   recovers.
 - **A scoping-fault countermeasure beyond discipline — shipped (v0.6,
-  ADR-007).** Remaining: its false-positive rate, and whether
-  `--scope-ok` justifications rot to ritual.
+  ADR-007), its ritual-rot risk now countered too (v0.9.14, ADR-032):**
+  a `--scope-ok` justification filed without an explicit TTL decays on
+  a 30-day default and re-fires the same gate on re-file, rather than
+  sitting live forever. Measured by the override-velocity report
+  (ADR-033). Remaining: both false-positive rates — decay-expiry-vs-
+  genuine-diverge, and the verbatim-repeat advisory's own evadable FP
+  class (§8 item 8) — unmeasured until two rot-free R11 hand-audit
+  windows accumulate.
 - **Integrity upgrade, behind the growth gate.** Earlier revisions
   proposed hash-linking each record to its predecessor (Haber &
   Stornetta, 1991) as the signature-free answer to §8 item 6. A red-team
@@ -834,7 +860,7 @@ default).
   verification proves too narrow.
 
 ---
-## Appendix A. Invariant table (v0.4 core through v0.9.13)
+## Appendix A. Invariant table (v0.4 core through v0.9.14)
 
 Every shipped property a seeded fault gates belongs here — a row is
 added when the property ships, not later. That rule has been violated
@@ -864,6 +890,8 @@ itself.
 | INV-Q | An acceptance oracle gates issue close: non-zero exit refuses `done`; an unscreened oracle is refused execution unless `--accept-unsafe-ok` stamps it visibly | One issue closed over a failing oracle, or an unscreened oracle executed silently | Seeded faults AC1–AC8 (ADR-014); `accept.executed=true` requires `returncode 0` |
 | INV-R | Declared contradictions dispute both sides: while both endpoints would otherwise be `live`, both fold to `disputed` via a post-pass over the *underlying* statuses (order-independent, so INV-I survives); `disputed` blocks premises; a dormant edge changes nothing | One pair both `live`; one issue ready on a `disputed` premise; a dormant edge changing a status | Seeded faults C1–C5; TestDisputed core tests |
 | INV-S | A reaffirm hash-mismatch is never auto-agreed: `reaffirm` auto-files `agree` only on an exact hash-and-exit match through the same screened recheck path; a mismatch files nothing; TTL-staled, unscreened, never-agreed, and same-session claims skip with reasons (ADR-030) | One mismatch auto-filed; or one skipped-arm claim executed or auto-agreed | Canary FAULT RA + core tests |
+| INV-T | A `scope_basis` claim filed without an explicit `--ttl-days` is stamped a default `ttl_days=30` and `ttl_default: true`, and is never refused; an explicit `--ttl-days`, or no `scope_basis`, leaves the claim unchanged. Expiry rides the unchanged ADR-019 scan path (counted from the claim's own `ts`) — the fold reads no clock (ADR-032) | One default-stamped filing refused, or accepted without the flag; one explicit `--ttl-days` silently overridden by the default; one default-TTL claim demoted by any path other than the ADR-019 scan record | Seeded canary FAULT SD-decay (4 arms incl. negative control); core tests TestOverrideDecay + TestScopeDecayCLI |
+| INV-U | `truth stats`'s `overrides` section counts scope-ok filings, ADR-032 decay expiries, overridden duplicates, and unscreened filings exactly, and flags as a repeat only a `scope_basis` claim whose `tokens()` set equals an earlier claim's that is now dead (stale/diverged/retracted) — a live/unverified prior is not flagged (ADR-033) | A verbatim re-justification after a decay expiry not flagged; or a genuinely narrowed re-file (token set differs in substance) flagged | Seeded canary FAULT OV (2 arms incl. negative control); core tests TestOverrideReport + TestOverrideReportCLI |
 
 ## Appendix B. Reproduction
 
