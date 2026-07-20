@@ -1,0 +1,49 @@
+{
+  "claims_by_status": {
+    "live": 38,
+    "retracted": 8,
+    "unverified": 7,
+    "stale": 7,
+    "diverged": 3
+  },
+  "claims_by_tier": {
+    "P0": {
+      "live": 2
+    },
+    "P1": {
+      "live": 34,
+      "retracted": 7,
+      "unverified": 5,
+      "diverged": 3
+    },
+    "P2": {
+      "unverified": 2,
+      "retracted": 1,
+      "stale": 7,
+      "live": 2
+    }
+  },
+  "verdicts": {
+    "agree": 597,
+    "diverge_genuine": 7,
+    "diverge_mechanical": 2,
+    "cannot_verify": 0,
+    "retracted": 8
+  },
+  "half_life": {
+    "P0": {
+      "n": 48,
+      "median_days": 0.02
+    },
+    "P1": {
+      "n": 432,
+      "median_days": 0.02
+    },
+    "P2": {
+      "n": 74,
+      "median_days": 0.02
+    }
+  },
+  "queue_size": 3,
+  "queue_max_age_days": 1
+}
