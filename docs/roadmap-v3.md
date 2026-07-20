@@ -356,3 +356,14 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   fact-health.sh's first run (`open()` reads disk, not git's index).
   Moved it back to match HEAD exactly; `git mv` is a clean one-step
   redo whenever the freeze is deliberately lifted.
+- 2026-07-21 (cont'd): tr-3a31bfcf scrub, partial by design. README.md's
+  two citations fixed — the canary table row now points at
+  `wk-d13b8014` (the ADR-014 oracle it was re-homed as, §"Operator-owned"
+  R9 above) instead of the dead claim; the claim-id-pattern example
+  repointed to tr-dca73f8a (live, cited below it in the same doc).
+  Deliberately NOT touched: docs/field-notes-batch-m-verification-session.md
+  and this file's own Log narrate the id at points when it *was* live/P0
+  — rewriting those would falsify history, not fix a bug, same shape as
+  this Log's own tr-6308173b/tr-f0ac802b narration two entries up.
+  fact-health: 5 failures remain, all historical-narration citations, 0
+  live-prose-on-dead-fact.

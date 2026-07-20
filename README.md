@@ -93,7 +93,7 @@ made mechanical instead of vigilance-dependent.
 | `.github/workflows/` | PR gate · post-merge scan with bot commit-back · weekly seeded-fault canary |
 | `prompts/truth-verifier.md` | fixed prompt for independent verification (isolation is scripted) |
 | `docs/adr/001` | the readiness semantics: which premises block work, by cost tier |
-| `template/scripts/truth-canary.sh` | the seeded-fault suite — run weekly; it prints its own count; all CAUGHT, or stop trusting green (standing fact: tr-3a31bfcf in this repo's own ledger) |
+| `template/scripts/truth-canary.sh` | the seeded-fault suite — run weekly; it prints its own count; all CAUGHT, or stop trusting green (enforced in this repo's own ledger: `wk-d13b8014`, an ADR-014 acceptance oracle — `done` refuses the close on any miss) |
 
 ## The non-interference contract (why scaffolding can't hurt you)
 
@@ -114,7 +114,7 @@ see, it cannot touch.
 The template repo runs its own ledger: `.truth/claims.jsonl` at the root,
 gated by the same committed hooks (`.githooks/`, activated via
 `core.hooksPath`). Load-bearing facts about this repo appear in its prose
-as claim ids (e.g. tr-3a31bfcf above), filed with real evidence commands
+as claim ids (e.g. tr-dca73f8a below), filed with real evidence commands
 and independently verified by fresh dispatch-only sessions — never as
 restated counts, which this repo's own audit history shows always rot.
 `bash scripts/fact-health.sh` sweeps the live docs and judges every cited
