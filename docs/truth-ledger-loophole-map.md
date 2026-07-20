@@ -1,6 +1,6 @@
 # The Loophole Map — Five Agent Events, Simulated
 
-> Reader: anyone assessing what the truth ledger can and cannot enforce against agent behavior | Enables: knowing, per event type, which gates are CLI refusals and which residuals are behavioral — and what the worst case actually is | Update-trigger: a gate ships or a residual closes (current: CLI v0.6.4)
+> Reader: anyone assessing what the truth ledger can and cannot enforce against agent behavior | Enables: knowing, per event type, which gates are CLI refusals and which residuals are behavioral — and what the worst case actually is | Update-trigger: a gate ships or a residual closes (current: CLI v0.9.13 — content last synced at v0.6.4; header pinned in lockstep by TestCrossSurfaceVersions since v0.9.13, content re-sync pending)
 
 Provenance: adapted from a second-deployment session walkthrough
 (repo `temporal-go-agent-sdk`, 2026-07 — the same session behind
@@ -170,6 +170,10 @@ on a fresh, non-duplicate id — closable only by signed records or
 hash-linking (paper §10), deferred behind the growth gate: build it when
 the first forged timestamp is found in the wild. Not reachable by an
 honest agent.
+*(Correction 2026-07-20: "hash-linking" here meant a linear
+prev-hash chain, which a red-team falsified for this regime; the named
+growth-gate successor is the hash-TREE design in `docs/growth-gate/` —
+paper v3 §10.)*
 
 ---
 

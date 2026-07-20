@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.9.10)
+# .truth — append-only claims ledger (v0.9.13)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -128,10 +128,12 @@ hash identically; `--single-run` overrides). INFERRED requires `--basis`.
 ## v0.6 solo-regime hardening (docs/hardening-proposals-solo-regime.md)
 
 Beyond the two intake gates above: `validate` (and therefore the commit
-gate) fails on a backdated duplicate-id append — the canonical-order
-substitution the fold's first-wins dedup composed with timestamp forgery
-(ADR-008) — and warns on clock regression beyond 300s; identical
-duplicated lines (git union-merge shape) still pass. `verdict <id>
+gate) fails on ANY duplicate-id append whose content differs from the
+first-seen record, regardless of timestamp — one rule (ADR-031, v0.9.13)
+subsuming the backdated (ADR-008) and equal-ts (ADR-016) substitution
+cases; corrections file under fresh ids, so only the byte-identical git
+union-merge duplicate may share an id and still passes. `validate` also
+warns on clock regression beyond 300s (ADR-008, unchanged). `verdict <id>
 agree` from the claim's own session is refused (ADR-010; self-diverge
 and self-cannot_verify stay allowed — they run against interest;
 `TRUTH_SELF_VERDICT=1` is the human override, self-attested like
@@ -190,7 +192,7 @@ the snapshot cache is deliberately unbuilt until that warning fires).
 2. Run `bash scripts/install-hooks.sh` after every `git init`/`git clone`
    (local hooks do not survive clones), or use CI instead — one of the
    two MUST exist. This is the *commit gate* (`check-truth`); without it
-   INV-A/INV-B/INV-G/INV-N and the ADR-008 order detections do not run and
+   INV-A/INV-B/INV-G/INV-N and the ADR-008/031 order detections do not run and
    the ledger's append-only guarantee is unenforced. For CI, name the gate
    scripts (`check-truth`, `invalidate-scan`) in a workflow `doctor` greps
    (`.github/workflows/*`, `.gitlab-ci.yml`, `.circleci/config.yml`,
@@ -385,6 +387,12 @@ satellites' work, not this verb's. Canary FAULTS W5–W8.
 ## Daily operation
 
 Daily (~2 min): `scripts/truth queue` — empty means carry on.
+When stale claims pile up, from a fresh session: `scripts/truth reaffirm`
+— re-runs each stale claim's screened evidence command; a hash-match
+auto-files `agree` (the anchor advances), a mismatch files NOTHING and is
+listed for dispatch; TTL-staled (re-file, ADR-019), unscreened,
+never-agreed, and same-session claims are skipped with the reason
+(ADR-030). `--dry-run` reports without filing.
 Weekly (~30 s): `scripts/truth-canary.sh`.
 After repo surgery (rebase spree, hook changes, new agent runtime):
 `scripts/truth doctor`.

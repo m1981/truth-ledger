@@ -1,6 +1,6 @@
 # Truth Ledger — Operations Guide: Triggers, Observability, and Automation
 
-> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: v0.9.0 — four surface changes since the v0.6.2 map below: `done` executes a declared acceptance oracle (ADR-014, v0.7.0) and `impact --inverse` is the backward-trace audit row (issue #5, v0.7.1) and `baseline` the release-accounting row (issue #3, v0.8.0) and `contradicts` the consistency row (issue #4, v0.9.0); v0.6.3 added output within doctor, v0.6.4 a flag within premise)
+> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: CLI v0.9.13 — content last synced at v0.9.0; header pinned in lockstep by TestCrossSurfaceVersions since v0.9.13, content re-sync pending. The v0.9.0 sync noted four surface changes since the v0.6.2 map below: `done` executes a declared acceptance oracle (ADR-014, v0.7.0) and `impact --inverse` is the backward-trace audit row (issue #5, v0.7.1) and `baseline` the release-accounting row (issue #3, v0.8.0) and `contradicts` the consistency row (issue #4, v0.9.0); v0.6.3 added output within doctor, v0.6.4 a flag within premise)
 
 ## 1. The trigger map — every point where the ledger executes
 
@@ -288,3 +288,24 @@ flowchart LR
 Caption: policy map of §4, not code — the boundary is enforced for H1
 (v0.4 FAULT M, hardened v0.6 by ADR-011's confirmation ladder, canary
 FAULTS H1–H3), detected for H2 (queue), and purely disciplinary for H3.
+
+## Gate vs. queue — the decision rule
+
+*(adopted from the TLR review, 2026-07-20)*
+
+When a new check could either refuse an operation (gate) or record a
+warning for later triage (queue), decide by consequence, not by
+severity intuition:
+
+- **Hard gate** iff the bad outcome is *irreversible* (a lost or
+  rewritten committed line, a released HELD block) OR an *automated,
+  unattended consumer* would act on the bad state before any human
+  looks (CI, a scripted sweep, an agent reading `ready`).
+- **Intake refusal** when the check is *cheap and field-validated* —
+  a pure predicate over the record being filed, with at least one real
+  instance it would have caught (INV-M, the quantifier–scope gate,
+  ADR-031's duplicate rule are the shipped examples).
+- **Queue warning** otherwise — anything needing judgment, anything
+  reversible, anything whose false-positive rate is unmeasured (the
+  v0.9.11 evidence-exit warning is the shipped example: loud, never
+  blocking, its efficacy part of the running trial).

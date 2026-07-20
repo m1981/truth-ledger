@@ -18,6 +18,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -694,6 +695,16 @@ class TestOrderCheck(unittest.TestCase):
         errors, _ = tm.order_check(evs)
         self.assertEqual(len(errors), 1)
         self.assertIn("duplicate id", errors[0])
+        self.assertIn("ADR-031", errors[0])
+
+    def test_equal_ts_content_distinct_duplicate_is_an_error(self):
+        """The ADR-016/C1 copied-timestamp forgery, now refused by the
+        unified ADR-031 rule."""
+        evs = events(rec("claim", claim_p(), ts=self.T1),
+                     rec("claim", claim_p(text="substitution"), ts=self.T1))
+        errors, _ = tm.order_check(evs)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("ADR-031", errors[0])
 
     def test_identical_union_merge_duplicate_passes(self):
         """git's union merge can duplicate an identical line (equal ts);
@@ -703,11 +714,37 @@ class TestOrderCheck(unittest.TestCase):
         errors, _ = tm.order_check(events(r, dict(r)))
         self.assertEqual(errors, [])
 
-    def test_later_duplicate_passes(self):
+    def test_later_ts_content_distinct_duplicate_is_refused(self):
+        """ADR-031 flips the pre-v0.9.13 acceptance: a later-ts duplicate
+        id with different content loses to first-wins anyway (harmless to
+        the fold) but has no legitimate producer -- corrections file
+        under fresh ids -- so it is now refused as pure attack surface."""
         evs = events(rec("claim", claim_p(), ts=self.T1),
                      rec("claim", claim_p(text="dup"), ts=self.T2))
         errors, _ = tm.order_check(evs)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("ADR-031", errors[0])
+
+    def test_byte_identical_later_duplicate_still_passes(self):
+        """ADR-031's only legal duplicate shape: byte-identical (the
+        union-merge duplicate), wherever it lands in the file."""
+        r = rec("claim", claim_p(), ts=self.T1)
+        other = rec("claim", claim_p(text="unrelated"), rid="tr-00000099",
+                    ts=self.T2)
+        errors, _ = tm.order_check(events(r, other, dict(r)))
         self.assertEqual(errors, [])
+
+    def test_fold_first_wins_unchanged_by_adr031(self):
+        """The gate refuses; the fold is UNTOUCHED (ADR-031 non-goal):
+        first-wins in (ts, id, canon) order keeps the genuine content for
+        a later-ts duplicate in either file order."""
+        genuine = rec("claim", claim_p(text="genuine"), ts=self.T1)
+        dup = rec("claim", claim_p(text="forged"), ts=self.T2)
+        for order in ((genuine, dup), (dup, genuine)):
+            claims, _ = tm.fold(events(*order))
+            c = claims[genuine["id"]]["claim"]
+            text = c.get("text") or c.get("payload", {}).get("text")
+            self.assertEqual(text, "genuine")
 
     def test_small_inversion_silent_large_inversion_warns(self):
         near = "2026-07-02T00:00:00+00:00"
@@ -1589,6 +1626,19 @@ CORPUS = [
                                              "reason": "ttl expired"}), True),
     ("invalidation missing commit",
      rec("invalidation", {"claim": "tr-00000001"}), False),
+    # v0.9.12 red-team F2/F3: the reaffirm audit field and the scan's
+    # structured TTL code ride the OPEN payload objects -- both contract
+    # surfaces must accept them (and older folds ignore them).
+    ("invalidation with reason_code ok",
+     rec("invalidation", {"claim": "tr-00000001", "commit": "abc1234",
+                          "reason": "ttl expired (7 days)",
+                          "reason_code": "ttl"}), True),
+    ("verdict with reaffirm_cleared ok",
+     rec("verdict", {"claim": "tr-00000001", "verdict": "agree",
+                     "basis": "reaffirm: hash-match, no judgment re-run",
+                     "anchor_commit": "abc1234",
+                     "reaffirm_cleared": {"prior_anchor": "def5678",
+                                          "touched": ["g.txt"]}}), True),
     # ADR-027: anchor_commit/commit carry a git SHA prefix (>=7 everywhere
     # the system emits one). The fs2 mutant generator is BLIND to this floor
     # (it emits no null, and its junk literal is 7 chars), so these explicit
@@ -1917,6 +1967,33 @@ def _readme_version():
         m = _VER_RE.search(f.readline())   # `# .truth ... (vX.Y.Z)`
     return m.group(1) if m else None
 
+# R4/v0.9.13 (ADR-026 extension): the satellite docs and the gate script
+# carry `current: CLI vX.Y.Z` / `current CLI: vX.Y.Z` stamps. They had
+# silently drifted to v0.6.4 / v0.9.0 / v0.4 before these pins existed.
+# NOTE the stamps assert only which CLI is CURRENT; each doc's header
+# separately states when its CONTENT was last synced (scope note), so a
+# pinned header never claims the body describes the current CLI.
+_CUR_CLI_RE = __import__("re").compile(r"current:? CLI:? v(\d+\.\d+\.\d+)")
+
+def _satellite_doc_version(name):
+    """Version stamp of a meta-repo doc under docs/; None when the doc
+    is absent (consumer copies receive template/ only, so these pins
+    must skip there, never fail); '' when present but unstamped."""
+    path = os.path.join(HERE, "..", "..", "docs", name)
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        for line in f:
+            m = _CUR_CLI_RE.search(line)
+            if m:
+                return m.group(1)
+    return ""
+
+def _gate_script_version():
+    with open(os.path.join(HERE, "check-truth.sh")) as f:
+        m = _CUR_CLI_RE.search(f.read())
+    return m.group(1) if m else ""
+
 class TestCrossSurfaceVersions(unittest.TestCase):
     """M1: the version stamps that are a hard invariant agree, mechanically."""
 
@@ -1929,6 +2006,37 @@ class TestCrossSurfaceVersions(unittest.TestCase):
             f"cross-surface drift (M1): README title v{readme} != CLI "
             f"v{cli}. They moved in lockstep every release until v0.9.x; a "
             f"release MUST bump both. Update the README title (ADR-026).")
+
+    # R4/v0.9.13: satellite-doc + gate-script stamps join the lockstep.
+    def _assert_doc_pin(self, name, got):
+        if got is None:
+            self.skipTest(f"docs/{name} absent (consumer copy)")
+        self.assertEqual(
+            got, _cli_version(),
+            f"cross-surface drift (R4): docs/{name} header stamps "
+            f"'current: CLI v{got or '<none>'}' but the CLI is "
+            f"v{_cli_version()}. A release MUST bump the header stamp "
+            "(the content-sync scope note in the same header is separate "
+            "and only changes on a real re-sync) (ADR-026).")
+
+    def test_loophole_map_header_pins_cli_version(self):
+        self._assert_doc_pin("truth-ledger-loophole-map.md",
+                             _satellite_doc_version(
+                                 "truth-ledger-loophole-map.md"))
+
+    def test_operations_guide_header_pins_cli_version(self):
+        self._assert_doc_pin("truth-ledger-operations-guide.md",
+                             _satellite_doc_version(
+                                 "truth-ledger-operations-guide.md"))
+
+    def test_check_truth_comment_pins_cli_version(self):
+        self.assertEqual(
+            _gate_script_version(), _cli_version(),
+            "cross-surface drift (R4): check-truth.sh's 'current CLI:' "
+            "comment line disagrees with the CLI docstring version. The "
+            "gate CONTRACT version in the same header (v0.4) only moves "
+            "when the script's semantics change; the 'current CLI:' line "
+            "moves every release (ADR-026).")
 
     # ADR-026: the schema $id is a SCHEMA-CONTRACT version (two-component,
     # independent of the product version), bumped only when the record
@@ -1998,6 +2106,618 @@ class TestAppendSingleWrite(unittest.TestCase):
                 lines = f.read().splitlines()
             self.assertEqual(len(lines), 1)
             self.assertEqual(json.loads(lines[0])["kind"], "claim")
+
+
+# ---------------------- batch-1 hardening (roadmap-v3 R1/R2)
+#
+# R1 (field-notes-batch-m item 2): a VERIFIED claim whose evidence command
+# exits non-zero files normally but warns on stderr -- the double-run
+# passes stable *failure*, so a hollow VERIFIED filed silently. R2: write
+# verbs print a loud stderr banner when the ADR-025 commit gate is
+# unwired; read verbs and `validate --stdin` (inside the gate) exempt.
+# The decisions are pure (evidence_exit_warning / commit_gate_banner);
+# the printing is a shell seam, so these also run the CLI in throwaway
+# git sandboxes (temp dirs only, no network -- TestAppendSingleWrite's
+# spirit).
+
+R1_WARN = "truth: warning: evidence command exited"
+R2_BANNER = "truth: WARNING -- no commit gate is wired"
+
+def _git(d, *args):
+    subprocess.run(["git", "-C", d, *args], check=True, capture_output=True)
+
+def _mk_sandbox(d):
+    subprocess.run(["git", "init", "-q", "-b", "main", d], check=True,
+                   capture_output=True)
+    _git(d, "config", "user.email", "core@test.local")
+    _git(d, "config", "user.name", "core-test")
+    os.makedirs(os.path.join(d, ".truth"))
+    with open(os.path.join(d, "f.txt"), "w") as f:
+        f.write("data\n")
+    with open(os.path.join(d, ".truth", "evidence-allow"), "w") as f:
+        f.write("cat\ngrep\n")
+    open(os.path.join(d, ".truth", "claims.jsonl"), "w").close()
+    _git(d, "add", "-A")
+    _git(d, "commit", "-qm", "init")
+
+def _truth(d, *args, stdin=None, env_extra=None):
+    env = dict(os.environ, TRUTH_ACTOR="t", TRUTH_SESSION="s-core-test")
+    for k in ("TRUTH_NOW", "TRUTH_HUMAN", "TRUTH_HUMAN_ACK"):
+        env.pop(k, None)
+    if env_extra:  # R3 tests: per-call session identity / TRUTH_NOW seeding
+        env.update(env_extra)
+    return subprocess.run([sys.executable, os.path.join(HERE, "truth"),
+                           *args], cwd=d, capture_output=True, text=True,
+                          env=env, input=stdin)
+
+class TestEvidenceExitWarning(unittest.TestCase):
+    """R1: warn (never refuse) when VERIFIED intake's captured evidence
+    returncode is non-zero -- a stably-failing probe verifies nothing."""
+
+    def test_warning_fires_only_on_verified_nonzero(self):
+        w = tm.evidence_exit_warning("VERIFIED", 2)
+        self.assertTrue(w.startswith("truth: warning:"))
+        self.assertIn("evidence command exited 2", w)
+        self.assertIn("verifies nothing", w)
+        self.assertIsNone(tm.evidence_exit_warning("VERIFIED", 0))
+        self.assertIsNone(tm.evidence_exit_warning("VERIFIED", None))
+        self.assertIsNone(tm.evidence_exit_warning("INFERRED", 2))
+        self.assertIsNone(tm.evidence_exit_warning("UNVERIFIED", 2))
+
+    def test_cli_nonzero_exit_warns_but_files_normally(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            r = _truth(d, "claim", "f.txt lacks zebra", "--class", "VERIFIED",
+                       "--evidence-cmd", "grep zebra f.txt", "--paths", "f.txt")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertRegex(r.stdout.strip().splitlines()[-1],
+                             r"^tr-[0-9a-f]{8}$")
+            self.assertIn(R1_WARN + " 1", r.stderr)
+            with open(os.path.join(d, ".truth", "claims.jsonl")) as f:
+                filed = json.loads(f.read().splitlines()[-1])
+            # the record is untouched: the captured returncode (first run,
+            # never re-run) is in the capsule, the warning is print-only
+            self.assertEqual(filed["payload"]["evidence"]["returncode"], 1)
+            self.assertEqual(sorted(filed["payload"]),
+                             ["anchor_commit", "cost_tier", "evidence",
+                              "evidence_class", "evidence_paths", "text",
+                              "ttl_days"])
+
+    def test_cli_zero_exit_stays_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            r = _truth(d, "claim", "f.txt holds data", "--class", "VERIFIED",
+                       "--evidence-cmd", "cat f.txt", "--paths", "f.txt")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn(R1_WARN, r.stderr)
+
+class TestCommitGateBanner(unittest.TestCase):
+    """R2: loud fail-open -- an unwired ADR-025 commit gate is announced
+    on every write verb, refused on none."""
+
+    def test_banner_decision_is_pure_and_write_only(self):
+        self.assertIsNone(tm.commit_gate_banner("claim", True))
+        for verb in sorted(tm.WRITE_VERBS):
+            self.assertIn("no commit gate is wired",
+                          tm.commit_gate_banner(verb, False))
+        for verb in ("list", "queue", "ready", "stats", "impact", "dispatch",
+                     "validate", "doctor", "issues", "baseline"):
+            self.assertIsNone(tm.commit_gate_banner(verb, False))
+
+    def test_find_gate_hook_matches_doctor_rules(self):
+        with tempfile.TemporaryDirectory() as d:
+            hooks = os.path.join(d, "hooks")
+            os.makedirs(hooks)
+            hp = os.path.join(hooks, "pre-commit")
+            with open(hp, "w") as f:
+                f.write("#!/bin/sh\nexec bash scripts/check-truth.sh\n")
+            os.chmod(hp, 0o644)   # git won't run a non-executable hook
+            self.assertIsNone(tm.find_gate_hook(hooks, ("pre-commit",),
+                                                "check-truth"))
+            os.chmod(hp, 0o755)
+            self.assertEqual(tm.find_gate_hook(hooks, ("pre-commit",),
+                                               "check-truth"), hp)
+            # active hook naming the wrong script is not the gate
+            self.assertIsNone(tm.find_gate_hook(hooks, ("pre-commit",),
+                                                "invalidate-scan"))
+
+    def test_banner_on_write_verb_when_unwired(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            r = _truth(d, "claim", "sandbox probe fact", "--tier", "P2")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn(R2_BANNER, r.stderr)
+            self.assertIn("This message does not block.", r.stderr)
+
+    def test_banner_never_changes_a_refusals_exit_code(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            r = _truth(d, "verdict", "tr-deadbeef", "agree", "--basis", "b")
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn(R2_BANNER, r.stderr)
+            self.assertIn("unknown claim", r.stderr)
+
+    def test_banner_absent_with_active_hook(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            hp = os.path.join(d, ".git", "hooks", "pre-commit")
+            with open(hp, "w") as f:
+                f.write("#!/bin/sh\nexec bash scripts/check-truth.sh\n")
+            os.chmod(hp, 0o755)
+            r = _truth(d, "claim", "hooked probe fact", "--tier", "P2")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn(R2_BANNER, r.stderr)
+
+    def test_banner_absent_with_ci_config(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            wf = os.path.join(d, ".github", "workflows")
+            os.makedirs(wf)
+            with open(os.path.join(wf, "truth.yml"), "w") as f:
+                f.write("jobs:\n  gate:\n    steps:\n"
+                        "      - run: bash scripts/check-truth.sh\n")
+            r = _truth(d, "claim", "ci probe fact", "--tier", "P2")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn(R2_BANNER, r.stderr)
+
+    def test_read_verbs_and_validate_stdin_exempt(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            for args, stdin in ((("list",), None), (("doctor",), None),
+                                (("validate", "--stdin"), "")):
+                r = _truth(d, *args, stdin=stdin)
+                self.assertNotIn(R2_BANNER, r.stderr,
+                                 f"banner leaked on read verb {args}")
+
+
+# ---------------------- batch-2 churn fix (roadmap-v3 R3, ADR-030)
+#
+# `truth reaffirm` automates ONLY the mechanical re-confirmation of
+# unchanged evidence. The decision is one pure function
+# (reaffirm_triage, plus the latest_invalidation_reason /
+# previously_agreed fact extractors); the walking/executing/appending is
+# a shell seam, so this section holds pure arm tests AND CLI runs in the
+# same throwaway git sandboxes the R1/R2 tests use.
+
+def _stale_entry(claim_rec):
+    """The fold-entry shape reaffirm_triage receives for a stale claim."""
+    return {"claim": claim_rec, "status": "stale",
+            "status_ts": claim_rec.get("ts"),
+            "anchor": claim_rec["payload"].get("anchor_commit")}
+
+class TestReaffirmTriage(unittest.TestCase):
+    """ADR-030: every triage arm, as a pure function of plain data."""
+
+    def triage(self, claim_over=None, reason="evidence paths changed",
+               cur="s-other", agreed=True, screen_err=None, recheck=None,
+               ttl_staled=None):
+        entry = _stale_entry(rec("claim", verified_p(**(claim_over or {}))))
+        return tm.reaffirm_triage(entry, reason, cur, agreed,
+                                  screen_err=screen_err, recheck=recheck,
+                                  ttl_staled=ttl_staled)
+
+    def test_ttl_arm_requires_refile(self):
+        d = self.triage(reason="ttl expired (30 days)")
+        self.assertEqual(d["arm"], "ttl")
+        self.assertIn("re-file required", d["action"])
+        self.assertIn("ADR-019", d["action"])
+
+    def test_ttl_outranks_every_other_disability(self):
+        # a TTL-staled unscreened same-session claim reports the TTL
+        # re-file path -- its more fundamental disability (arm order is
+        # the R3 contract)
+        d = self.triage(claim_over={"evidence": {"command": "cat f.txt",
+                                                 "output_hash": "sha256:" + "0" * 64,
+                                                 "returncode": 0,
+                                                 "screened": False}},
+                        reason="ttl expired (7 days)", cur="s")
+        self.assertEqual(d["arm"], "ttl")
+
+    def test_is_ttl_reason_matches_scan_writer(self):
+        # the prefix must match what _ttl_expired actually writes
+        entry = {"claim": rec("claim", verified_p(ttl_days=3)),
+                 "status": "live"}
+        written = tm._ttl_expired(entry, {}, NOW)["payload"]["reason"]
+        self.assertTrue(tm.is_ttl_reason(written))
+        self.assertFalse(tm.is_ttl_reason("evidence paths changed"))
+        self.assertFalse(tm.is_ttl_reason(None))
+
+    def test_latest_invalidation_reason_uses_fold_order_not_file_order(self):
+        early = rec("invalidation", {"claim": "tr-00000001",
+                                     "commit": "abc1234",
+                                     "reason": "evidence paths changed"},
+                    rid="tr-00000002", ts="2026-07-01T00:00:00.000000+00:00")
+        late = rec("invalidation", {"claim": "tr-00000001",
+                                    "commit": "abc1234",
+                                    "reason": "ttl expired (9 days)"},
+                   rid="tr-00000003", ts="2026-07-02T00:00:00.000000+00:00")
+        other = rec("invalidation", {"claim": "tr-000000ff",
+                                     "commit": "abc1234",
+                                     "reason": "anchor unreachable"},
+                    rid="tr-00000004", ts="2026-07-03T00:00:00.000000+00:00")
+        for order in ((early, late, other), (late, other, early)):
+            self.assertEqual(
+                tm.latest_invalidation_reason(events(*order), "tr-00000001"),
+                "ttl expired (9 days)", "file order leaked into the arm")
+        self.assertIsNone(
+            tm.latest_invalidation_reason(events(early), "tr-00000099"))
+
+    def test_scan_stamps_reason_code_and_forged_text_cannot_flip_the_arm(self):
+        # Red-team F3 hardening. The scan stamps the structured twin...
+        entry = {"claim": rec("claim", verified_p(ttl_days=3)),
+                 "status": "live"}
+        payload = tm._ttl_expired(entry, {}, NOW)["payload"]
+        self.assertEqual(payload["reason_code"], "ttl")
+        # ...and a LATER raw-appended invalidation with a forged non-TTL
+        # free-text reason no longer flips a scan-stamped TTL claim out
+        # of the re-file arm into auto-agree: ADR-019 makes TTL expiry
+        # monotone, so ANY reason_code=="ttl" record is durable proof.
+        scan_ttl = rec("invalidation", {"claim": "tr-00000001",
+                                        "commit": "abc1234",
+                                        "reason": "ttl expired (3 days)",
+                                        "reason_code": "ttl"},
+                       rid="tr-00000002",
+                       ts="2026-07-01T00:00:00.000000+00:00")
+        forged = rec("invalidation", {"claim": "tr-00000001",
+                                      "commit": "abc1234",
+                                      "reason": "evidence paths changed"},
+                     rid="tr-00000003",
+                     ts="2026-07-02T00:00:00.000000+00:00")
+        evs = events(scan_ttl, forged)
+        # the latest free-text reason IS the forged non-TTL one --
+        # exactly the text the prefix-only scheme keyed off...
+        self.assertEqual(tm.latest_invalidation_reason(evs, "tr-00000001"),
+                         "evidence paths changed")
+        # ...but the structured fact wins, and the triage arm stays ttl
+        self.assertTrue(tm.ttl_staleness(evs, "tr-00000001"))
+        d = self.triage(reason="evidence paths changed", ttl_staled=True)
+        self.assertEqual(d["arm"], "ttl")
+        self.assertIn("re-file required", d["action"])
+
+    def test_ttl_staleness_falls_back_to_prefix_for_prestamp_records(self):
+        # records that predate the stamp carry no reason_code: the
+        # latest-reason prefix match remains their (forgeable -- the
+        # accepted sec-8-item-6 residual, ADR-030) fallback
+        legacy = rec("invalidation", {"claim": "tr-00000001",
+                                      "commit": "abc1234",
+                                      "reason": "ttl expired (9 days)"},
+                     rid="tr-00000002")
+        self.assertTrue(tm.ttl_staleness(events(legacy), "tr-00000001"))
+        other = rec("invalidation", {"claim": "tr-00000001",
+                                     "commit": "abc1234",
+                                     "reason": "evidence paths changed"},
+                    rid="tr-00000002")
+        self.assertFalse(tm.ttl_staleness(events(other), "tr-00000001"))
+        self.assertFalse(tm.ttl_staleness([], "tr-00000001"))
+
+    def test_previously_agreed(self):
+        agree = rec("verdict", {"claim": "tr-00000001", "verdict": "agree",
+                                "basis": "b"}, rid="tr-00000002")
+        diverge = rec("verdict", {"claim": "tr-00000001",
+                                  "verdict": "diverge", "basis": "b"},
+                      rid="tr-00000003")
+        self.assertTrue(tm.previously_agreed(events(agree), "tr-00000001"))
+        self.assertFalse(tm.previously_agreed(events(diverge), "tr-00000001"))
+        self.assertFalse(tm.previously_agreed(events(agree), "tr-00000099"))
+
+    def test_unscreened_arm_never_reaches_execution(self):
+        d = self.triage(claim_over={"evidence": {"command": "wc -l f.txt",
+                                                 "output_hash": "sha256:" + "0" * 64,
+                                                 "returncode": 0,
+                                                 "screened": False}})
+        self.assertEqual(d["arm"], "manual")
+        self.assertIn("manual verification only", d["action"])
+        self.assertIn("evidence.screened=false", d["action"])
+
+    def test_same_session_arm_is_adr010(self):
+        d = self.triage(cur="s")  # rec()'s session is "s"
+        self.assertEqual(d["arm"], "same_session")
+        self.assertIn("ADR-010", d["action"])
+        # TRUTH_SELF_VERDICT: the shell passes an unmatchable session
+        d = self.triage(cur=None)
+        self.assertEqual(d["arm"], "execute")
+
+    def test_no_evidence_command_is_manual(self):
+        entry = _stale_entry(rec("claim", claim_p()))  # UNVERIFIED, no capsule
+        d = tm.reaffirm_triage(entry, "evidence paths changed", "s-other",
+                               True)
+        self.assertEqual(d["arm"], "manual")
+        self.assertIn("no evidence command", d["action"])
+
+    def test_never_agreed_is_first_verification_not_reconfirmation(self):
+        d = self.triage(agreed=False)
+        self.assertEqual(d["arm"], "manual")
+        self.assertIn("first verification is a judgment", d["action"])
+        self.assertIn("ADR-030", d["action"])
+
+    def test_current_screen_refusal_is_manual(self):
+        d = self.triage(screen_err="'wc' is not in .truth/evidence-allow")
+        self.assertEqual(d["arm"], "manual")
+        self.assertIn("manual verification only", d["action"])
+        self.assertIn("'wc' is not in", d["action"])
+
+    def test_execute_sentinel_then_match(self):
+        self.assertEqual(self.triage()["arm"], "execute")
+        d = self.triage(recheck=("agree", "recheck: output hash matches"))
+        self.assertEqual(d["arm"], "match")
+        self.assertIn(tm.REAFFIRM_BASIS, d["action"])
+
+    def test_mismatch_files_nothing_not_even_diverge(self):
+        d = self.triage(recheck=("diverge", "recheck: MISMATCH"))
+        self.assertEqual(d["arm"], "mismatch")
+        self.assertIn("dispatch for judgment", d["action"])
+        self.assertIn("nothing filed", d["action"])
+        self.assertIn("ADR-012", d["action"])
+
+    def test_exit_127_is_environment_not_divergence(self):
+        d = self.triage(recheck=("cannot_verify",
+                                 "recheck: evidence command not found "
+                                 "(exit 127)"))
+        self.assertEqual(d["arm"], "manual")
+        self.assertIn("exit 127", d["action"])
+
+class TestReaffirmCLI(unittest.TestCase):
+    """R3 end-to-end in throwaway sandboxes: file -> verify -> stale ->
+    reaffirm, one test per arm plus dry-run and --json."""
+
+    def _ledger_lines(self, d):
+        with open(os.path.join(d, ".truth", "claims.jsonl")) as f:
+            return f.read().splitlines()
+
+    def _stale_verified_claim(self, d):
+        """claim watching f.txt AND g.txt (evidence reads only f.txt) ->
+        verifier agree -> commit touching g.txt -> scan => stale with
+        UNCHANGED evidence output. Returns the claim id."""
+        with open(os.path.join(d, "g.txt"), "w") as f:
+            f.write("peer\n")
+        _git(d, "add", "g.txt")
+        _git(d, "commit", "-qm", "add g")
+        r = _truth(d, "claim", "f.txt holds data", "--class", "VERIFIED",
+                   "--evidence-cmd", "cat f.txt", "--paths", "f.txt,g.txt")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        cid = r.stdout.strip().splitlines()[-1]
+        r = _truth(d, "verdict", cid, "agree", "--basis", "checked",
+                   env_extra={"TRUTH_SESSION": "s-verifier"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(os.path.join(d, "g.txt"), "a") as f:
+            f.write("more\n")
+        _git(d, "add", "g.txt")
+        _git(d, "commit", "-qm", "touch watched peer path")
+        r = _truth(d, "invalidate-scan")
+        self.assertIn(cid, r.stdout)
+        return cid
+
+    def test_reaffirm_cycle_stale_to_live_and_anchor_advances(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            cid = self._stale_verified_claim(d)
+            r = _truth(d, "reaffirm",
+                       env_extra={"TRUTH_SESSION": "s-reaffirm"})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("filed agree", r.stdout)
+            self.assertIn("1 reaffirmed", r.stdout)
+            filed = json.loads(self._ledger_lines(d)[-1])
+            self.assertEqual(filed["kind"], "verdict")
+            self.assertEqual(filed["payload"]["verdict"], "agree")
+            self.assertEqual(filed["payload"]["basis"], tm.REAFFIRM_BASIS)
+            head = subprocess.run(["git", "-C", d, "rev-parse", "HEAD"],
+                                  capture_output=True,
+                                  text=True).stdout.strip()
+            # F2: the agree carries the CURRENT head as anchor_commit ...
+            self.assertEqual(filed["payload"]["anchor_commit"], head)
+            r = _truth(d, "list", "--live")
+            self.assertIn(cid, r.stdout)
+            # ... and the fold picks it up: the next scan diffs from the
+            # new anchor and the claim STAYS live (no re-stale loop)
+            r = _truth(d, "invalidate-scan")
+            self.assertIn("0 claim(s) marked stale", r.stdout)
+            r = _truth(d, "list", "--live")
+            self.assertIn(cid, r.stdout)
+
+    def test_ttl_staled_claim_skips_and_files_nothing(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            past = {"TRUTH_NOW": "2026-01-01T00:00:00+00:00"}
+            r = _truth(d, "claim", "external fact with a shelf life",
+                       "--class", "VERIFIED", "--evidence-cmd", "cat f.txt",
+                       "--ttl-days", "1", env_extra=past)
+            cid = r.stdout.strip().splitlines()[-1]
+            _truth(d, "verdict", cid, "agree", "--basis", "checked",
+                   env_extra={"TRUTH_SESSION": "s-verifier",
+                              "TRUTH_NOW": "2026-01-01T00:01:00+00:00"})
+            r = _truth(d, "invalidate-scan")  # real now: long past the TTL
+            self.assertIn(cid, r.stdout)
+            n = len(self._ledger_lines(d))
+            r = _truth(d, "reaffirm",
+                       env_extra={"TRUTH_SESSION": "s-reaffirm"})
+            self.assertIn("re-file required", r.stdout)
+            self.assertIn("ADR-019", r.stdout)
+            self.assertIn("1 ttl (re-file)", r.stdout)
+            self.assertEqual(len(self._ledger_lines(d)), n,
+                             "TTL arm must file nothing")
+            r = _truth(d, "list", "--stale")
+            self.assertIn(cid, r.stdout)
+
+    def test_same_session_skips_with_adr010(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            self._stale_verified_claim(d)  # authored by s-core-test
+            n = len(self._ledger_lines(d))
+            r = _truth(d, "reaffirm")  # runs AS s-core-test: the author
+            self.assertIn("must not self-agree", r.stdout)
+            self.assertIn("ADR-010", r.stdout)
+            self.assertIn("1 same-session", r.stdout)
+            self.assertEqual(len(self._ledger_lines(d)), n,
+                             "same-session arm must file nothing")
+
+    def test_mismatch_is_never_auto_agreed_or_auto_diverged(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            cid = self._stale_verified_claim(d)
+            # now the evidence OUTPUT changes too -- reality moved
+            with open(os.path.join(d, "f.txt"), "w") as f:
+                f.write("mutated\n")
+            n = len(self._ledger_lines(d))
+            r = _truth(d, "reaffirm",
+                       env_extra={"TRUTH_SESSION": "s-reaffirm"})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("diverged evidence -- dispatch for judgment",
+                          r.stdout)
+            self.assertIn("1 diverged (dispatch)", r.stdout)
+            self.assertEqual(len(self._ledger_lines(d)), n,
+                             "a mismatch must file NOTHING (ADR-030)")
+            r = _truth(d, "list", "--stale")
+            self.assertIn(cid, r.stdout, "status must stay stale")
+
+    def test_unscreened_evidence_is_never_executed(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            marker = os.path.join(d, "PWNED")
+            # touch is NOT allowlisted; --evidence-unsafe-ok files it with
+            # screened=false (it runs at intake, in the author's own
+            # session -- ADR-029; that is the marker's origin)
+            r = _truth(d, "claim", "unsafe probe of f.txt", "--class",
+                       "VERIFIED", "--evidence-cmd", "touch PWNED",
+                       "--paths", "f.txt", "--evidence-unsafe-ok")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            cid = r.stdout.strip().splitlines()[-1]
+            self.assertTrue(os.path.exists(marker))
+            os.unlink(marker)
+            _truth(d, "verdict", cid, "agree", "--basis", "ran it myself",
+                   env_extra={"TRUTH_SESSION": "s-verifier"})
+            with open(os.path.join(d, "f.txt"), "a") as f:
+                f.write("more\n")
+            _git(d, "add", "f.txt")
+            _git(d, "commit", "-qm", "touch watched path")
+            _truth(d, "invalidate-scan")
+            n = len(self._ledger_lines(d))
+            r = _truth(d, "reaffirm",
+                       env_extra={"TRUTH_SESSION": "s-reaffirm"})
+            self.assertIn("manual verification only", r.stdout)
+            self.assertIn("1 manual", r.stdout)
+            self.assertFalse(os.path.exists(marker),
+                             "reaffirm EXECUTED a screened=false command")
+            self.assertEqual(len(self._ledger_lines(d)), n)
+
+    def test_dry_run_reports_match_but_files_nothing(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            cid = self._stale_verified_claim(d)
+            n = len(self._ledger_lines(d))
+            r = _truth(d, "reaffirm", "--dry-run",
+                       env_extra={"TRUTH_SESSION": "s-reaffirm"})
+            self.assertIn("would file agree", r.stdout)
+            self.assertIn("[dry-run: nothing filed]", r.stdout)
+            self.assertEqual(len(self._ledger_lines(d)), n,
+                             "--dry-run must file nothing")
+            r = _truth(d, "list", "--stale")
+            self.assertIn(cid, r.stdout)
+
+    def test_delisted_command_is_rescreened_and_never_executed(self):
+        """Red-team F3: rescreen against CURRENT policy, end-to-end. A
+        command that was allowlisted at filing but has since been REMOVED
+        from .truth/evidence-allow must land in the manual arm with
+        nothing filed and the command never executed (marker-file
+        proof), even though the capsule says screened=true."""
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            with open(os.path.join(d, ".truth", "evidence-allow"), "a") as f:
+                f.write("touch\n")  # allowlisted NOW; delisted later
+            marker = os.path.join(d, "MARKER")
+            r = _truth(d, "claim", "marker probe of f.txt", "--class",
+                       "VERIFIED", "--evidence-cmd", "touch MARKER",
+                       "--paths", "f.txt")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            cid = r.stdout.strip().splitlines()[-1]
+            # intake ran it (author's own session -- ADR-029): the origin
+            # of the marker, deleted so any reappearance is reaffirm's
+            self.assertTrue(os.path.exists(marker))
+            os.unlink(marker)
+            r = _truth(d, "verdict", cid, "agree", "--basis", "ran it",
+                       env_extra={"TRUTH_SESSION": "s-verifier"})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            with open(os.path.join(d, "f.txt"), "a") as f:
+                f.write("more\n")
+            _git(d, "add", "f.txt")
+            _git(d, "commit", "-qm", "touch watched path")
+            r = _truth(d, "invalidate-scan")
+            self.assertIn(cid, r.stdout)
+            # committed policy changes: 'touch' is no longer allowlisted
+            with open(os.path.join(d, ".truth", "evidence-allow"), "w") as f:
+                f.write("cat\ngrep\n")
+            n = len(self._ledger_lines(d))
+            r = _truth(d, "reaffirm",
+                       env_extra={"TRUTH_SESSION": "s-reaffirm"})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("manual verification only", r.stdout)
+            self.assertIn("'touch' is not in", r.stdout)
+            self.assertIn("1 manual", r.stdout)
+            self.assertFalse(os.path.exists(marker),
+                             "reaffirm EXECUTED a command the CURRENT "
+                             "allowlist refuses")
+            self.assertEqual(len(self._ledger_lines(d)), n,
+                             "the screen-refusal arm must file nothing")
+            r = _truth(d, "list", "--stale")
+            self.assertIn(cid, r.stdout)
+
+    def test_match_agree_records_what_the_anchor_advance_cleared(self):
+        """Red-team F2: the anchor advance buries the watched-path change
+        that staled the claim outside every future scan diff window; the
+        filed agree must record the prior effective anchor and the
+        watched files auto-cleared, and stay contract-valid."""
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            self._stale_verified_claim(d)
+            # commits: init, add g (= claim/agree anchor), touch g.txt
+            prior = subprocess.run(["git", "-C", d, "rev-parse", "HEAD~1"],
+                                   capture_output=True,
+                                   text=True).stdout.strip()
+            r = _truth(d, "reaffirm",
+                       env_extra={"TRUTH_SESSION": "s-reaffirm"})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            filed = json.loads(self._ledger_lines(d)[-1])
+            cleared = filed["payload"]["reaffirm_cleared"]
+            self.assertEqual(cleared["prior_anchor"], prior,
+                             "prior_anchor must be the diff base the scan "
+                             "staled the claim against")
+            self.assertEqual(cleared["touched"], ["g.txt"],
+                             "the auto-cleared watched files must be "
+                             "recorded (f.txt did not change; g.txt did)")
+            # the audited record rides the open payload contract: both
+            # validate surfaces still accept the ledger
+            r = _truth(d, "validate")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_self_verdict_override_is_loud_with_a_count(self):
+        """Red-team F4: TRUTH_SELF_VERDICT=1 amplifies a per-claim
+        override across the whole sweep; reaffirm must say so on stderr
+        with the count of same-session claims it auto-agreed."""
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            self._stale_verified_claim(d)  # authored by s-core-test
+            r = _truth(d, "reaffirm",  # runs AS s-core-test, override on
+                       env_extra={"TRUTH_SELF_VERDICT": "1"})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("filed agree", r.stdout)
+            self.assertIn("TRUTH_SELF_VERDICT=1", r.stderr)
+            self.assertIn("auto-agreed 1 claim(s) THIS SESSION authored",
+                          r.stderr)
+
+    def test_json_output_shape(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            cid = self._stale_verified_claim(d)
+            r = _truth(d, "reaffirm", "--json",
+                       env_extra={"TRUTH_SESSION": "s-reaffirm"})
+            out = json.loads(r.stdout)
+            self.assertFalse(out["dry_run"])
+            self.assertEqual(out["counts"]["match"], 1)
+            self.assertEqual(sorted(out["counts"]),
+                             sorted(tm.REAFFIRM_ARMS))
+            (row,) = out["claims"]
+            self.assertEqual(row["id"], cid)
+            self.assertEqual(row["arm"], "match")
+            self.assertRegex(row["filed"], r"^tr-[0-9a-f]{8}$")
 
 
 if __name__ == "__main__":

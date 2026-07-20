@@ -38,6 +38,12 @@ _answers_file: .copier-answers.truth-ledger.yml
 
 _skip_if_exists:
   - AGENTS.md          # N4: never clobber an existing discovery file
+  # N4-adjacent (v0.9.13, R5): the CLI's version history ships as a root
+  # CHANGELOG.md; a consumer repo that already keeps its own changelog
+  # must never have it clobbered. Such consumers read the history in the
+  # template source instead; scripts/truth still states its own current
+  # version on line 2 either way (ADR-026).
+  - CHANGELOG.md
   # ADR-009: the evidence allowlist is consumer POLICY (which commands
   # may re-run inside verifier sessions); an update must never revert a
   # consumer's conscious additions or removals.
