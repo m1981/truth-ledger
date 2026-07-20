@@ -125,7 +125,7 @@ template, per ADR-003's placement test).
 
 Each fact class has exactly one normative home; everything else links.
 
-- [The paper](docs/truth-ledger-paper-v2.md) — the living spec (§1 is the
+- [The paper](docs/truth-ledger-paper-v3.md) — the living spec (§1 is the
   mechanism's normative home), field evidence, audit findings, honest
   limits, invariant table
 - [Operations guide](docs/truth-ledger-operations-guide.md) — every trigger,

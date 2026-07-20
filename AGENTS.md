@@ -15,7 +15,7 @@ Meta-repo conventions, on top of the standard layer:
 - One home per fact: load-bearing facts in README/docs are cited as
   ledger ids, never restated as counts or contracts. Sweep with
   `bash scripts/fact-health.sh` after editing docs.
-- The normative mechanism spec is docs/truth-ledger-paper-v2.md §1; the
+- The normative mechanism spec is docs/truth-ledger-paper-v3.md §1; the
   CLI contract summary is template/.truth/README.md. Do not restate
   either elsewhere — link or cite.
 - Accepted ADRs are immutable in body; corrections land as
