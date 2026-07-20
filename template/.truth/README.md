@@ -29,17 +29,22 @@ docs/adr/001 for the readiness-join semantics.
 
 ## Record kinds & fold semantics (the CLI contract)
 
-Six record kinds share one envelope (`id`, `kind`, `actor`, `session`,
+Seven record kinds share one envelope (`id`, `kind`, `actor`, `session`,
 `ts`, `payload`): **claim**, **verdict** (`agree` / `diverge` /
 `cannot_verify` / `retracted`, always with a `basis`), **invalidation**,
-**premise**, and the work kernel's **issue** / **issue_event** (ADR-002).
+**premise**, **contradicts** (a declared edge between two claims that
+cannot both hold, with a required basis — both sides fold to `disputed`
+while both would otherwise be live; v0.9.0, issue #4), and the work
+kernel's **issue** / **issue_event** (ADR-002).
 The formal contract is `.truth/schema/claims.schema.json`; `truth
 validate` mirrors it in stdlib and the conformance corpus in
 `scripts/test-truth-core.py` keeps the two from drifting.
 
 Status is derived, never stored: a pure fold replays all events in
-`(ts, id)` order — a total order independent of file position, so
-union-merged branches derive identical status (confluence). The fold
+`(ts, id, canonical-serialization)` order — a total order independent
+of file position (the third key breaks copied-`ts` duplicate ties,
+ADR-016), so union-merged branches derive identical status
+(confluence). The fold
 sorts the raw `ts` string, so `ts` must be the canonical profile
 `YYYY-MM-DDTHH:MM:SS.ssssss+00:00` — fixed-width UTC microseconds,
 exactly what the CLI mints; any other offset, `Z` suffix, or precision
