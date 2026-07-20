@@ -157,12 +157,18 @@ Statuses: TODO / IN-PROGRESS / DONE / OPERATOR (human-owned) / BLOCKED.
 
 ## Backlog
 
-- **Content re-sync of the two satellite docs** (from R4, v0.9.13):
-  `docs/truth-ledger-loophole-map.md` body describes the CLI at v0.6.4
-  and `docs/truth-ledger-operations-guide.md` at v0.9.0; their headers
-  now state `current: CLI vX.Y.Z` (test-pinned) plus an honest
-  "content last synced at ..." scope note. Re-syncing the bodies is
-  follow-up work — TODO.
+- **Content re-sync of the two satellite docs** (from R4, v0.9.13) —
+  DONE (2026-07-20: both bodies re-synced to v0.9.13 against the CLI,
+  CHANGELOG, ADRs 007–031, and paper v3; headers now state "content
+  re-synced at v0.9.13" with the test-pinned `current: CLI v0.9.13`
+  stamp intact. Loophole map: ADR-014/017/021/031 closures marked
+  in-place, hollow-VERIFIED + ADR-030 reaffirm residuals added, verdict
+  table and bottom line updated, 2026-07-20 growth-gate correction note
+  kept. Ops guide: reaffirm trigger row + rung-3 operation (four arms,
+  --dry-run, reaffirm_cleared, evidence-width rule), ADR-031 gate
+  message, v0.9.11 banner + exit-code warning signatures, ADR-017 gate
+  in §4, CHANGELOG.md location + lockstep pins noted, v0.6.2-diagram
+  honesty note, gate-vs-queue section kept. test-truth-core.py 201 OK.)
 
 ## Operator-owned (no agent can do these)
 
@@ -212,4 +218,13 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   and loophole-map correction note added. Suites re-run unchanged:
   test-truth-core.py 201, test-truth-v04.py 13. Reaffirm invariant row
   landed as INV-S (INV-R already names contradicts). Left uncommitted
+  for operator review.
+- 2026-07-20: Backlog satellite-doc content re-sync done — loophole-map
+  body v0.6.4→v0.9.13 (ADR-014/017/021/031 closures marked; hollow
+  VERIFIED, ADR-030 reaffirm residuals, ADR-024/028 additions; paper
+  links → v3), ops-guide body v0.9.0→v0.9.13 (reaffirm row + rung-3
+  operation, ADR-031 refusal, v0.9.11 banner/warning, ADR-017,
+  CHANGELOG location, version-pin note); headers re-stamped "content
+  re-synced at v0.9.13", pin format unchanged. Editing-only change;
+  test-truth-core.py 201 OK (version-pin tests green). Left uncommitted
   for operator review.
