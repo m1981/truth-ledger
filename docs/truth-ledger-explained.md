@@ -57,6 +57,8 @@ Nine terms, used freely from here on.
   note (context → decision → consequences). 33 exist; each closes one
   loophole or adds one capability
 
+The full glossary of every term, acronym, and identifier is §14.
+
 ## 02 · Big-picture architecture
 
 Everything below is one system with seven layers wrapped around a
@@ -693,6 +695,471 @@ words: convert norms into refusals where a cheap pure predicate exists;
 where it doesn't, make the bypass visible and attributable; and where
 even that fails, make sure the worst case is omission, never
 corruption.
+
+## 14 · Glossary — every term, acronym, and identifier
+
+A colleague-facing reference. Every entry is checked against code, an
+ADR, or the paper; the pointer in parentheses says where. This restates
+the nine §01 terms more precisely and adds everything else the page and
+its sources use. Where a term carries a nuance the page insists on
+(dormant vs. dead, mechanical vs. genuine, report vs. judgment, gate vs.
+verdict), the definition carries it too.
+
+### Statuses — a claim's derived state (never stored, only folded)
+
+- **`unverified`** — the birth status of every claim, regardless of
+  evidence class; a VERIFIED double-run at intake is a *gate*, not a
+  verdict, so evidence alone never makes a claim trusted (paper §1).
+- **`live`** — a claim an independent session has `agree`d with; the
+  only "trusted" status. Re-agreeing advances the effective anchor
+  (paper §5).
+- **`stale`** — mechanically demoted by an invalidation record (watched
+  path changed, TTL elapsed, or anchor lost). Exactly one entrance (a
+  scan-written record) and an asymmetric exit: a path-watched claim
+  re-verified `agree` goes live with its anchor advanced; a TTL'd claim
+  must be *re-filed, never re-verified* (ADR-019).
+- **`diverged`** — a verifier judged the evidence no longer supports the
+  sentence. May be *genuine* (the fact changed) or *mechanical* (only
+  the measuring recipe changed; `diverge --mechanical`, ADR-012) — same
+  status, different bookkeeping.
+- **`cannot_verify`** — a verifier could not run the check (missing
+  command, broken environment); a statement about the environment, not
+  reality. An "invitation to check again," never a dead end.
+- **`disputed`** — a *post-pass* status, not stored: after the normal
+  replay, a `contradicts` edge fires while both endpoints would
+  otherwise be `live`, flipping both to disputed and HOLDing dependent
+  work. No "resolve dispute" verb exists — you retract, supersede, or
+  re-file one side (INV-R, contradicts records).
+- **`retracted`** — a human-gated tombstone; **terminal and absorbing**:
+  once folded to retracted, every later setter is ignored, and the
+  work-block it imposes is released only by matching human authority
+  (ADR-011, ADR-017). The only status a machine can never set.
+- **issue statuses** — the parallel work-kernel states: **`open`**,
+  **`claimed`**, **`closed`** (not terminal — work is cyclical), plus
+  `released`/`reopened` as return-to-open edges and **`cancelled`**
+  (terminal, human-gated like retraction) (ADR-002/028).
+- **`READY` / `HELD`** — `truth ready`'s verdict on an issue: READY = may
+  start; HELD = blocked, shown with the dead premise named. Advisory,
+  not a lock (ADR-001).
+
+### Record kinds & id prefixes — seven kinds, one envelope
+
+- **envelope** — the six always-required fields on every line: `id`,
+  `kind`, `actor`, `session`, `ts`, `payload` (schema
+  `$id: truth-ledger-record.v0.10`).
+- **`claim`** — an assertion carrying evidence class (VERIFIED /
+  INFERRED / UNVERIFIED), tier, and (for VERIFIED) the evidence capsule.
+- **`verdict`** — a second opinion: `agree` / `diverge` /
+  `cannot_verify` / `retracted`, always with a stated `basis`.
+- **`invalidation`** — a mechanical demotion record: paths touched, TTL
+  elapsed (`reason_code: "ttl"`), or anchor unreachable.
+- **`premise`** — links a work item to a claim it depends on; may carry
+  `supersedes` to redirect a dead premise (ADR-013).
+- **`issue`** — a work item (`wk-` id): title, dependencies, premises,
+  optional acceptance command (ADR-002/014).
+- **`issue_event`** — a work-item transition: claimed / released /
+  closed / reopened / cancelled (ADR-028).
+- **`contradicts`** — a *declared* edge between two claims that cannot
+  both hold, with a required basis; deliberately no natural-language
+  processing (v0.9.0, paper §1).
+- **`tr-` prefix** — the id namespace for claims (`tr-xxxx`).
+- **`wk-` prefix** — the id namespace for work items / issues
+  (`wk-xxxx`); duplicate `wk-` ids are first-wins (ADR-006).
+
+### Evidence capsule & payload fields
+
+- **evidence capsule** — what a VERIFIED claim carries so it can be
+  re-checked: the command, a hash of its output, its exit code, the
+  anchor commit, and either watched paths or a TTL (paper §1).
+- **`anchor_commit` / `anchor`** — the git commit the evidence was
+  hashed at; the baseline a scan diffs from. Floored to a minimum length
+  by schema since ADR-027.
+- **effective anchor** — the commit a scan actually diffs from: the
+  filing commit, or the commit of the latest re-verifying `agree`.
+  Advancing it on re-agree is what stops path-watched claims re-staling
+  forever (F2 fix, INV-J).
+- **`evidence_paths`** — the comma-separated globs a claim's evidence
+  depends on; the "watch" a scan checks for changes (`--paths`).
+- **`ttl_days`** — a time-to-live in days for facts the repo cannot
+  invalidate by path; the scan stales the claim strictly after
+  `now - ts > ttl_days`, counted from the claim's own timestamp, never a
+  verdict (ADR-019).
+- **`ttl_default`** — `true` when a `scope_basis` claim filed without an
+  explicit `--ttl-days` was auto-stamped `ttl_days=30` (ADR-032/INV-T).
+- **`reason_code`** — why an invalidation fired; `"ttl"` marks a TTL
+  expiry so later tooling never re-derives it from a clock (ADR-030).
+- **`screened`** — whether the evidence command passed the safety
+  screen. `screened:false` (filed `--evidence-unsafe-ok`) makes recheck
+  refuse to execute it forever after (ADR-009/029).
+- **`scope_basis`** — the stored, attackable one-sentence justification a
+  `--scope-ok` override records for a quantifier/scope mismatch (ADR-007).
+- **`reaffirm_cleared`** — a field on a reaffirm auto-`agree` recording
+  that a watched-but-unread file changed yet the output still matched;
+  auditability, not judgment (ADR-030).
+- **`overridden_duplicates`** — the ids machine-stamped into a record
+  filed with `--duplicate-ok`, naming what the near-dup gate was
+  overridden against (ADR-018).
+- **`basis`** — the required stated reason on a verdict, an INFERRED
+  claim, a `contradicts` edge, or a `done`; "inference must state its
+  basis."
+- **`subtype`** — the divergence bookkeeping tag: `mechanical` vs.
+  genuine (ADR-012).
+- **`output_hash` / `returncode`** — the hash of the evidence command's
+  output and its exit code; recheck and reaffirm compare *both* for
+  stability, not success (source of the hollow-VERIFIED residual).
+
+### CLI verbs
+
+- **`claim`** — file a claim end-to-end; runs the full intake battery
+  (§06). `done --claim` files through the same path.
+- **`verdict`** — record a verification verdict; `--recheck` re-runs the
+  evidence and compares hashes first.
+- **`dispatch`** — print the verifier context (fixed prompt + raw record
+  only, never the author's reasoning) to route into a fresh session.
+- **`reaffirm`** — batch, mechanical re-confirmation of stale claims;
+  auto-`agree`s only on exact hash-and-exit match, files nothing on
+  mismatch (ADR-030).
+- **`invalidate-scan`** — the system's only clock-reader and only writer
+  of `stale`; the heartbeat run post-commit/post-merge.
+- **`premise`** — link a work item to a claim; `--supersedes` redirects a
+  dead premise (ADR-013).
+- **`contradicts`** — declare two claims mutually exclusive (drives
+  `disputed`).
+- **`issue` / `start` / `done`** — file / claim / close a work item;
+  `start` files `claimed`, `done` closes and can carry `--claim` and an
+  acceptance oracle.
+- **`ready`** — the policy join: which issues may start, filtered by
+  premise validity (ADR-001). Source: `--stdin`, `TRUTH_TRACKER_CMD`, or
+  the native work kernel.
+- **`list` / `issues`** — list claims / work items by derived status
+  (e.g. `list --live`).
+- **`queue`** — the human review queue: diverged + stale P0/P1 +
+  unverifiable P0 claims.
+- **`stats`** — ledger metrics (FS-1): status/tier counts, per-tier
+  half-life, and the ADR-033 `overrides` velocity report.
+- **`impact`** — what knowledge editing given paths would demote; shares
+  one path matcher with the scan (a second is forbidden by decree).
+  `--inverse` lists files watched by no active claim.
+- **`baseline`** — fold the ledger at a git ref (tag/sha/HEAD), or diff
+  two refs for born/transitions; deterministic JSON output.
+- **`doctor`** — check the *installation*, not just the scripts: exits 1
+  unless each gate has an active hook or a CI config naming it (ADR-025).
+- **`validate`** — schema-check every ledger record against the stdlib
+  mirror; clock-free by design, so a future-dated record still validates.
+
+### Flags & overrides — each stamped into the record
+
+- **`--recheck`** — re-run a claim's evidence during `verdict` and
+  compare hashes before judging.
+- **`--mechanical`** — annotate a `diverge` as recipe-changed-not-fact
+  (ADR-012).
+- **`--duplicate-ok`** — bare flag; file despite near-duplicate overlap,
+  stamping the overridden ids (ADR-018).
+- **`--scope-ok '...'`** — file despite a quantifier/scope mismatch,
+  storing the sentence as `scope_basis`; absent `--ttl-days`, stamped a
+  30-day default (ADR-007/032).
+- **`--single-run`** — skip the determinism double-run (expensive
+  commands).
+- **`--evidence-unsafe-ok`** — file despite a failed safety screen; runs
+  once in the author's own session, stored `screened:false`, refused by
+  recheck forever after (ADR-009).
+- **`--accept-cmd`** — declare an acceptance oracle on an issue at birth;
+  `done` runs it and refuses close on non-zero exit (ADR-014).
+- **`--accept-unsafe-ok`** — allow an unscreened acceptance oracle to
+  execute, stamped visibly (INV-Q).
+- **`--supersedes`** — on a premise, redirect a genuinely dead premise to
+  a replacement (ADR-013).
+- **`--ttl-days`** — set a claim's explicit TTL (see `ttl_days`).
+- **`--paths`** — set the watched globs (see `evidence_paths`).
+- **`--basis` / `--claim-basis`** — supply the required reasoning basis
+  (INFERRED claims, verdicts, `done`).
+- **`--class`** — VERIFIED / INFERRED / UNVERIFIED evidence class.
+- **`--tier`** — P0 / P1 / P2 cost-of-being-wrong label.
+- **`--evidence-cmd`** — the re-runnable command whose output is the
+  evidence.
+- **`--dry-run`** — preview (used by `reaffirm`) without writing.
+- **`--json` / `--ready-json` / `--stdin`** — machine-readable output /
+  input plumbing.
+- **`--release` / `--reopen` / `--cancel`** — issue-event transitions on
+  `start`/`done`/`issue`.
+
+### Environment variables
+
+- **`TRUTH_SESSION`** — sets the session id that keys independence
+  checks; unset, the CLI derives a forensic `s-<ppid>-<date>` group ("not
+  identity — set `TRUTH_SESSION` for real ids").
+- **`TRUTH_ACTOR`** — overrides the recorded actor (defaults to `$USER`).
+- **`TRUTH_HUMAN`** — asserts humanity for a tombstone; alone it is
+  refused (ADR-011).
+- **`TRUTH_HUMAN_ACK`** — the id-specific acknowledgement that, with
+  `TRUTH_HUMAN=1`, completes a headless retraction — must equal the exact
+  target id (ADR-011); closes the one-export bypass F4's fix left open.
+- **`TRUTH_SELF_VERDICT`** — set to `1`, disables the same-session
+  `agree` refusal (ADR-010); the F4-class self-attested override.
+- **`TRUTH_NOW`** — a test-only clock hook (never production): overrides
+  the timestamp and disables the clock push so seeded backdating works
+  (canary FAULT D). Normalized to aware-UTC.
+- **`TRUTH_TRACKER_CMD`** — a shell command printing a JSON issues array,
+  one of `ready`'s three issue sources (ADR-004 tracker seam).
+
+### Invariants — INV-A … INV-U (paper Appendix A, compressed)
+
+Each is one property the seeded-fault suite or a gate defends. "Commit
+gate" rows are conditional on an installed hook or CI (ADR-025).
+
+- **INV-A** — the ledger is append-only: the staged file is a line-prefix
+  extension of the committed file. (Commit gate.)
+- **INV-B** — VERIFIED claims carry command, hash, anchor, and
+  paths-or-TTL. (Intake.)
+- **INV-C** — evidence-path changes demote a claim before it can be
+  re-trusted.
+- **INV-D** — recheck detects non-reproducing evidence (hash mismatch is
+  never scored `agree`).
+- **INV-E** — TTL'd claims expire: the scan writes an invalidation when
+  `now - ts > ttl_days` (strict); only that record demotes — the fold
+  never reads the clock (ADR-019).
+- **INV-F** — history rewrites invalidate an orphaned-anchor claim, with
+  a reason.
+- **INV-G** — retraction is terminal at both layers: the status stays
+  retracted under any event, and the readiness block is released only by
+  matching human authority.
+- **INV-H** — a broken premise (`stale`/`diverged`/`disputed`/
+  `retracted`/missing) HOLDs its issue — the full ADR-001 blocking set.
+- **INV-I** — the fold is confluent: any event order yields the same
+  state; the third sort key is load-bearing (ADR-016).
+- **INV-J** — re-verification is durable across scans for path-anchored
+  claims (`agree` advances the effective anchor); TTL'd claims exempt —
+  re-filed, not re-verified (ADR-019).
+- **INV-K** — retraction requires `TRUTH_HUMAN=1` **plus** a typed-id
+  confirmation or `TRUTH_HUMAN_ACK=<exact-id>` (ADR-011).
+- **INV-L** — the schema-drift detector is armed or the test suite fails
+  (fails closed).
+- **INV-M** — no `evidence_path` is *statically* dead at filing: every
+  literal matches ≥1 tracked file, no whitespace-no-comma entries, no
+  statically-unreachable globs. A static-deadness gate, **not** a
+  liveness guarantee; a reachable-but-empty glob is *dormant*, exempt
+  (ADR-023/024).
+- **INV-N** — issue-fold premise protection cannot be stripped by an
+  appended duplicate `wk-` id (first-wins, ADR-006).
+- **INV-O** — a verifier cannot `agree` with its own session's claim;
+  same-session `diverge` *is* allowed (self-incrimination) (ADR-010).
+- **INV-P** — a supersede redirect re-targets premise validity, never
+  bypasses it: the replacement is judged by the same matrix, refused
+  while the old premise passes `ready`, human-gated for `retracted`
+  (ADR-017).
+- **INV-Q** — an acceptance oracle gates issue close: non-zero exit
+  refuses `done`; an unscreened oracle is refused execution unless
+  `--accept-unsafe-ok` stamps it (ADR-014).
+- **INV-R** — declared contradictions dispute both sides via a
+  post-pass over the *underlying* statuses (order-independent, so INV-I
+  survives); a dormant edge changes nothing.
+- **INV-S** — a reaffirm hash-mismatch is never auto-agreed: `agree` is
+  auto-filed only on an exact hash-and-exit match; TTL-staled,
+  unscreened, never-agreed, and same-session claims skip with reasons
+  (ADR-030).
+- **INV-T** — a `scope_basis` claim filed without `--ttl-days` is stamped
+  `ttl_days=30` + `ttl_default:true` and never refused; expiry rides the
+  unchanged ADR-019 scan path (ADR-032).
+- **INV-U** — `truth stats`'s `overrides` section counts scope-ok
+  filings, decay expiries, overridden duplicates, and unscreened filings
+  exactly, and flags a verbatim re-justification only when the prior is
+  now dead (ADR-033).
+
+### Findings & code series — what the letter prefixes mean
+
+- **`F1`–`F8`** — the paper's numbered *findings*: real defects caught
+  during development, each with a repair (paper §4). Notables the page
+  cites: **F2** (re-verified claims re-staling → the effective-anchor
+  fix), **F4** ("retraction is humans-only" enforced nowhere → the
+  self-attested-identity class, since hardened), **F6** (tombstone
+  resurrection by pure append, Critical), **F8** (schema-mirror drift).
+- **the "F4 class"** — self-attested identity: gates that key on *who you
+  are* rest on env vars, so a bypass costs one visible, attributable
+  export — "defense against drift, not adversaries" (paper §8, §11
+  Band 2).
+- **`FS-1`…`FS-4`** — *structural future work* items (paper §10): FS-1
+  claim half-life measurement (shipped mechanically), FS-2
+  schema-mirror-from-source / mutant corpus, FS-4 the borrowed event
+  loop (liveness only as strong as hook wiring). Distinct from findings —
+  these are open directions, not fixed bugs.
+- **`INV-*`** — invariants (above); the properties the suite defends.
+- **`ADR-NNN`** — Architecture Decision Records (001–033); each closes
+  one loophole or adds one capability.
+- **canary `FAULT <code>`** — seeded faults the weekly `truth-canary.sh`
+  injects; the letter families (e.g. `D` TTL, `H` human-gate, `V`
+  session, `C` contradicts, `AC` acceptance-oracle, `B` append/commit,
+  `RA` reaffirm, `SD` scope-decay, `OV` override-report) each attack one
+  invariant. Every seeded fault must be **CAUGHT** or you "stop trusting
+  green." (Enumerated in the canary script, not here.)
+- **`G<n>` (two senses)** — inside Fig. 3 and the loophole-map diagrams,
+  `G0`–`G6` are just flowchart *node ids* for intake gates, with no
+  meaning outside the diagram. Separately, `G10`/`G11`/`G12` are *gap*
+  reference numbers from the earlier gap analysis surfaced in CLI text
+  (e.g. `G11` the isolation requirement, `G12` the human tombstone
+  decision).
+
+### Core concepts & jargon
+
+- **the ledger** — the single append-only file `.truth/claims.jsonl`,
+  one JSON object per line, nothing edited or deleted.
+- **the fold** — the pure function that replays every line in canonical
+  order to derive each claim's status; status is recomputed, never
+  stored (paper §5).
+- **canonical total order** — the fold's sort key
+  **(timestamp, id, canonical-serialization)**, ascending, ignoring file
+  position; the third key exists so a forged duplicate id can't let file
+  position decide (ADR-016).
+- **confluence** — the property (INV-I) that two union-merged branch
+  ledgers derive identical statuses regardless of merge direction.
+- **union merge** — `.gitattributes` `merge=union` on the ledger: diverged
+  branches merge by concatenation, no human conflict resolution;
+  convergence is the fold's job.
+- **first-writer-wins (FWW)** — claim *content*: the first record for an
+  id fixes its text and evidence forever; later records under that id are
+  inert. Closed the resurrect-by-duplicate attack (paper §6.3).
+- **last-writer-wins (LWW)** — claim *status*: each verdict or
+  invalidation sets status in fold order (ADR-020).
+- **absorbing / terminal** — a state later events can't leave:
+  `retracted` (absorbing — ignores later setters) and `cancelled`
+  (terminal work end). Machine dead-ends (stale/diverged/cannot_verify)
+  are *not* absorbing — they invite re-checking.
+- **clock push** — at append, if your clock is at-or-before the ledger
+  tail's timestamp, the record is stamped tail + 1µs (bounded at 300s),
+  absorbing same-machine clock jitter (ADR-015). Also called skew
+  tolerance.
+- **skew tolerance** — the 300-second bound on the clock push; beyond it
+  the honest clock is kept and the order-check warning surfaces a forged
+  far-future tail.
+- **evidence screen / safety screen** — the intake check deciding
+  whether a command runs *at all* (ADR-029): bare allowlisted names only,
+  no command substitution, no control chars but tab (ADR-021), deny-baseline
+  shells refused even if allowlisted (ADR-022). Exists because evidence
+  is re-executed inside a verifier's session.
+- **allowlist** — `.truth/evidence-allow` / `accept-allow`: the bare
+  command names the screen permits.
+- **deny baseline** — `.truth/evidence-deny`: template-owned shells/
+  executors refused even if a consumer allowlists them (ADR-022).
+- **quantifier-scope gate** — the intake gate that refuses a universal
+  quantifier ("only", "no…anywhere", "the repo") over a scoped evidence
+  command unless the mismatch is *stated* via `--scope-ok`; targets the
+  pilot's measured dominant failure mode (ADR-007).
+- **scope overreach** — that same failure shape: a correct but
+  package-scoped command backing a repo-wide sentence (paper §2).
+- **near-duplicate gate** — refuses a claim with Jaccard token overlap
+  ≥ 0.6 against any live/unverified claim unless `--duplicate-ok`;
+  corrections of *dead* claims always pass (ADR-018).
+- **hollow VERIFIED** — the residual where a stably *failing* command
+  files VERIFIED and rechecks green forever, because intake and recheck
+  compare hash and exit for *stability*, not success. Narrowed to a loud
+  warning, never refused (legitimate absence-proving probes exist).
+- **mechanical vs. genuine divergence** — a `diverge` where only the
+  measuring recipe changed vs. one where the fact itself changed; same
+  status, tagged apart for bookkeeping (ADR-012).
+- **report vs. judgment** — a matching recheck hash is a *report*, not a
+  *judgment*: the verifier must still independently decide whether the
+  output supports the *sentence* (paper §7).
+- **the reaffirm shortcut** — automates only the mechanical
+  re-confirmation half of verification; forbidden from touching the
+  judgment half. Its residual: output can be narrower than the watch, so
+  a reaffirm may re-agree over a watched-but-unread change (ADR-030).
+- **effective anchor** — see Evidence fields; the commit the scan diffs
+  from.
+- **dormant watch vs. dead tripwire** — a glob over a reachable but
+  empty namespace is a *dormant* watch (legitimate, fires when the
+  namespace fills); a whitespace-no-comma path or statically-unreachable
+  glob is a *dead tripwire*, refused at intake with no override
+  (ADR-023/024).
+- **tripwire** — a watched path/glob whose change demotes the claim; the
+  mechanism behind path invalidation.
+- **canary / seeded fault** — a deliberately broken fixture the weekly
+  canary injects to prove the gates still fire ("every seeded fault
+  CAUGHT, or stop trusting green").
+- **blast radius** — how much knowledge a given edit would demote; the
+  reason to keep watches no broader than needed, and what `truth impact`
+  reports (paper §8).
+- **growth gate** — a deliberate decision to *not* build a defense (e.g.
+  cryptographic timestamp signing) until the threat is seen in the wild —
+  built "only when the first forged timestamp is found" (paper §8/§10).
+- **premise supersede** — redirecting a genuinely dead premise to a
+  replacement via `--supersedes`; refused while the old premise is
+  live/unverified, human-gated if it was retracted (ADR-013/017).
+- **acceptance oracle** — a command an issue declares at birth that
+  `done` runs and must pass to close; oracles execute code *on purpose* —
+  that is their allowlist (ADR-014). No override for one that ran and
+  failed.
+- **work kernel** — the native in-ledger work-item system (issues,
+  premises, `fold_issues`); a smaller state machine parallel to claims
+  (ADR-002).
+- **satellites** — auxiliary health checks: **spec-health** (specs may
+  state facts only by citing ledger ids) and **doc-health** (the same for
+  prose) (ADR-003, paper §4).
+- **the queue** — the human review queue surfaced by `truth queue`:
+  diverged + stale P0/P1 + unverifiable P0.
+- **tombstone** — a `retracted` (or `cancelled`) record; a deliberate,
+  human-gated dead end.
+- **dispatch context** — the fixed prompt + raw record `truth dispatch`
+  emits, never the author's reasoning, to seed a fresh verifier session.
+- **whisper hook** — the consumer-wired `PreToolUse` harness hook: a DENY
+  stage that fails **closed** on frozen paths, and a WHISPER stage that
+  fails **open**, injecting an impact report (ADR-005). Not shipped by
+  the template.
+- **digest** — the consumer-wired `SessionStart` hook: the queue plus top
+  live P0/P1 claims at session birth.
+- **fail-open vs. fail-closed** — fail-closed blocks on uncertainty (the
+  DENY stage, the drift detector); fail-open proceeds with a warning (the
+  WHISPER stage, the invalidation scan). The page labels each hook.
+- **drift vs. adversary (threat model)** — the system defends against
+  honest *drift* (forgetting), not a motivated *adversary*; self-attested
+  identity and behavioral compliance are accepted because a bypass is
+  visible and attributable, not impossible (paper §8, §11).
+- **the four bands** — the honest enforcement taxonomy (§11): Band 1 hard
+  technical refusals, Band 2 self-attested identity, Band 3 conditional
+  (hook-dependent) enforcement, Band 4 behavioral norms.
+- **doc-coverage claim** — the ledger claim watching this very page: when
+  the CLI version or watched surfaces move, it stales and the page enters
+  the re-review queue (colophon).
+- **half-life** — the per-tier median time-to-stale `truth stats` reports
+  (FS-1); how fast facts of each tier decay.
+- **meta-repo** — the truth-ledger's own repository (the tool's home and
+  longitudinal pilot site); distinct from a **consumer/template repo**
+  that adopts the ledger.
+- **template** — the `template/` tree copied into consumer repos; ships
+  only policy-free mechanisms (ADR-003 rule 2).
+- **copier** — the tool that installs and updates the template in a
+  consumer repo (`copier update`); consumers resolve versions from git
+  tags.
+- **the mutant corpus** — the generated set of malformed fixtures that
+  keeps the stdlib schema mirror and the JSON schema from drifting apart
+  (FS-2; they drifted twice — F1, F8 — before it existed).
+
+### Acronyms & standards
+
+- **ADR** — Architecture Decision Record.
+- **CLI** — command-line interface; here the `truth` script (v0.9.14).
+- **CI** — continuous integration; the clone-proof backstop for the
+  commit gate when local hooks are absent (ADR-025).
+- **JSONL** — JSON Lines: one JSON object per line, the ledger's format.
+- **TTL** — time-to-live; a fact's decay clock (`ttl_days`), borrowed
+  from DNS's decay model.
+- **P0 / P1 / P2** — tier labels: cost of the claim being wrong — P0
+  catastrophic, P1 serious, P2 minor.
+- **FWW / LWW** — first-writer-wins / last-writer-wins (see jargon).
+- **CRDT** — conflict-free replicated data type; the fold is a total-order
+  replay CRDT with per-field merge disciplines (paper §6.3, Shapiro
+  et al. 2011).
+- **POSIX `O_APPEND`** — the OS guarantee of atomic single-`write()`
+  appends that concurrent writers rely on to interleave whole lines
+  (paper §2.1) — a load-bearing *assumption*, provisioned but never
+  actually exercised.
+- **Jaccard** — the token-overlap coefficient the near-duplicate gate
+  thresholds at 0.6 (ADR-018).
+- **UTC microseconds** — the single legal timestamp shape
+  `YYYY-MM-DDTHH:MM:SS.ssssss+00:00`, fixed-width so string order equals
+  time order (ADR-015).
+- **`merge=union`** — the `.gitattributes` merge strategy on the ledger
+  (see union merge).
+- **HEAD / anchor / ref** — git terms: `HEAD` the current commit a scan
+  diffs *to*; a *ref* any tag/sha/HEAD `baseline` can fold at.
 
 ---
 
