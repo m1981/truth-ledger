@@ -327,3 +327,98 @@ severity intuition:
   reversible, anything whose false-positive rate is unmeasured (the
   v0.9.11 evidence-exit warning is the shipped example: loud, never
   blocking, its efficacy part of the running trial).
+
+## Coverage policy — which `.md` files a claim must watch
+
+*(adopted from the coverage-policy audit, 2026-07-21; instrument:
+`truth impact --inverse`)*
+
+`impact --inverse` reports every tracked file no active claim watches
+("dark"). Dark is not a defect to blanket-fix — universal coverage is
+its own smell (false intentionality, churn, blast radius; paper §9). A
+file is correctly dark or correctly watched by its **kind**, and there
+are three kinds.
+
+**RECORD — dark by design.** A record fixes a decision or a moment: the
+ADRs, field notes (`docs/field-notes-*.md`), trial prompts
+(`trial-prompts/*.md`, incl. `RUNBOOK.md`), the growth-gate archive
+(`docs/growth-gate/`), dated/historical diagrams
+(`docs/diagrams/*-2026-07-20.md`), and anything under `docs/archive/`.
+Its currency is not "does a command still pass" but "has a later
+decision superseded it" — a question no path-watch can answer. Freshness
+discipline for a record is a **supersession or Status note written into
+the record itself** (the dated diagrams already carry a `> STATUS:
+historical session artifact …` banner; superseded ADRs carry an
+`Amended by:` / `Supersedes:` line), enforced socially and by
+kuchnie-style `ADR_AMEND` gates where those are wired — never by a
+freshness claim. Do **not** file per-record content claims to light
+records up: that manufactures churn and a false air of intentionality.
+
+  *One deliberate exception, at the set level.* The ADR **series**
+  carries a single RECORD-integrity claim — `tr-ebac6513`, watching
+  `template/docs/adr/*.md` — asserting the series is dense (001-033,
+  contiguous, endpoints present) and every ADR carries a `Status:` line.
+  It **will** stale on every new ADR and on any Status-header edit; that
+  staling is its whole job — a new ADR should re-assert the series'
+  shape once, in a fresh verifier session, not silently extend it. Note
+  the 17 ADRs lit *today* are lit by **literal per-file** paths that the
+  living behaviour-claims cite as their doc surface (e.g. `tr-58077018`
+  lists `…/029-…md`), not by a directory glob — so a new ADR does not
+  stale them, it simply arrives dark until the series claim or a
+  behaviour claim names it. That is correct; the earlier worry about
+  "incidental glob coverage of the ADR series" does not hold here (no
+  such glob exists).
+
+**LIVING CONTRACT — must be watched by a deliberate claim.** A living
+contract states machinery other surfaces obey *now*; if it drifts,
+readers act on stale rules. Each carries an explicit, narrow watch with
+a **sentinel recipe** — a rule count, a key phrase, a version stamp, not
+a whole-file hash that cries on every typo. The enumerated set and its
+watcher:
+
+  | Living contract | Watching claim |
+  |---|---|
+  | `template/prompts/truth-verifier.md` — the verifier protocol | `tr-1820b1aa` (four-step shape + the `agree\|diverge\|cannot_verify` verdict form) |
+  | `docs/truth-ledger-explained.md` — the explainer | `tr-11beb903` (version-synced to the CLI) |
+  | `template/docs/beads-integration-guide.md` — the ready/adapter seam | `tr-301931eb` (`bd ready --json` default + adapter seam) |
+  | `template/.truth/README.md` — the tracker-seam contract | `tr-ef37611b` (+ `tr-7b5a5e72`, `tr-d570e6c2`, `tr-fcdd4af2`) |
+
+  The meta stub `docs/beads-integration-guide.md` is a pointer, not a
+  contract ("one home per fact"); its only integrity property — the
+  link resolves — is already guarded by `doc-health.sh` (§2), so it
+  stays deliberately dark. The current-state diagrams
+  (`docs/diagrams/asbuilt-architecture.md`, `concept-map.md`) are living
+  contracts in principle but are **deferred, not enumerated here yet**:
+  `asbuilt` pins a *drawn-at* version (v0.9.13) that intentionally lags
+  the CLI, so a version-lockstep claim would be born false, and a bare
+  file-watch on a diagram churns on every legitimate redraw without a
+  crisp contract to pin. Fold them under the architecture-review
+  cadence, or add a "drawn-at vs current" delta sentinel, before adding
+  them to the enumerated set below.
+
+**SELF-DATING — dark OK.** A self-dating file carries its currency in
+its own dated entries: `docs/roadmap-v3.md`, `template/CHANGELOG.md`. A
+reader sees at a glance whether it is current; a freshness claim adds
+nothing a scroll to the top does not already show.
+
+**The policy's own health check (periodic, not commit-time).** The
+living-contract table above is the enumerated invariant. This is a
+**queue** check, not a gate (gate-vs-queue rule above: no unattended
+consumer acts on a newly-dark contract before the weekly sweep, and
+blanket commit-time coverage-forcing is exactly the smell this policy
+refuses). Run it alongside the weekly `impact --inverse` sweep:
+
+    for p in template/prompts/truth-verifier.md \
+             docs/truth-ledger-explained.md \
+             template/docs/beads-integration-guide.md \
+             template/.truth/README.md; do
+      scripts/truth impact "$p" >/dev/null 2>&1 && echo "DARK: $p"
+    done
+
+`truth impact <path>` exits **3 when a claim watches** the path and **0
+when none does** (silent), so any `DARK:` line is a living contract that
+lost its watcher — a claim retracted or superseded, or a path renamed —
+and wants a fresh narrow watch. The check is per-file forward `impact`
+because `impact --inverse` takes no path list (it enumerates all tracked
+files; scope with `--under`). When the set grows, add the path to this
+loop and its claim in the same change.
