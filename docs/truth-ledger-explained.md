@@ -36,7 +36,7 @@ certainly don't need all of it, in order, today.
 - **Auditing the trust model?** §11 (what's *enforced* vs. merely
   *hoped*) → §12 (the accepted holes) → §13. One-line threat model:
   drift, not adversaries.
-- **Just need a term?** §14 is a 159-entry glossary — every term is
+- **Just need a term?** §14 is a 170-entry glossary — every term is
   defined at first use above and restated there.
 
 ---
@@ -1222,6 +1222,12 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
 - **skew tolerance** — the 300-second bound on the clock push; beyond it
   the honest clock is kept and the order-check warning surfaces a forged
   far-future tail.
+- **backdating** — filing a record stamped with an earlier timestamp to
+  win fold order (or resurrect a dead id); countered by the clock push
+  (ADR-015) and, at the commit gate, the unified duplicate-id rule that
+  refuses any content-distinct record under an existing id regardless of
+  timestamp — earlier, equal, or later (ADR-031, subsuming ADR-008); the
+  seeded attack the canary drives via `TRUTH_NOW` (FAULT D).
 - **evidence screen / safety screen** — the intake check deciding
   whether a command runs *at all* (ADR-029): bare allowlisted names only,
   no command substitution, no control chars but tab (ADR-021), deny-baseline
@@ -1244,6 +1250,11 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
   files VERIFIED and rechecks green forever, because intake and recheck
   compare hash and exit for *stability*, not success. Narrowed to a loud
   warning, never refused (legitimate absence-proving probes exist).
+- **sentinel / pin-the-output** — the paper's §9 recipe for evidence
+  whose *raw* output drifts though the fact still holds (embedded counts,
+  timestamps): end the command with a stable marker (`… && echo CLEAN`)
+  so recheck compares a fixed string, not volatile text. Stops a true
+  claim from mechanically diverging as the corpus grows (paper §9).
 - **mechanical vs. genuine divergence** — a `diverge` where only the
   measuring recipe changed vs. one where the fact itself changed; same
   status, tagged apart for bookkeeping (ADR-012).
@@ -1266,6 +1277,11 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
 - **canary / seeded fault** — a deliberately broken fixture the weekly
   canary injects to prove the gates still fire ("every seeded fault
   CAUGHT, or stop trusting green").
+- **falsifier** — the concrete path that would prove a decision's
+  guarantee false; every ADR names one (`Falsifier:` …), and the paper's
+  findings and the canary's seeded faults are falsifiers made to fire.
+  Falsifiable-by-design: a mechanism you cannot name a breaker for is not
+  yet trusted (all 33 ADRs, paper §4).
 - **blast radius** — how much knowledge a given edit would demote; the
   reason to keep watches no broader than needed, and what `truth impact`
   reports (paper §8).
@@ -1298,6 +1314,13 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
   lossy proxy or context-trimmer that drops a rule is detectable and the
   verifier re-reads the prompt from disk. Added after a compression layer
   was seen dropping a rule in the wild.
+- **scribe hazard** — the session-separation gate (ADR-010) keys on the
+  *record's* `session`, so a courier who files ("scribes") another
+  session's verdict misfires it both ways: an author-courier is wrongly
+  refused, and an `agree` can be laundered through a third session.
+  Operating rule — a verifier files its own verdict; an unavoidable
+  scribe files under the verifier's identity
+  (`TRUTH_SESSION=<verifier>`) (ADR-010 amendment, loophole map §D).
 - **discovery snippet** — the ~4-line `AGENTS.md` block (check / file /
   ttl / never-edit) that is an agent's entire entry to the layer; the
   friction budget the paper commits to for adoption (paper §9). The
@@ -1333,14 +1356,26 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
 - **meta-repo** — the truth-ledger's own repository (the tool's home and
   longitudinal pilot site); distinct from a **consumer/template repo**
   that adopts the ledger.
+- **trial log** — the longitudinal record of the meta-repo pilot; the
+  empirical basis several design choices and loophole-map rows rest on
+  (e.g. the dispatch protocol "per the pilot's trial log") (loophole map,
+  operations guide).
 - **template** — the `template/` tree copied into consumer repos; ships
   only policy-free mechanisms (ADR-003 rule 2).
 - **copier** — the tool that installs and updates the template in a
   consumer repo (`copier update`); consumers resolve versions from git
   tags.
+- **`_skip_if_exists`** — the copier setting that marks consumer-owned
+  files (e.g. `CHANGELOG.md`) so `copier update` refreshes the template
+  without overwriting a repo's own edits (operations guide).
 - **the mutant corpus** — the generated set of malformed fixtures that
   keeps the stdlib schema mirror and the JSON schema from drifting apart
   (FS-2; they drifted twice — F1, F8 — before it existed).
+- **conformance corpus** — the fixture suite each ledger record is
+  checked against so the stdlib mirror and the JSON schema stay in
+  agreement; a missing fixture (empty `text`) was how F8's drift slipped
+  through, upgrading "keep the corpus exhaustive" to FS-2. Rides in
+  lockstep with the mutant corpus (paper §4/§10).
 
 ### Acronyms & standards
 
@@ -1363,6 +1398,10 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
   actually exercised.
 - **Jaccard** — the token-overlap coefficient the near-duplicate gate
   thresholds at 0.6 (ADR-018).
+- **`shlex`** — Python's stdlib shell-lexer; the evidence screen
+  tokenizes candidate commands with it in punctuation-chars mode so the
+  screen and the executing shell agree on word boundaries —
+  screen-executor tokenizer parity (ADR-021).
 - **UTC microseconds** — the single legal timestamp shape
   `YYYY-MM-DDTHH:MM:SS.ssssss+00:00`, fixed-width so string order equals
   time order (ADR-015).
