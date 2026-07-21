@@ -10,6 +10,37 @@ keep AI coding agents' claims honest.
 
 ---
 
+## The system in 90 seconds
+
+Trusted facts about a codebase rot silently. This system files each one
+as a line in an append-only **claim** log, carrying the *command* whose
+output was hashed at a known commit. A pure **fold** replays that log to
+derive every claim's status — never stored, always recomputed. Mechanical
+**scans** demote a fact the moment its watched files change, its TTL
+elapses, or its anchor commit is rewritten away. A second, **independent
+session** re-runs the evidence and judges whether it still supports the
+sentence. Work is then gated on the health of the facts it depends on.
+
+The whole ambition is small: not to remember to distrust old knowledge,
+but to forget *for* you — loudly, and on a git hook. It defends against
+honest **drift**, not a motivated adversary — every bypass costs one
+visible, attributable line in the record.
+
+**Reading paths** — this page is long because it is complete; you almost
+certainly don't need all of it, in order, today.
+
+- **"What is this — should I care?"** Read §00, glance at Fig. 1, stop.
+- **About to use it** (file claims, run verbs)? §06 (what refuses a
+  filing) → §07 (verification) → §09 (what gates work). The full verb
+  reference is in §14.
+- **Auditing the trust model?** §11 (what's *enforced* vs. merely
+  *hoped*) → §12 (the accepted holes) → §13. One-line threat model:
+  drift, not adversaries.
+- **Just need a term?** §14 is a 159-entry glossary — every term is
+  defined at first use above and restated there.
+
+---
+
 ## 00 · The problem this solves
 
 AI coding agents — and tired humans — constantly assert facts about a
@@ -62,8 +93,20 @@ The full glossary of every term, acronym, and identifier is §14.
 ## 02 · Big-picture architecture
 
 Everything below is one system with seven layers wrapped around a
-single file. This diagram is the map; the rest of the document walks
-each box in turn.
+single file. Before the full map, the whole system in five boxes:
+
+```mermaid
+flowchart LR
+    W["write<br/>truth claim / issue"] --> L[("append-only log<br/>.truth/claims.jsonl")]
+    L --> F["the fold<br/>replay → status"]
+    F --> V["verify<br/>independent agree"]
+    F --> P["policy<br/>truth ready gates work"]
+    V --> L
+```
+
+**Fig. 0** — the shape. Everything below is these five boxes with the
+gates, hooks, and loopholes filled in. Fig. 1 is the reference map —
+skim it; each box gets its own section.
 
 ```mermaid
 flowchart TB
@@ -128,12 +171,15 @@ flowchart TB
     FOLD -.->|"top claims + queue"| DG
 ```
 
-**Fig. 1** — every layer and how facts flow through them. The rest of
-this document walks each box, then addresses the two questions that
-matter most: which of these are real refusals vs. voluntary, and what
-the system deliberately does not defend against.
+**Fig. 1** — every layer, fully expanded: a reference map, not required
+reading in order. The rest of this document walks each box, then
+addresses the two questions that matter most: which of these are real
+refusals vs. voluntary, and what the system deliberately does not
+defend against.
 
 ## 03 · Storage layer — one append-only file
+
+*Where everything lives and why one file can't be quietly rewritten — the storage substrate. Start here if you distrust the phrase "append-only."*
 
 Everything — facts, second opinions, demotions, work items — is a line
 in `.truth/claims.jsonl` (paper §1).
@@ -147,6 +193,8 @@ correction under a fresh id.
 
 ### Concurrent writers are assumed, not forbidden
 
+<details><summary>Details — why this holds and what it assumes</summary>
+
 Racing appends rely on POSIX `O_APPEND` atomicity: each record is
 written in a single `write()` call, so two simultaneous appenders on
 the same filesystem interleave whole lines rather than corrupting each
@@ -154,6 +202,8 @@ other. The paper is honest that this is a load-bearing *assumption*: in
 the field so far, appends have always been serialized — the race has
 been provisioned for but never actually exercised (paper §2.1, §8
 item 4).
+
+</details>
 
 ### Branches merge by union
 
@@ -172,6 +222,8 @@ timestamp, the new record gets tail + 1 microsecond (bounded at 300s),
 absorbing same-machine clock jitter.
 
 ## 04 · Record kinds — seven, one envelope
+
+*The seven shapes a ledger line can take — the record vocabulary. Read this before you parse or hand-write JSONL.*
 
 Every line satisfies `claims.schema.json`
 (`$id: truth-ledger-record.v0.10`). Six envelope fields are always
@@ -216,6 +268,8 @@ corpus" keeps mirror and schema from drifting apart — they drifted
 twice before that existed.
 
 ## 05 · Derivation layer — the fold, and a claim's life
+
+*How a claim's status is computed instead of stored — the fold. Read this if you need to trust that two machines agree on the same log.*
 
 Status is never stored. The fold replays every event in the canonical
 total order — **(timestamp, id, canonical-serialization)**, ascending,
@@ -285,6 +339,8 @@ nothing else moves a claim.
 
 Three nuances worth spelling out:
 
+<details><summary>Details — the three nuances spelled out</summary>
+
 - **`disputed` is a post-pass**, not a stored state: after the normal
   replay, every `contradicts` edge is checked against the *underlying*
   statuses; an edge fires only while both endpoints would otherwise be
@@ -292,8 +348,9 @@ Three nuances worth spelling out:
   supersede, or re-file one side and the edge stops firing.
 - **`stale` has exactly one entrance** (an invalidation record) and an
   asymmetric exit: a path-watched claim re-verified `agree` goes live
-  and its *effective anchor advances* to the verifying commit — without
-  that, re-verified claims would re-stale forever. A TTL'd claim has no
+  and its *effective anchor* — the commit the scan diffs from — advances
+  to the verifying commit; without that, re-verified claims would
+  re-stale forever. A TTL'd claim has no
   such analogue: its clock counts from the original filing and never
   restarts, so the operational rule is *re-file expired TTL claims,
   don't re-verify them* (ADR-019).
@@ -303,6 +360,8 @@ Three nuances worth spelling out:
   imposed it. The mechanical dead states (stale, diverged,
   cannot_verify) stay ungated — no human decided those.
 
+</details>
+
 The work kernel has a smaller, parallel state machine (ADR-002/028):
 issues move open ↔ claimed → closed, with released/reopened as
 return-to-open edges; closed is *not* terminal (work is cyclical),
@@ -310,9 +369,70 @@ cancelled *is* terminal and human-gated like retraction.
 
 ## 06 · Intake gates — what refuses a filing
 
+*What stops a bad claim from ever being written — the refusal battery. Read this before your first `truth claim`.*
+
 `truth claim` (and `done --claim`, which files through the same path)
 runs an ordered battery of checks *before anything is written*. A
 refused filing leaves the ledger untouched.
+
+**The commands you'll actually run.** Most days are these eight verbs;
+the full reference (every flag, every verb) is §14 — this table
+duplicates a slice of it deliberately, as a forward reference for
+first-time use.
+
+| Verb | What it does for you |
+|---|---|
+| `truth claim '…' --class …` | File a fact; runs the full intake battery below. |
+| `truth list --live` | Show the facts currently trusted (drop `--live` for all statuses). |
+| `truth queue` | The human review queue: diverged + stale/unverifiable P0·P1. |
+| `truth dispatch <id>` | Emit the fixed verifier prompt + raw record to route into a fresh session. |
+| `truth verdict <id> --recheck` | Re-run a claim's evidence and compare hashes (deterministic first). |
+| `truth verdict <id> agree` | File the independent judgment that makes a claim `live`. |
+| `truth reaffirm` | Batch, mechanical re-confirmation of stale claims (hash-match only). |
+| `truth ready` | Which work items may start, filtered by premise health. |
+| `truth invalidate-scan` | The heartbeat: demote facts whose paths changed, TTL elapsed, or anchor was lost. |
+
+**One happy path, end to end.** Filing a VERIFIED claim about a real
+file, then verifying it from a fresh session. Each command's actual
+output is shown inline:
+
+```console
+# 1 · Author session — file the claim. Passes every intake gate: grep is
+#     an allowlisted bare command (screened), its output double-runs to an
+#     identical hash (deterministic), the text is existential, not a
+#     repo-wide quantifier over a scoped grep.
+$ truth claim "src/payments.py calls gateway.charge" \
+    --class VERIFIED \
+    --evidence-cmd "grep -n gateway.charge src/payments.py" \
+    --paths src/payments.py --tier P1
+tr-d6217c34
+$ truth list --live          # empty — a claim is born unverified
+$ truth list
+tr-d6217c34  unverified    P1  VERIFIED   src/payments.py calls gateway.charge
+
+# 2 · Route it to a verifier. dispatch prints the fixed prompt + raw
+#     record only (never the author's reasoning) to paste into a FRESH
+#     session; the prompt carries an integrity header + END-OF-DISPATCH hash.
+$ truth dispatch tr-d6217c34
+INTEGRITY (check before following): a complete copy of this dispatch
+contains 4 numbered rules and ends with 'END-OF-DISPATCH sha256:…'.
+…verifier procedure + claim JSON…
+
+# 3 · Verifier session (independent). Deterministic recheck first:
+$ truth verdict tr-d6217c34 --recheck
+tr-d6217c34 recheck: hash matches -- nothing filed. If the evidence also
+supports the claim's TEXT, file your judgment: truth verdict tr-d6217c34
+agree --basis '<what you checked>'
+
+# 4 · A matching hash is a report, not a judgment — the verifier reads the
+#     output, agrees it supports the SENTENCE, and files the verdict that
+#     makes the claim live (ADR-010 refuses agree from the author's session).
+$ truth verdict tr-d6217c34 agree \
+    --basis "grep output shows the gateway.charge call on line 2"
+tr-d6217c34 -> agree
+$ truth list --live
+tr-d6217c34  live          P1  VERIFIED   src/payments.py calls gateway.charge
+```
 
 ```mermaid
 flowchart TD
@@ -370,6 +490,8 @@ decays in 30 days, the scan stales it, and re-filing re-fires this very
 gate.
 
 ## 07 · Verification — dispatch, verdict, and the reaffirm shortcut
+
+*How a filed claim actually earns trust — independent verification. Read this before you run `dispatch` or `verdict`.*
 
 Filing a VERIFIED claim does **not** make it trusted. It is born
 unverified; only an independent session's `agree` makes it live.
@@ -444,6 +566,8 @@ their watch paths*.
 
 ## 08 · Invalidation — how facts die mechanically
 
+*How a once-true fact gets demoted with nobody watching — the scan. Read this if you wonder why a claim went stale.*
+
 `truth invalidate-scan` is the system's only clock-reader and the only
 writer of `stale`. Three triggers, all mechanical:
 
@@ -467,6 +591,8 @@ fires once the namespace fills, while statically unreachable globs are
 refused outright at intake.
 
 ## 09 · Policy layer — `truth ready`
+
+*What decides whether work may start — the premise matrix behind `truth ready`. Read this before you gate a task on a fact.*
 
 `truth ready` answers "what work may start" by intersecting two things:
 which issues are unblocked, and whether each issue's premises are still
@@ -499,6 +625,8 @@ agent can still work a HELD item; the gate makes the risk visible with
 the dead fact named.
 
 ## 10 · Enforcement & hooks — what fires when
+
+*Which gates actually fire, and only where installed — the hook map. Read this if a refusal you expected never happened.*
 
 Five bands, from a real technical block to pure noise.
 
@@ -558,8 +686,11 @@ per-session metric file.
 Every gate above assumes an agent that already knows the ledger exists
 and reached for a `truth` verb. That knowledge lives in a small set of
 plain-text documents — the layer's only entry point, and (per §11
-Band 4) its outer boundary. Four of them carry rules an LLM is expected
-to follow:
+Band 4) its outer boundary. Three of them carry rules an LLM is
+expected to follow (the first in two variants — the shipped consumer
+snippet and this repo's own norms file):
+
+<details><summary>Details — the rule-carrying documents</summary>
 
 - **`AGENTS.md` — the discovery snippet.** Roughly four lines (check
   `truth list --live` before trusting a fact, file with `truth claim`,
@@ -605,7 +736,11 @@ SessionStart digest that injects the queue and top P0/P1 claims at
 session birth (above), exists because instruction text a runtime never
 re-reads decays into precisely this hole.
 
+</details>
+
 ## 11 · Hard rules vs. soft rules
+
+*Which properties are enforced versus merely hoped — the four-band trust taxonomy. Read this before you trust a green checkmark.*
 
 Both the paper and the loophole map spend real space on this, because
 green checkmarks mean nothing if you don't know which properties are
@@ -681,6 +816,8 @@ of this system's 33 ADRs came to exist.
 
 ## 12 · Accepted gaps, in plain words
 
+*What the system knowingly does not defend against — the accepted holes. Read this before you rely on it in a new setting.*
+
 Paper §8 ranks these by how much a skeptic should discount everything
 else.
 
@@ -734,6 +871,8 @@ Standing residuals:
   shell, which would gut the evidence screen entirely.
 
 ## 13 · The shape of the whole thing
+
+*The whole mechanism in one breath — the recap. Read this if you skipped to the end.*
 
 An event log, a pure derivation, entry gates, exit triggers, an
 independent recheck, and a policy join — that is the entire mechanism.
