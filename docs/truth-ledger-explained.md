@@ -553,6 +553,58 @@ template-side; the hook wiring is per-repo. In this repo it is wired
 for both Claude Code and the pi harness — same deny list, same
 per-session metric file.
 
+### The agent-instruction surface — the documents that carry the rules
+
+Every gate above assumes an agent that already knows the ledger exists
+and reached for a `truth` verb. That knowledge lives in a small set of
+plain-text documents — the layer's only entry point, and (per §11
+Band 4) its outer boundary. Four of them carry rules an LLM is expected
+to follow:
+
+- **`AGENTS.md` — the discovery snippet.** Roughly four lines (check
+  `truth list --live` before trusting a fact, file with `truth claim`,
+  use `--ttl-days` for world-facts, never edit the ledger by hand) is the
+  entire friction budget the paper commits to for adoption (paper §9).
+  The template ships it `_skip_if_exists` (copier clause N4): an existing
+  consumer `AGENTS.md` is never clobbered, and the operator hand-merges
+  the snippet. Because most runtimes read their *own* file, copier's
+  after-copy message and the top-level README both tell the operator to
+  fan the same snippet into `CLAUDE.md`, `.cursorrules`,
+  `.github/copilot-instructions.md` — the exact paths `truth doctor`
+  checks — because "a snippet in a file no runtime reads is silent
+  death." This repo's own `AGENTS.md` additionally carries meta-repo
+  norms (one-home-per-fact, the `docs/archive/` freeze of §11's worked
+  example, the "never allowlist `bash`" rule that guards the ADR-009
+  evidence screen); those are meta-repo policy, deliberately not shipped.
+- **`.truth/README.md` — the contract.** Its own reader line names its
+  audience: "any agent or human about to assert, trust, or re-verify a
+  fact." It is the operational manual and the CLI / fold-semantics
+  source-of-truth that `AGENTS.md` points agents at with the standing
+  instruction *cite, don't restate* — one-home-per-fact applied to the
+  layer's own documentation. The §04 doc-desync callout is what happens
+  when a copy of that contract drifts.
+- **`prompts/truth-verifier.md` — the verifier's fixed prompt.** The
+  rules a fresh verifier session runs on: deterministic recheck first,
+  decode independently, a matching hash is a *report* not a *judgment*,
+  retraction is not yours. It is never pasted by hand — `truth dispatch`
+  emits it plus the raw claim record and nothing else (§07). It is also
+  *hardened against lossy transport*: the dispatch wraps the prompt in an
+  integrity header stating how many numbered rules a complete copy
+  contains and closes with `END-OF-DISPATCH sha256:<prompt-file-hash>`,
+  so a proxy or context-trimmer that silently drops a rule is detectable
+  — the verifier is told to stop and re-read the file from disk if the
+  count or terminator is wrong. This is an anti-tamper measure aimed
+  squarely at the LLM reading it, added after a compression layer was
+  observed dropping an entire numbered rule in the wild.
+
+None of these is a technical gate: an agent that never loads them
+bypasses everything, which is exactly why §11 files them under Band 4,
+not Band 1. Their saving grace is Band 4's — an ignoring agent leaves the
+ledger untouched and still valid. The runtime-side reinforcement, the
+SessionStart digest that injects the queue and top P0/P1 claims at
+session birth (above), exists because instruction text a runtime never
+re-reads decays into precisely this hole.
+
 ## 11 · Hard rules vs. soft rules
 
 Both the paper and the loophole map spend real space on this, because
@@ -596,9 +648,10 @@ noise, not a refusal.
 ### Band 4 — Behavioral norms
 
 The outer boundary: **an agent must choose to use the layer at all.**
-Discovery happens through a few lines in instruction files; a runtime
-that never loads them, in a hook-less harness, bypasses everything —
-the one real structural hole. Mitigated on three fronts, eliminated on
+Discovery happens through a few lines in instruction files (the
+surface inventoried at the end of §10); a runtime that never loads
+them, in a hook-less harness, bypasses everything — the one real
+structural hole. Mitigated on three fronts, eliminated on
 none. The saving grace: an ignoring agent leaves the ledger untouched
 and still valid — the failure mode is omission, never corruption.
 `ready` is advisory too: nothing stops working a HELD item. And three
@@ -1098,7 +1151,25 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
 - **tombstone** — a `retracted` (or `cancelled`) record; a deliberate,
   human-gated dead end.
 - **dispatch context** — the fixed prompt + raw record `truth dispatch`
-  emits, never the author's reasoning, to seed a fresh verifier session.
+  emits, never the author's reasoning, to seed a fresh verifier session;
+  wrapped in a **dispatch integrity header** (below).
+- **dispatch integrity header** — the anti-tamper wrapper `truth
+  dispatch` puts around the verifier prompt: a stated numbered-rule count
+  and a terminating `END-OF-DISPATCH sha256:<prompt-file-hash>`, so a
+  lossy proxy or context-trimmer that drops a rule is detectable and the
+  verifier re-reads the prompt from disk. Added after a compression layer
+  was seen dropping a rule in the wild.
+- **discovery snippet** — the ~4-line `AGENTS.md` block (check / file /
+  ttl / never-edit) that is an agent's entire entry to the layer; the
+  friction budget the paper commits to for adoption (paper §9). The
+  operator fans it into `CLAUDE.md` / `.cursorrules` /
+  `.github/copilot-instructions.md` — the paths `truth doctor` checks.
+  The Band-4 boundary in document form.
+- **instruction / discovery surface** — the set of plain-text documents
+  that carry the rules an LLM agent is expected to follow: `AGENTS.md`
+  (discovery + meta-repo norms), `.truth/README.md` (the contract),
+  `prompts/truth-verifier.md` (the verifier prompt). The layer's only
+  entry point (§10, §11 Band 4).
 - **whisper hook** — the consumer-wired `PreToolUse` harness hook: a DENY
   stage that fails **closed** on frozen paths, and a WHISPER stage that
   fails **open**, injecting an impact report (ADR-005). Not shipped by
