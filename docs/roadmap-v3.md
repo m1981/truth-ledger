@@ -367,3 +367,9 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   this Log's own tr-6308173b/tr-f0ac802b narration two entries up.
   fact-health: 5 failures remain, all historical-narration citations, 0
   live-prose-on-dead-fact.
+- 2026-07-22: symbol-level tracing designed, falsified/amended (this
+  repo), validated at scale (kuchnie: 2,397 symbols, 2% lit; catalog
+  BOM path found wholly unwatched). Archived as
+  docs/growth-gate/symbol-tracing-design.md with tested recipes.
+  Backlog: kuchnie first wave steps 2-3 (core manifest + ERP pricing)
+  on operator demand; D2 --symbols verb demand-gated.

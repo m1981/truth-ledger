@@ -27,3 +27,15 @@ searched and freshly signed", never "proven complete"; no executable
 oracle exists yet (§6 of the doc lists what one must pin first).
 **Trigger: a real team adopting the ledger against a real compliance
 regime and asking for obligation-level enforcement.**
+
+## 3. Symbol-level inverse tracing
+
+`symbol-tracing-design.md` — coarse-watch/fine-verify function pins
+(tested rg recipes), the dark-symbol sweep, and contract-symbol
+manifests; falsified-then-amended on this repo, validated at scale on
+the kuchnie monorepo (2,397 symbols, +18% ledger cost for N=20).
+Named residual: text pins the artifact, not behavior — behavior stays
+the canary/oracle channel's job.
+**Trigger: a consumer needing code-element traceability (24765/29119
+grade), or the operator running the kuchnie first wave (step 1, the
+catalog BOM pins, adopted 2026-07-22).**
