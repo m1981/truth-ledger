@@ -616,6 +616,11 @@ that already names it.
   claims watching both the document and the code surface it describes
   (§5); ISO/IEC 25010/25023's functional completeness gets the same
   treatment, "module X covers Y" becoming a claim with a lifecycle.
+  42010's other first-class term — the stakeholder *concern* each view
+  frames — is recorded since v0.9.15 as `--concern` triage metadata on
+  claims: queryable ("which live claims guard the billing path"), never
+  a gate, and outside every field window §2 covers, so its net value is
+  as unmeasured as §10 leaves everything else.
 - **The agent-era amplifier.** Every standard above assumes a human
   review loop; LLM agents produce confident assertions faster than any
   such loop scales, and §2 says their dominant failure is scope

@@ -4,7 +4,7 @@
 every layer, gate, hook, and deliberate loophole in a system built to
 keep AI coding agents' claims honest.
 
-**Scope** CLI v0.9.14 · paper v3 (2026-07-20) · ADR-001–033 ·
+**Scope** CLI v0.9.15 · paper v3 (2026-07-20) · ADR-001–033 ·
 **Sources** paper §N = `docs/truth-ledger-paper-v3.md`; ADR-NNN =
 `template/docs/adr/NNN-*.md`
 
@@ -288,7 +288,8 @@ sorted and deduplicated under `concerns`. A tag is a slug
 anything else is refused at intake as input hygiene, the same class of
 refusal as INV-M's path hygiene. `truth list --concern TAG` filters
 and composes with the status flags; `truth stats` tallies tags over
-non-retracted claims plus a count of active claims carrying no tag.
+non-retracted claims plus a count of active (live/unverified) claims
+carrying no tag.
 The schema enforces the shape (non-empty, duplicate-free, slug items);
 the stdlib mirror agrees case-for-case via the mutant corpus.
 
@@ -1041,7 +1042,7 @@ verdict), the definition carries it too.
   output and its exit code; recheck and reaffirm compare *both* for
   stability, not success (source of the hollow-VERIFIED residual).
 - **`concerns`** — the sorted, duplicate-free list of stakeholder-concern
-  slugs stamped by `--concern` at filing (§4); 42010 triage metadata the
+  slugs stamped by `--concern` at filing (§04); 42010 triage metadata the
   fold never reads — read only by `list --concern` and `stats`.
 
 ### CLI verbs
@@ -1096,9 +1097,9 @@ verdict), the definition carries it too.
   30-day default (ADR-007/032).
 - **`--single-run`** — skip the determinism double-run (expensive
   commands).
-- **`--concern <slug>`** — repeatable on `claim`: tag the claim with a
+- **`--concern TAG`** — repeatable on `claim`: tag the claim with a
   stakeholder concern (`[a-z0-9-]{1,32}`); on `list`: filter to claims
-  carrying the tag. Triage metadata, never a gate (§4).
+  carrying the tag. Triage metadata, never a gate (§04).
 - **`--evidence-unsafe-ok`** — file despite a failed safety screen; runs
   once in the author's own session, stored `screened:false`, refused by
   recheck forever after (ADR-009).
@@ -1443,6 +1444,9 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
   appends that concurrent writers rely on to interleave whole lines
   (paper §2.1) — a load-bearing *assumption*, provisioned but never
   actually exercised.
+- **ISO/IEC/IEEE 42010** — architecture-description standard; source of
+  both the mechanized correspondence rules (doc-coverage claims, §05)
+  and the stakeholder-*concern* term the v0.9.15 tags borrow (§04).
 - **Jaccard** — the token-overlap coefficient the near-duplicate gate
   thresholds at 0.6 (ADR-018).
 - **`shlex`** — Python's stdlib shell-lexer; the evidence screen
