@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.9.14)
+# .truth — append-only claims ledger (v0.9.15)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -374,6 +374,32 @@ must refuse, never read as a clean audit). Expect noise on a first run
 (lockfiles, assets): `--exclude` is the pressure valve; module
 inventories and dark-file triage (adopt/attic/delete) are downstream
 satellites' work, not this verb's. Canary FAULTS W5–W8.
+
+**Stakeholder concerns (ISO/IEC/IEEE 42010 triage metadata, v0.9.15 — never a gate).**
+
+    scripts/truth claim "…" --concern security --concern latency
+    scripts/truth list --concern security [--live]
+
+The problem: the ledger records what a claim watches, never *whose
+concern* it serves, so "which claims guard the money path?" was a
+read-the-source census instead of a query — 42010's stakeholder-concern
+dimension, dropped when its correspondence rules were mechanized.
+
+`--concern` (repeatable) stamps 42010-style stakeholder-concern tags on
+a claim at filing — stored sorted and deduplicated under `concerns` in
+the claim payload. A tag is a slug (`[a-z0-9-]{1,32}`); anything else is
+refused at intake as input hygiene, exactly like INV-M's path hygiene —
+not a concern-gate. `list --concern TAG` filters and composes with the
+status flags; `stats` adds a `concerns` line: tag counts over
+non-retracted claims (stale/diverged still carry their stakeholder's
+interest — only retraction kills it) plus the count of active
+(`live`/`unverified`) claims carrying no tag. Explicit non-goal: a
+concern is TRIAGE METADATA, full stop — deciding whether a claim
+"touches security" needs a model's judgment, and the moment a gate needs
+a model to fire, it is a review, not a refusal (the Contradictions rule
+above). Tags never block filing, never change derived status, never
+enter the fold, and never gate `ready`; a ledger written before this
+flag existed folds, lists, and validates unchanged.
 
 ## Claim discipline (earned lessons)
 

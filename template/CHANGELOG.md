@@ -8,6 +8,39 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.15 (stakeholder concerns -- ISO/IEC/IEEE 42010 triage metadata,
+  red-teamed pre-release):
+  * `claim --concern TAG` (repeatable) stamps 42010 stakeholder-concern
+    tags on the claim payload (`concerns`: sorted, deduplicated). A tag
+    is a slug, anchored \A[a-z0-9-]{1,32}\Z -- absolute anchors because
+    Python's $ also matches before a trailing newline (red-team F1); a
+    malformed tag is refused BEFORE intake runs any evidence command.
+    That refusal is input hygiene like INV-M's path hygiene, NOT a
+    concern-gate. TRIAGE METADATA ONLY, by doctrine: deciding whether a
+    claim "touches security" needs a model, and the moment a gate needs
+    a model to fire, it is a review, not a refusal -- tags never block
+    filing, never enter the fold, never affect derived status or ready
+    (fold blindness pinned by twin tests, including the bare-claim case).
+  * `list --concern TAG` filters claims by tag; composes with the
+    derived-status flags.
+  * `stats` gains a `concerns` line (JSON: `concerns`,
+    `concerns_untagged_active`): tag counts over non-retracted claims
+    (only retraction kills a stakeholder's interest -- the impact
+    --inverse convention), plus the count of active ({live, unverified},
+    ADR-018 notion) claims carrying no tag. Read verbs consume the new
+    pure `claim_concerns()`, which degrades a hand-appended malformed
+    value to 'no tags' instead of crashing or substring-matching
+    (red-team F2); `validate` still reports the malformation.
+  * Schema AND stdlib mirror gain optional `concerns`: a non-empty,
+    duplicate-free (uniqueItems, red-team F3 -- a duplicate would
+    double-count in stats) list of slug strings; the schema pattern
+    carries an ECMA-inert (?!\n) guard for the F1 trailing-newline case.
+    Two independent surfaces, FS-2 corpus + generated-mutant lockstep;
+    schema $id bumped v0.10->v0.11 for the field (ADR-026). A ledger
+    written before the flag existed (no key anywhere) folds, lists,
+    validates, and stats unchanged -- pinned in tests and smoke-checked
+    against a 1143-record production-copy ledger.
+
 v0.9.14 (batch-5 override decay + its instrument, roadmap-v3 R12/R13,
   ADR-032/033):
   * R12 (ADR-032) -- `--scope-ok` default expiry. A scope_basis claim

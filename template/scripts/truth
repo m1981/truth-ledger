@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""truth v0.9.14 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.15 -- append-only claims ledger with a native work kernel.
 
 Facts are appended as JSONL records to .truth/claims.jsonl (INV-A:
 append-only, commit-gated by scripts/check-truth.sh); every status is
@@ -86,6 +86,19 @@ WK_ID_RE = re.compile(r"^wk-[0-9a-f]{8}$")
 # Enforced in validate_events in lockstep with the schema's pattern
 # (FS-2 corpus holds the two together).
 TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}\+00:00$")
+# ISO/IEC/IEEE 42010 'concern': TRIAGE METADATA ONLY. Concern tags are
+# short slugs stamped on a claim payload at filing (--concern, repeatable,
+# stored sorted+deduplicated) and read back by list/stats. The slug check
+# is input hygiene like INV-M's path hygiene, NOT a concern-gate: deciding
+# whether a claim "touches security" needs a model, and the moment a gate
+# needs a model to fire, it is a review, not a refusal. Tags never block
+# filing, never enter the fold, never affect derived status or ready.
+# Anchored \A..\Z, not ^..$: Python's $ also matches BEFORE a trailing
+# newline, so ^..$ would let 'security\n' through intake into a stored
+# tag that breaks the one-line stats render and that list --concern can
+# never name (red-team F1). The schema's pattern carries the equivalent
+# guard in ECMA-compatible form.
+CONCERN_RE = re.compile(r"\A[a-z0-9-]{1,32}\Z")
 # ADR-007: universal-quantifier lexicon (tokens matched word-level via
 # tokens(); phrases matched with word boundaries). Changed only together
 # with the Q-canary faults.
@@ -945,6 +958,17 @@ def half_life_observations(events):
             e["since"] = ts if new == "live" else None
     return obs, {cid: e["status"] for cid, e in state.items()}
 
+def claim_concerns(payload):
+    """The claim's 42010 concern tags as READ-side data: the string items
+    of a well-formed list, else []. A hand-appended malformed value is
+    validate's finding to report; the read verbs (list --concern, stats)
+    must degrade to 'no tags', never crash on an unhashable item or fall
+    into substring matching on a bare string (red-team F2). Pure."""
+    cs = payload.get("concerns")
+    if not isinstance(cs, list):
+        return []
+    return [t for t in cs if isinstance(t, str)]
+
 def stats_report(events, now):
     """FS-1: everything the monthly hand-audit (paper section 8 item 2)
     needs that a machine can compute. Pure fold consumer."""
@@ -977,10 +1001,25 @@ def stats_report(events, now):
                                "median_days": round(statistics.median(days), 2)}
     queue = queue_rows(claims, now)
     ages = sorted(r["age_days"] for r in queue if r["age_days"] is not None)
+    # 42010 concern triage view: tag counts over non-retracted claims
+    # (stale/diverged still carry their stakeholder's interest -- only
+    # retraction kills it, the impact --inverse convention), plus how many
+    # ACTIVE claims ({live, unverified}, the ADR-018 intake notion) carry
+    # no tag at all -- the coverage residue a triager would sweep. Pure
+    # fold read; concerns never feed status, queue, or any gate.
+    concerns, untagged = {}, 0
+    for e in claims.values():
+        tags = claim_concerns(e["claim"]["payload"])
+        if e["status"] != "retracted":
+            for t in tags:
+                concerns[t] = concerns.get(t, 0) + 1
+        if e["status"] in ("live", "unverified") and not tags:
+            untagged += 1
     return {"claims_by_status": by_status, "claims_by_tier": by_tier,
             "verdicts": verdicts, "half_life": half_life,
             "queue_size": len(queue),
-            "queue_max_age_days": ages[-1] if ages else None}
+            "queue_max_age_days": ages[-1] if ages else None,
+            "concerns": concerns, "concerns_untagged_active": untagged}
 
 # ADR-033: 'dead' for the override-velocity repeat detector. A claim has
 # no 'superseded' status in this system (supersede is premise-scoped,
@@ -1535,6 +1574,25 @@ def validate_events(events):
                                   "non-empty list of tr-hex8 ids (MEDIUM-1: "
                                   "the --duplicate-ok trace records which "
                                   "active claims it declared distinct from)")
+            # 42010 concerns: optional triage metadata; when present, a
+            # non-empty duplicate-free list of slug strings. Two
+            # INDEPENDENT contract surfaces (this mirror + the schema's
+            # uniqueItems/pattern), held in lockstep by the FS-2 corpus.
+            # Shape hygiene only -- no tag value gates anything. The dup
+            # check runs only after every item proved a hashable string
+            # (`or` short-circuit): set() on a junk item must not raise.
+            if "concerns" in p:
+                cs = p["concerns"]
+                if (not isinstance(cs, list) or not cs
+                        or any(not isinstance(t, str)
+                               or not CONCERN_RE.match(t) for t in cs)
+                        or len(set(cs)) != len(cs)):
+                    errors.append(f"line {n}: concerns must be a non-empty "
+                                  "duplicate-free list of slug strings "
+                                  "([a-z0-9-]{1,32}) -- 42010 triage "
+                                  "metadata, shape-checked only (never a "
+                                  "concern-gate; a duplicate would double-"
+                                  "count in stats)")
             if "screened" in p.get("evidence", {}) \
                     and not isinstance(p["evidence"]["screened"], bool):
                 errors.append(f"line {n}: evidence.screened must be a "
@@ -1848,6 +1906,20 @@ def load_events(stream=None):
 
 # ---------------------------------------------------------------- commands
 
+def concerns_intake_error(tags):
+    """42010 concern tags: the ONE check they get -- each must be a
+    CONCERN_RE slug. Input hygiene only (a malformed tag is a typo, not a
+    judgment call); returns an error string or None. Called by cmd_claim
+    BEFORE build_claim_payload so a typo'd tag is refused before any
+    evidence command executes. Pure."""
+    for t in tags or []:
+        if not CONCERN_RE.match(t):
+            return (f"--concern tag {t!r} is not a slug -- lowercase "
+                    "letters, digits, hyphens, 1-32 chars ([a-z0-9-]{1,32})."
+                    " This is input hygiene, not a concern-gate: tags never "
+                    "block filing, they only have to be greppable.")
+    return None
+
 def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
                         ttl_days, basis, single_run, duplicate_ok, claims,
                         scope_basis=None, unsafe_ok=False):
@@ -1968,12 +2040,23 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
     return payload
 
 def cmd_claim(a):
+    # 42010 concerns: hygiene-check the slugs BEFORE intake so a typo'd
+    # tag never triggers an evidence run (VERIFIED intake executes the
+    # command twice); the tags themselves gate nothing.
+    err = concerns_intake_error(a.concern)
+    if err:
+        sys.exit("truth: " + err)
     events = load_events()
     claims, _ = fold(events)
     payload = build_claim_payload(a.text, a.evidence_class, a.evidence_cmd,
                                   a.paths, a.tier, a.ttl_days, a.basis,
                                   a.single_run, a.duplicate_ok, claims,
                                   a.scope_ok, a.evidence_unsafe_ok)
+    if a.concern:
+        # stored sorted+deduplicated: canonical form keeps the record's
+        # canonical serialization (ADR-016 fold key) order-independent of
+        # how the author happened to repeat the flag
+        payload["concerns"] = sorted(set(a.concern))
     if a.ttl_days:
         # FS-1: suggestion only, printed beside the author's choice --
         # TTLs stay author decisions, now data-adjacent.
@@ -2296,7 +2379,10 @@ def cmd_list(a):
              "tier": e["claim"]["payload"].get("cost_tier"),
              "class": e["claim"]["payload"].get("evidence_class"),
              "text": e["claim"]["payload"].get("text")}
-            for cid, e in claims.items() if not want or e["status"] in want]
+            for cid, e in claims.items()
+            if (not want or e["status"] in want)
+            and (not a.concern
+                 or a.concern in claim_concerns(e["claim"]["payload"]))]
     if a.json:
         print(json.dumps(rows, indent=2))
     else:
@@ -2745,6 +2831,11 @@ def cmd_stats(a):
     age = report["queue_max_age_days"]
     print(f"queue: {report['queue_size']} item(s)"
           + (f", oldest {age}d" if age is not None else ""))
+    # 42010 concern triage view (metadata report only, never a gate)
+    print("concerns: " + (", ".join(
+        f"{k}={v}" for k, v in sorted(report["concerns"].items()))
+        or "none")
+        + f", untagged-active={report['concerns_untagged_active']}")
     # ADR-033: override-velocity section (feeds ADR-007's adoption gate).
     o = overrides
     mx = o["max_scope_ttl_days"]
@@ -3037,6 +3128,11 @@ def main():
                    help="one sentence: why the evidence command's scope "
                         "covers the claim's universal quantifier (ADR-007; "
                         "stored as scope_basis, attackable by verifiers)")
+    c.add_argument("--concern", action="append", default=[], metavar="TAG",
+                   help="42010 stakeholder-concern slug ([a-z0-9-]{1,32}; "
+                        "repeatable; stored sorted+deduplicated). Triage "
+                        "metadata ONLY: never a gate, never affects "
+                        "derived status or the fold")
     c.add_argument("--evidence-unsafe-ok", action="store_true",
                    help="file despite a failed evidence-command safety "
                         "screen (ADR-009); recheck will refuse to execute "
@@ -3179,6 +3275,9 @@ def main():
     l = sub.add_parser("list", help="list claims by derived status")
     for flag in STATUSES:
         l.add_argument("--" + flag.replace("_", "-"), dest=flag, action="store_true")
+    l.add_argument("--concern", metavar="TAG",
+                   help="only claims tagged with this 42010 concern slug "
+                        "(composes with the status flags)")
     l.add_argument("--json", action="store_true")
     l.set_defaults(fn=cmd_list)
 

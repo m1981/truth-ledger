@@ -226,7 +226,7 @@ absorbing same-machine clock jitter.
 *The seven shapes a ledger line can take — the record vocabulary. Read this before you parse or hand-write JSONL.*
 
 Every line satisfies `claims.schema.json`
-(`$id: truth-ledger-record.v0.10`). Six envelope fields are always
+(`$id: truth-ledger-record.v0.11`). Six envelope fields are always
 required: `id`, `kind`, `actor`, `session`, `ts`, `payload`.
 
 1. **claim** — an assertion with evidence class, tier, and (for
@@ -266,6 +266,47 @@ at filing and recheck time. A stdlib mirror of the schema lives inside
 `truth validate` so the tool has no dependencies; a generated "mutant
 corpus" keeps mirror and schema from drifting apart — they drifted
 twice before that existed.
+
+### Stakeholder concern tags — whose concern does a claim serve (v0.9.15)
+
+**The intention.** Every mechanism above records *what* a claim watches
+— paths, commands, hashes — but nothing records *who cares*. That is
+the one dimension of the cited standards the ledger had deliberately
+dropped: ISO/IEC/IEEE 42010 makes the stakeholder *concern* a
+first-class term (an architecture description must identify whose
+concerns each view frames), and the ledger mechanized 42010's
+correspondence rules while discarding exactly that. The gap is not
+academic. In a field audit the question "is this unwatched module a
+money path?" — pure business-concern triage — could only be answered
+by reading the source, because no query over the ledger could say
+which claims guard pricing and which guard a color palette.
+
+**How it works.** `truth claim … --concern security --concern latency`
+(repeatable) stamps tags into the claim payload at filing — stored
+sorted and deduplicated under `concerns`. A tag is a slug
+(`[a-z0-9-]{1,32}`, `\Z`-anchored — a trailing newline is not a slug);
+anything else is refused at intake as input hygiene, the same class of
+refusal as INV-M's path hygiene. `truth list --concern TAG` filters
+and composes with the status flags; `truth stats` tallies tags over
+non-retracted claims plus a count of active claims carrying no tag.
+The schema enforces the shape (non-empty, duplicate-free, slug items);
+the stdlib mirror agrees case-for-case via the mutant corpus.
+
+**What it deliberately is not.** A concern tag never blocks filing,
+never changes derived status, never enters the fold, and never gates
+`ready` — a tagged claim and its untagged twin derive identical status
+through every verdict sequence, and a ledger written before the flag
+existed folds, lists, and validates unchanged. The boundary is the
+same rule that governs every gate in this document: deciding whether a
+claim "touches security" needs judgment, and the moment a gate needs a
+model to fire, it is a review, not a refusal. So classification stays
+human (or agent) at filing time, and what the machinery adds is only
+that the answer, once given, becomes queryable — "which live claims
+guard the money path" is a one-line `list --concern` instead of a
+source-reading census. Whether the tags earn their filing cost is an
+open question of the same shape as §12's others: adoption without
+measurement would be exactly the decoration this system exists to
+refuse.
 
 ## 05 · Derivation layer — the fold, and a claim's life
 
@@ -938,7 +979,7 @@ verdict), the definition carries it too.
 
 - **envelope** — the six always-required fields on every line: `id`,
   `kind`, `actor`, `session`, `ts`, `payload` (schema
-  `$id: truth-ledger-record.v0.10`).
+  `$id: truth-ledger-record.v0.11`).
 - **`claim`** — an assertion carrying evidence class (VERIFIED /
   INFERRED / UNVERIFIED), tier, and (for VERIFIED) the evidence capsule.
 - **`verdict`** — a second opinion: `agree` / `diverge` /
@@ -999,6 +1040,9 @@ verdict), the definition carries it too.
 - **`output_hash` / `returncode`** — the hash of the evidence command's
   output and its exit code; recheck and reaffirm compare *both* for
   stability, not success (source of the hollow-VERIFIED residual).
+- **`concerns`** — the sorted, duplicate-free list of stakeholder-concern
+  slugs stamped by `--concern` at filing (§4); 42010 triage metadata the
+  fold never reads — read only by `list --concern` and `stats`.
 
 ### CLI verbs
 
@@ -1052,6 +1096,9 @@ verdict), the definition carries it too.
   30-day default (ADR-007/032).
 - **`--single-run`** — skip the determinism double-run (expensive
   commands).
+- **`--concern <slug>`** — repeatable on `claim`: tag the claim with a
+  stakeholder concern (`[a-z0-9-]{1,32}`); on `list`: filter to claims
+  carrying the tag. Triage metadata, never a gate (§4).
 - **`--evidence-unsafe-ok`** — file despite a failed safety screen; runs
   once in the author's own session, stored `screened:false`, refused by
   recheck forever after (ADR-009).
@@ -1380,7 +1427,7 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
 ### Acronyms & standards
 
 - **ADR** — Architecture Decision Record.
-- **CLI** — command-line interface; here the `truth` script (v0.9.14).
+- **CLI** — command-line interface; here the `truth` script (v0.9.15).
 - **CI** — continuous integration; the clone-proof backstop for the
   commit gate when local hooks are absent (ADR-025).
 - **JSONL** — JSON Lines: one JSON object per line, the ledger's format.

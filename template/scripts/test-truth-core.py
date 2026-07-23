@@ -2031,6 +2031,32 @@ CORPUS = [
      rec("claim", claim_p(), ts="2026-07-01T00:00:00+00:00"), False),
     ("ts tz-naive",
      rec("claim", claim_p(), ts="2026-07-01T00:00:00.000000"), False),
+    # ---- 42010 concern tags (triage metadata; shape hygiene only) ----
+    ("claim with concern tags",
+     rec("claim", claim_p(concerns=["latency", "security"])), True),
+    ("claim single concern tag",
+     rec("claim", claim_p(concerns=["data-privacy"])), True),
+    ("claim concerns empty list",
+     rec("claim", claim_p(concerns=[])), False),
+    ("claim concern tag not a slug",
+     rec("claim", claim_p(concerns=["Not_A_Slug"])), False),
+    ("claim concern tag over 32 chars",
+     rec("claim", claim_p(concerns=["a" * 33])), False),
+    ("claim concerns not a list",
+     rec("claim", claim_p(concerns="security")), False),
+    ("claim concern tag non-string",
+     rec("claim", claim_p(concerns=[1])), False),
+    # red-team F1: Python's $ matches before a trailing newline, so a
+    # ^..$-anchored check on either surface would admit 'security\n' --
+    # a stored tag stats cannot render on one line and list --concern
+    # can never name. Mirror anchors \A..\Z; schema carries the
+    # ECMA-inert (?!\n) guard. Both must reject.
+    ("claim concern tag trailing newline",
+     rec("claim", claim_p(concerns=["security\n"])), False),
+    # red-team F3: schema uniqueItems + mirror dup check -- a hand-
+    # appended duplicate tag would double-count in stats
+    ("claim concerns duplicate tags",
+     rec("claim", claim_p(concerns=["zeta", "alpha", "zeta"])), False),
 ]
 
 class TestConformancePython(unittest.TestCase):
@@ -2269,9 +2295,9 @@ class TestCrossSurfaceVersions(unittest.TestCase):
     # $id to the shape and no test could see it. This pins the shape: any
     # edit to the schema (minus its own $id) breaks the fingerprint, forcing
     # a conscious "is this a shape change? then bump $id" review.
-    EXPECTED_SCHEMA_ID = "truth-ledger-record.v0.10"
+    EXPECTED_SCHEMA_ID = "truth-ledger-record.v0.11"
     PINNED_SHAPE_SHA256 = \
-        "7a3e49069335a965bec3240da33a07ec22c86748f13ef404fd6eb0d58a492df5"
+        "edd25306ac120a4f89892e5a51ada7c9650dbe230f58e216814fb44afc51f0dc"
 
     def _schema(self):
         import json as _json
@@ -3069,6 +3095,209 @@ class TestOverrideReportCLI(unittest.TestCase):
             self.assertEqual(
                 json.loads(rj.stdout)["overrides"]["max_scope_ttl_days"],
                 36500)
+
+
+class TestConcernsCore(unittest.TestCase):
+    """42010 stakeholder concerns are TRIAGE METADATA only: slug hygiene,
+    the stats tally, and -- the hard constraint -- proof the fold is
+    concern-blind (a tagged claim and its untagged twin derive identical
+    status under every verdict/invalidation shape)."""
+
+    def test_slug_hygiene(self):
+        self.assertIsNone(tm.concerns_intake_error(None))
+        self.assertIsNone(tm.concerns_intake_error([]))
+        self.assertIsNone(tm.concerns_intake_error(
+            ["security", "a-b-1", "x" * 32]))
+        for bad in ("Security", "sec_urity", "", "x" * 33,
+                    "sec urity", "s/c", "security\n", "\nsecurity"):
+            self.assertIsNotNone(tm.concerns_intake_error([bad]),
+                                 repr(bad))
+
+    def test_claim_concerns_read_side_degrades(self):
+        """red-team F2: the read verbs (list --concern, stats) consume
+        claim_concerns(), which returns [] for any malformed hand-appended
+        value -- never a crash on an unhashable item, never substring
+        matching on a bare string. validate reports the malformation; the
+        reads just degrade to 'no tags'."""
+        self.assertEqual(tm.claim_concerns({"concerns":
+                                            ["security", "latency"]}),
+                         ["security", "latency"])
+        self.assertEqual(tm.claim_concerns({}), [])
+        self.assertEqual(tm.claim_concerns({"concerns": "security"}), [])
+        self.assertEqual(tm.claim_concerns({"concerns": [["a"]]}), [])
+        self.assertEqual(tm.claim_concerns({"concerns": ["ok", ["a"], 3]}),
+                         ["ok"])
+        # and stats_report itself survives the unhashable-item ledger
+        report = tm.stats_report(
+            events(rec("claim", claim_p(concerns=[["a"]]))), NOW)
+        self.assertEqual(report["concerns"], {})
+        self.assertEqual(report["concerns_untagged_active"], 1)
+
+    def test_fold_is_concern_blind(self):
+        # bare claim first -- no verdict/invalidation at all: the INITIAL
+        # status must be twin-identical too (red-team: a mutant setting
+        # initial status off concerns escaped the verdict-only twins)
+        cp, _ = tm.fold(events(rec("claim", claim_p())))
+        ct, _ = tm.fold(events(
+            rec("claim", claim_p(concerns=["latency", "security"]))))
+        self.assertEqual(cp["tr-00000001"]["status"], "unverified")
+        self.assertEqual(cp["tr-00000001"]["status"],
+                         ct["tr-00000001"]["status"])
+        self.assertEqual(cp["tr-00000001"]["status_ts"],
+                         ct["tr-00000001"]["status_ts"])
+        for kind, payload in (
+            ("verdict", {"claim": "tr-00000001", "verdict": "agree",
+                         "basis": "b"}),
+            ("verdict", {"claim": "tr-00000001", "verdict": "diverge",
+                         "basis": "b"}),
+            ("verdict", {"claim": "tr-00000001", "verdict": "cannot_verify",
+                         "basis": "b"}),
+            ("verdict", {"claim": "tr-00000001", "verdict": "retracted",
+                         "basis": "b"}),
+            ("invalidation", {"claim": "tr-00000001", "commit": "abc1234",
+                              "reason": "x"}),
+        ):
+            plain = events(rec("claim", claim_p()),
+                           rec(kind, payload, rid="tr-00000002"))
+            tagged = events(rec("claim", claim_p(concerns=["latency",
+                                                           "security"])),
+                            rec(kind, payload, rid="tr-00000002"))
+            cp, _ = tm.fold(plain)
+            ct, _ = tm.fold(tagged)
+            self.assertEqual(cp["tr-00000001"]["status"],
+                             ct["tr-00000001"]["status"], kind)
+            self.assertEqual(cp["tr-00000001"]["status_ts"],
+                             ct["tr-00000001"]["status_ts"], kind)
+
+    def test_stats_report_concern_tally(self):
+        evs = events(
+            rec("claim", claim_p(concerns=["security"])),
+            rec("claim", claim_p(text="config parser rejects bad input",
+                                 concerns=["latency", "security"]),
+                rid="tr-00000002"),
+            rec("claim", claim_p(text="cache layer evicts old entries"),
+                rid="tr-00000003"),
+            rec("claim", claim_p(text="worker pool drains on shutdown",
+                                 concerns=["security"]),
+                rid="tr-00000004"),
+            rec("verdict", {"claim": "tr-00000004", "verdict": "retracted",
+                            "basis": "b"}, rid="tr-00000005"),
+            rec("claim", claim_p(text="scheduler honors the quiet hours"),
+                rid="tr-00000006"),
+            rec("invalidation", {"claim": "tr-00000006", "commit": "abc1234",
+                                 "reason": "x"}, rid="tr-00000007"))
+        report = tm.stats_report(evs, NOW)
+        # retracted tr-00000004 drops out of the tag counts; the stale
+        # untagged tr-00000006 is not active, so untagged counts only
+        # tr-00000003
+        self.assertEqual(report["concerns"], {"latency": 1, "security": 2})
+        self.assertEqual(report["concerns_untagged_active"], 1)
+
+    def test_old_format_records_still_validate(self):
+        # backward compatibility: a ledger predating concerns (no key at
+        # all) is not an error anywhere in the mirror
+        self.assertEqual(tm.validate_events(events(rec("claim", claim_p()))),
+                         [])
+
+class TestConcernsCLI(unittest.TestCase):
+    """--concern end to end: filing, hygiene refusal, list filter, stats
+    section, and old-format ledger backward compatibility."""
+
+    def test_filing_stores_sorted_deduplicated_tags(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            r = _truth(d, "claim", "f.txt holds data",
+                       "--concern", "security", "--concern", "latency",
+                       "--concern", "security")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            with open(os.path.join(d, ".truth", "claims.jsonl")) as f:
+                filed = json.loads(f.read().splitlines()[-1])
+            self.assertEqual(filed["payload"]["concerns"],
+                             ["latency", "security"])
+            # and validate accepts what claim filed
+            self.assertEqual(_truth(d, "validate").returncode, 0)
+
+    def test_untagged_filing_carries_no_concerns_key(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            r = _truth(d, "claim", "f.txt holds data")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            with open(os.path.join(d, ".truth", "claims.jsonl")) as f:
+                filed = json.loads(f.read().splitlines()[-1])
+            self.assertNotIn("concerns", filed["payload"])
+
+    def test_malformed_tag_refused_before_anything_files(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            for bad in ("Not_A_Slug", "UPPER", "", "x" * 33, "a b",
+                        "security\n"):  # F1: $ matches before trailing \n
+                r = _truth(d, "claim", "f.txt holds data", "--concern", bad)
+                self.assertNotEqual(r.returncode, 0, repr(bad))
+                self.assertIn("is not a slug", r.stderr, repr(bad))
+                self.assertIn("not a concern-gate", r.stderr, repr(bad))
+            with open(os.path.join(d, ".truth", "claims.jsonl")) as f:
+                self.assertEqual(f.read(), "")  # nothing was filed
+
+    def test_list_filter_composes_with_status_flags(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            a = _truth(d, "claim", "f.txt holds data",
+                       "--concern", "security").stdout.strip()
+            b = _truth(d, "claim", "config parser rejects bad input",
+                       "--concern", "latency").stdout.strip()
+            _truth(d, "claim", "cache layer evicts old entries")
+            r = _truth(d, "list", "--concern", "security", "--json")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual([row["id"] for row in json.loads(r.stdout)], [a])
+            # composes with a status flag: both unverified, so the tag
+            # still narrows to one; --live matches nothing yet
+            r = _truth(d, "list", "--unverified", "--concern", "latency",
+                       "--json")
+            self.assertEqual([row["id"] for row in json.loads(r.stdout)], [b])
+            r = _truth(d, "list", "--live", "--concern", "latency", "--json")
+            self.assertEqual(json.loads(r.stdout), [])
+
+    def test_stats_concerns_section_plain_and_json(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            _truth(d, "claim", "f.txt holds data", "--concern", "security",
+                   "--concern", "latency")
+            _truth(d, "claim", "cache layer evicts old entries")
+            r = _truth(d, "stats")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("concerns: latency=1, security=1, "
+                          "untagged-active=1", r.stdout)
+            rj = _truth(d, "stats", "--json")
+            report = json.loads(rj.stdout)
+            self.assertEqual(report["concerns"],
+                             {"latency": 1, "security": 1})
+            self.assertEqual(report["concerns_untagged_active"], 1)
+
+    def test_old_format_ledger_lists_folds_validates_stats(self):
+        """CRITICAL backward compatibility: a ledger written before
+        concerns existed (no key anywhere) must list, fold, validate, and
+        stats without error, and a --concern filter over it is simply
+        empty."""
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            old = [rec("claim", claim_p()),
+                   rec("verdict", {"claim": "tr-00000001", "verdict": "agree",
+                                   "basis": "b"}, rid="tr-00000002",
+                       ts="2026-07-02T00:00:00.000000+00:00")]
+            with open(os.path.join(d, ".truth", "claims.jsonl"), "w") as f:
+                f.write("".join(json.dumps(e) + "\n" for e in old))
+            r = _truth(d, "validate")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = _truth(d, "list", "--json")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual([row["status"] for row in json.loads(r.stdout)],
+                             ["live"])
+            r = _truth(d, "list", "--concern", "security", "--json")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(json.loads(r.stdout), [])
+            r = _truth(d, "stats")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("concerns: none, untagged-active=1", r.stdout)
 
 
 if __name__ == "__main__":
