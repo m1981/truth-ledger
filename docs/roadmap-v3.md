@@ -389,5 +389,25 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   AGENTS.md snippet gains the classify-then-blank step; template
   CHANGELOG v0.9.15 entry extended. Docs-only — zero scripts/, .truth/
   contract, or copier.yml changes (the existing chmod task already
-  covers spec-health.sh). Kuchnie takes it back via copier update. Left
-  uncommitted for operator review.
+  covers spec-health.sh). Kuchnie takes it back via copier update.
+- 2026-07-23 (later): satellite committed after red-team (authority
+  wording fixed: five-name section contract attributed to the template
+  set, spec-health "four checks" claim corrected to one, status line
+  points extensions at local-archetypes.md). En route found and fixed a
+  real CLI bug: invalidate-scan was rename-blind (git diff --name-only
+  under rename detection emits only the destination path, so the
+  paper-v2 retirement in e01dd50 left five claims falsely live) --
+  changed_files_since now passes --no-renames, regression test with
+  config-pinned negative control (c0bb4b6). v0.9.15 TAGGED and pushed
+  (concern tags + satellite + scan fix). Ledger groomed: rename victims
+  judged genuine, successors filed and cross-verified (paper-v3 coverage
+  tripwire tr-8d246eb3 replaces the dead v2 pair; one successor caught
+  unfaithful by its verifier and corrected -- tr-a6ce8d2c). Kuchnie
+  synced v0.9.14->v0.9.15 (PR #12 merged): its new-doc gate demanded
+  Reader/Enables/Update-trigger headers within 15 lines -- fixed
+  upstream (8137ce8, rides v0.9.16) and forward-ported verbatim; both
+  repos' satellites covered by live claims (tr-4d9fff1b meta,
+  tr-b949e4e0 pilot). NOTE: kuchnie tr-54214e5f carries an ADR-032
+  30-day scope-ok decay (~2026-08-22) -- re-word to existential before
+  then or let it re-file. Queue: paper-v2 family diverged tombstones
+  await operator retraction.
