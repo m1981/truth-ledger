@@ -21,6 +21,15 @@ Meta-repo conventions, on top of the standard layer:
 - Accepted ADRs are immutable in body; corrections land as
   `Amended by:` lines in the status block (see ADR-002, ADR-004).
 - `docs/archive/` is frozen verbatim; never update it.
+- Doc edits get an independent reader BEFORE the commit lands: any
+  change touching `docs/` or `template/.truth/README.md` is peer-reviewed
+  by a fresh session/agent that did not author it (check mechanical
+  sentences against the code, version mentions on UNPINNED surfaces,
+  cross-surface consistency, which live claims the text breaks). The
+  lockstep tests refuse only the pinned stamps; everything else is
+  caught by reading or not at all — the v0.9.15 release proved both
+  halves (a missed unpinned Scope header, found only by an independent
+  reviewer). This is the review the design assumes; do it unprompted.
 - The P0 canary claim's evidence command (`bash …truth-canary.sh`) is
   deliberately NOT allowlisted (ADR-009's test-runner rule), so
   `verdict --recheck` refuses to execute it: verifiers run the suite
