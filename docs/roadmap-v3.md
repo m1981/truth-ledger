@@ -373,3 +373,21 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   docs/growth-gate/symbol-tracing-design.md with tested recipes.
   Backlog: kuchnie first wave steps 2-3 (core manifest + ERP pricing)
   on operator demand; D2 --symbols verb demand-gated.
+- 2026-07-23: spec-archetype satellite promoted from kuchnie into the
+  template as part of unreleased v0.9.15 — six archetype blanks + field
+  guide land at template/docs/templates/, the bootstrap interview
+  extracted to template/prompts/spec-bootstrap.md (the guide now points
+  at it, no second copy). Kuchnie-local references genericized
+  (docs/spec-convention.md → .truth/README.md § Feature specs; the
+  kitchen-erp screens.md worked-example pointer generalized; Beads A/B
+  lore → beads-integration-guide pointer) with a precedence line: a
+  repo's own spec-convention doc outranks the summary. Ownership rule
+  stated in the guide: template-owned, updates via `copier update`,
+  per-project extensions in a separate docs/templates/local-archetypes.md
+  — the evidence-deny pattern. Gate authority pinned: the guide's
+  pseudo-code stays pseudo-code, scripts/spec-health.sh is authoritative.
+  AGENTS.md snippet gains the classify-then-blank step; template
+  CHANGELOG v0.9.15 entry extended. Docs-only — zero scripts/, .truth/
+  contract, or copier.yml changes (the existing chmod task already
+  covers spec-health.sh). Kuchnie takes it back via copier update. Left
+  uncommitted for operator review.

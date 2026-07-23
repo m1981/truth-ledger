@@ -9,7 +9,7 @@ line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
 v0.9.15 (stakeholder concerns -- ISO/IEC/IEEE 42010 triage metadata,
-  red-teamed pre-release):
+  red-teamed pre-release; spec-archetype satellite):
   * `claim --concern TAG` (repeatable) stamps 42010 stakeholder-concern
     tags on the claim payload (`concerns`: sorted, deduplicated). A tag
     is a slug, anchored \A[a-z0-9-]{1,32}\Z -- absolute anchors because
@@ -40,6 +40,15 @@ v0.9.15 (stakeholder concerns -- ISO/IEC/IEEE 42010 triage metadata,
     written before the flag existed (no key anywhere) folds, lists,
     validates, and stats unchanged -- pinned in tests and smoke-checked
     against a 1143-record production-copy ledger.
+  * spec-archetype satellite (docs-only): six component-archetype spec
+    blanks + a field guide (docs/templates/) and the bootstrap interview
+    prompt (prompts/spec-bootstrap.md), promoted from the pilot consumer
+    repo -- closes the gap of shipping spec-health.sh (the gate) with no
+    spec-authoring guide beside it. Template-owned like the evidence-deny
+    baseline: updates ride `copier update`; per-project archetypes go in
+    a separate local file (docs/templates/local-archetypes.md), never in
+    edits to the shipped files. The guide's gate pseudo-code stays
+    pseudo-code; scripts/spec-health.sh remains the authoritative gate.
 
 v0.9.14 (batch-5 override decay + its instrument, roadmap-v3 R12/R13,
   ADR-032/033):
