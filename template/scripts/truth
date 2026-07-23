@@ -1752,8 +1752,14 @@ def commit_reachable(sha):
     return r.returncode == 0
 
 def changed_files_since(anchor):
-    """Returns (changed_files or None, error or None)."""
-    r = subprocess.run(["git", "diff", "--name-only", f"{anchor}..HEAD"],
+    """Returns (changed_files or None, error or None).
+
+    --no-renames: with rename detection active, a `git mv` of a watched
+    file emits only the DESTINATION path, so the watched (old) path never
+    appears and the scan silently misses the change -- a rename must show
+    as delete+add so the tripwire fires on the old path."""
+    r = subprocess.run(["git", "diff", "--name-only", "--no-renames",
+                        f"{anchor}..HEAD"],
                        capture_output=True, text=True)
     if r.returncode != 0:
         return None, r.stderr.strip()

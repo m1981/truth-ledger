@@ -49,6 +49,14 @@ v0.9.15 (stakeholder concerns -- ISO/IEC/IEEE 42010 triage metadata,
     a separate local file (docs/templates/local-archetypes.md), never in
     edits to the shipped files. The guide's gate pseudo-code stays
     pseudo-code; scripts/spec-health.sh remains the authoritative gate.
+  * invalidate-scan rename blindness fixed: changed_files_since now passes
+    --no-renames, so a `git mv` of a watched path shows as delete+add and
+    the tripwire fires on the old path. Found in the wild: retiring
+    paper-v2 to docs/archive/ emitted only the destination path under
+    rename detection, leaving three claims falsely live. Regression test
+    with negative control (test fails on the pre-fix scan). On update,
+    claims whose watched paths were renamed since their anchor will
+    (correctly) stale at the next scan; `truth reaffirm` triages them.
 
 v0.9.14 (batch-5 override decay + its instrument, roadmap-v3 R12/R13,
   ADR-032/033):

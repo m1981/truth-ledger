@@ -3300,5 +3300,38 @@ class TestConcernsCLI(unittest.TestCase):
             self.assertIn("concerns: none, untagged-active=1", r.stdout)
 
 
+class TestScanRenameBlindness(unittest.TestCase):
+    """A `git mv` of a watched path must stale its claims. With rename
+    detection active, `git diff --name-only` emits only the DESTINATION
+    path, so the watched old path never appears and the scan silently
+    misses the move -- the --no-renames regression found in the wild
+    (paper-v2 retired to docs/archive/ left three claims falsely live)."""
+
+    def test_git_mv_of_watched_path_stales_the_claim(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            r = _truth(d, "claim", "f.txt holds data", "--class",
+                       "VERIFIED", "--evidence-cmd", "cat f.txt",
+                       "--paths", "f.txt")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            cid = r.stdout.strip().splitlines()[-1]
+            r = _truth(d, "verdict", cid, "agree", "--basis", "checked",
+                       env_extra={"TRUTH_SESSION": "s-verifier"})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            # pin rename detection ON (repo config beats any user
+            # diff.renames=false) so the pre-fix scan reliably exhibits
+            # the blindness this test pins
+            _git(d, "config", "diff.renames", "true")
+            # 100%-similarity rename: the exact shape rename detection
+            # collapses to destination-only in --name-only output.
+            _git(d, "mv", "f.txt", "archived.txt")
+            _git(d, "commit", "-qm", "retire f.txt")
+            r = _truth(d, "invalidate-scan")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn(cid, r.stdout)
+            r = _truth(d, "list", "--stale")
+            self.assertIn(cid, r.stdout)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
