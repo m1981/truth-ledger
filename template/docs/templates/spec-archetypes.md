@@ -1,5 +1,9 @@
 # Spec Archetypes: A Field Guide
 
+> Reader: anyone (human or agent) starting a component spec | Enables:
+> classifying the component and drafting from the right archetype
+> outline | Update-trigger: a new recurring component shape, or a change
+> to spec-health / section-contract semantics
 > Reference — component specification templates (optional satellite,
 > like `.truth/README.md` § Feature specs — the ledger works without it)
 > **Drawn for:** any future software project, component-by-component

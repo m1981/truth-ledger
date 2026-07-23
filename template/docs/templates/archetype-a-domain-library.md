@@ -1,22 +1,19 @@
 <!--
 TEMPLATE — Archetype A: Domain / Core Library
 Source: spec-archetypes.md (Field Guide) · Lineage: DDD + Design by Contract
-Copy this file to <component>/docs/specs/<kebab-case>.md, fill every
-bracket, delete every guidance comment, delete this banner.
-Section contract is fixed by this template set — do not rename or remove
-Intent / Decisions / Ground truths / Work / Acceptance (id-citing rule:
-`.truth/README.md` § Feature specs).
-Only tr-/wk- ids that already exist and are live may be cited (verify
-with `scripts/truth list --live` / `scripts/truth issues` before citing —
-never invent one). Zero-id specs get a WARN from spec-health.sh, not a
-failure — better an honest empty section than a fabricated id.
+Copy to <component>/docs/specs/<kebab-case>.md, fill every bracket,
+delete guidance comments and this banner. Section contract is fixed by
+this template set — do not rename or remove Intent / Decisions / Ground
+truths / Work / Acceptance (id-citing rule: `.truth/README.md` § Feature
+specs). Cite only tr-/wk- ids that exist and are live — never invent
+one. Zero-id specs get a WARN from spec-health.sh, not a failure —
+better an honest empty section than a fabricated id.
 -->
 # Spec: <Component name> — <one-line role, e.g. "the decomposition domain hub">
 
 > Reader: <who reads this before touching the component> | Enables:
-> <what this spec lets that reader do that they couldn't do from code
-> alone> | Update-trigger: <what change to the world means this spec
-> must be revisited>
+> <what it lets them do that code alone doesn't> | Update-trigger:
+> <what change to the world means this spec must be revisited>
 
 Serves: <UC-N (hook), ...> <!-- or: "no use case directly — this is Layer-0
 domain vocabulary consumed by UC-N's implementation," if that's honestly
