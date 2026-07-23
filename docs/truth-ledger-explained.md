@@ -788,6 +788,60 @@ Both the paper and the loophole map spend real space on this, because
 green checkmarks mean nothing if you don't know which properties are
 *enforced* and which are *hoped*. The honest taxonomy has four bands.
 
+### The enforcement stack, in one picture
+
+§10 sorted the machinery by *when it fires*; the bands below sort it by
+*how much to trust it*. The bridge between the two views is the
+**stack**: every enforcement mechanism in this system lives at exactly one depth, and
+the two axes run in opposite directions — the deeper the layer, the
+harder it binds and the less it depends on anyone discovering it. The
+design rule that generates the whole arrangement is the figure's
+depth-reading of §13's philosophy sentence: push each rule down to the
+deepest layer where a cheap pure
+predicate can carry it; where none exists, keep it shallow but make the
+bypass visible; and make every layer's worst case omission, never
+corruption. Each layer's escape route is the next layer's input — the
+§11 worked example (the `docs/archive/` freeze: norm → harness deny →
+pre-commit) is one rule's journey down this stack after prose alone
+failed to hold it.
+
+```mermaid
+flowchart TD
+    L1["PROSE DIRECTIVES - AGENTS.md, .truth/README,<br/>verifier prompt, tutorial<br/>binds: only agents that READ them - fails: unread"]
+    L2["HARNESS HOOKS - whisper deny+advise, session digest,<br/>pi extension mirror<br/>binds: only where WIRED - deny fails closed, whisper open"]
+    L3["THE BATTERY - canary, core tests, lockstep version<br/>pins, shape fingerprint, doctor<br/>binds: anyone running it or CI - fails: red build"]
+    L4["CLI VERBS - intake gates, session seams,<br/>human-only tombstones, acceptance oracles<br/>binds: anyone using the verbs - fails: refusal"]
+    L5["GIT TRANSACTIONAL - check-truth via hook-or-CI<br/>(ADR-025 decidable), archive freeze, post-commit scan<br/>binds: where installed - fails: blocked commit / detection append"]
+    L6["LEDGER + FOLD - append-only, total order,<br/>confluence, union merge<br/>binds: everything downstream - fails: detectable after the fact, not silently absorbed"]
+    L1 -->|"agent never reads it"| L2
+    L2 -->|"harness not wired"| L3
+    L3 -->|"battery not run"| L4
+    L4 -->|"verbs bypassed, raw append"| L5
+    L5 -->|"no hook, no CI"| L6
+```
+
+**Fig. 6** — the six-layer enforcement stack: binding condition and
+failure direction per layer; each arrow is that layer's escape route,
+caught one layer down.
+
+Read the figure downward as an attacker or a forgetful agent would
+fall: skip the prose and the harness catches you; run hook-less and the
+battery catches the release; append raw and the schema and order
+checks catch a malformed line. Only the bottom layer has no layer beneath it, which is why the
+core invariants (INV-A append-only, the ADR-016 total order, INV-I
+confluence) live there and nowhere shallower — and why the one genuinely
+uncovered path, an agent that reads nothing in a hook-less harness that
+never runs the battery, is Band 4's structural hole: it falls through
+every layer, and so long as it only *ignores* the ledger the worst case
+stays omission. If it *writes*, Band 3's sandbox showed the rewrite can
+land silently — the bottom layer does not prevent that corruption; it
+makes it detectable after the fact (`baseline --diff` exits 5 on any
+DISAPPEARED record), never silently absorbed into the fold.
+The bands that follow are this stack re-sorted by trust: Band 1 is
+layers 4–5 working as designed (layer 6 is the substrate they refuse on
+behalf of), Band 2 the identity seams inside layer 4, Band 3 layer 5's
+installation condition, Band 4 layers 1–2's discovery condition.
+
 ### Band 1 — Hard technical refusals
 
 Given the machinery is invoked at all, these cannot be passed without
@@ -928,7 +982,9 @@ The design's one-line philosophy, repeated across the ADRs in different
 words: convert norms into refusals where a cheap pure predicate exists;
 where it doesn't, make the bypass visible and attributable; and where
 even that fails, make sure the worst case is omission, never
-corruption.
+corruption. Fig. 6 draws that sentence as the six-layer enforcement
+stack — prose down to ledger — with each layer's binding condition and
+failure direction.
 
 ## 14 · Glossary — every term, acronym, and identifier
 
