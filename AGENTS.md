@@ -39,6 +39,20 @@ Meta-repo conventions, on top of the standard layer:
 - `scripts/truth` is a SYMLINK to `template/scripts/truth`: watch the
   real path in evidence_paths (a watch on the symlink can never fire —
   git only sees the link itself, which never changes).
+- Export a stable `TRUTH_SESSION` before filing anything. The default is
+  ppid-derived and differs per one-shot shell call (Claude Code Bash,
+  `pi -p`), so records from one working session scatter across ids and
+  ADR-010's author≠verifier refusal cannot be trusted from the default —
+  separation by PID accident is not separation. A verifier exports its
+  own `TRUTH_SESSION=verifier-<slug>`; never scribe verdicts through the
+  author's session.
+- Downgrading an independent finding's severity is itself a claim — the
+  one that stops further work, so the highest-leverage one to be wrong
+  about. Before building on a downgrade, dispatch a fresh adversary to
+  REFUTE the disposition; after building, a second one to attack the
+  artifact. Three shipped releases (ADR-021, ADR-024, ADR-028) exist
+  because exactly this drill flipped a "just document it" back into a
+  code fix.
 - A pre-edit whisper hook is wired (`.claude/settings.json` → PreToolUse
   → `scripts/truth-whisper.py`, ADR-005 trial): editing a path the
   ledger watches injects the mechanical prediction of what your commit

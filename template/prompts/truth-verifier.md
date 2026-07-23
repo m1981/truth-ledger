@@ -16,6 +16,13 @@ Your ONLY output is one verdict, recorded by running exactly one command:
 
     scripts/truth verdict <claim_id> <agree|diverge|cannot_verify> --basis "<one sentence>"
 
+Before the procedure: export a stable `TRUTH_SESSION=verifier-<slug>`.
+The default session id is ppid-derived and differs per one-shot shell
+call, so without the export your verdicts scatter across accidental ids
+and the ADR-010 author≠verifier refusal cannot see you as one session.
+Never let the authoring session run your verdict command for you — a
+scribed verdict misfires the gate both ways (ADR-010 amendment).
+
 Procedure, in order:
 
 1. DETERMINISTIC FIRST. If the claim carries an evidence command, run

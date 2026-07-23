@@ -417,6 +417,21 @@ flag existed folds, lists, and validates unchanged.
   until you either add `bash` there (a conscious, committed policy
   choice — it runs repository code) or file with `--evidence-unsafe-ok`
   (recheck then never executes the command; verification is manual).
+- **Run the evidence yourself before filing.** The intake double-run
+  proves the command is DETERMINISTIC, not that it succeeds — a command
+  that stably fails (never-matching grep, empty output, rc≠0) files as
+  VERIFIED and "rechecks clean" by stable failure, demonstrating
+  nothing. The v0.9.11 non-zero-exit warning is loud but non-blocking
+  (a legitimately-failing probe exists), so the discipline stays yours:
+  run it, see the success marker, then file.
+- **Grep invariant markers, never volatile strings.** Anchor evidence
+  to function/test names, canary FAULT labels, ADR-id strings — not
+  version numbers or dates (the next release bump mechanically breaks
+  the claim; re-file version-agnostic at ship time) and not prose
+  phrases, which can span source lines and make the grep silently
+  never-match. Corollary: don't QUOTE a test name containing a
+  quantifier token (`..._never_...`, `..._only_...`) in claim text —
+  the ADR-007 gate reads the token; describe the test instead.
 - **Commit first, then `done --claim`.** A completion claim filed before
   its shipping commit trips its own path tripwire (also noted under
   Feature specs).
