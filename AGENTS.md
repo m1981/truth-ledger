@@ -21,6 +21,13 @@ Meta-repo conventions, on top of the standard layer:
 - Accepted ADRs are immutable in body; corrections land as
   `Amended by:` lines in the status block (see ADR-002, ADR-004).
 - `docs/archive/` is frozen verbatim; never update it.
+- Machine-local operational notes live in `.local/` (gitignored, never
+  commit its contents): the deployment-site disk mapping (machine
+  paths stay out of git; the paper's own text anonymizes the pilot,
+  though other committed docs name the sites) and this machine's
+  workarounds. Agent-agnostic by design — read them there, update them
+  there, and do NOT mirror them into any harness-private memory; a
+  fresh clone won't have `.local/`, which is intended.
 - Doc edits get an independent reader BEFORE the commit lands: any
   change touching `docs/` or `template/.truth/README.md` is peer-reviewed
   by a fresh session/agent that did not author it (check mechanical
