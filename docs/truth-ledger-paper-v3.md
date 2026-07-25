@@ -777,6 +777,26 @@ question*.
    v0.9.14 — outside every field window §2 covers, with their own
    adoption-gate calibration debt folded into the same R11 clock as
    item 2.
+9. **Anonymization is a promise the design actively works against.**
+   This paper anonymizes the pilot ("kitchen-manufacturing monorepo") —
+   but only in its own text, and the mechanism accumulates identifiers
+   as a side effect of its virtues: evidence commands are stored
+   verbatim and re-executed, so two early claim records carry the
+   pilot's absolute filesystem path; provenance stamps every record;
+   field notes name repositories so claims stay checkable; and INV-A
+   makes every leak permanent — an identifying record can be retracted,
+   never removed. An independent review found the pilot named across
+   eight committed files, the ledger among them. No gate screens
+   evidence commands or prose for identifying material, and none is
+   planned: the honest
+   scope of the discipline is forward-looking hygiene — consolidated
+   identifying state (site↔path mappings, machine specifics) lives in
+   gitignored machine-local notes under an instruction-file convention,
+   keeping *new* commits clean while the paper's text remains the only
+   anonymization boundary. A case study built on this mechanism should
+   decide its anonymity posture *before* filing its first evidence
+   command, not at write-up time — retrofitting requires the history
+   rewrite the design exists to make visible.
 
 ---
 
