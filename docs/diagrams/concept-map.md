@@ -31,6 +31,7 @@ flowchart TB
     CORE["Pure core (fold)<br/><i>no I/O, no clock, no env</i><br/>status = fold(log)"]
     SCAN["invalidate-scan<br/><i>the only clock reader</i><br/>TTL · anchor lost · paths touched<br/>→ writes invalidation records"]
     DISP["dispatch<br/><i>claim record + fixed prompt only<br/>never author reasoning</i>"]
+    RAFF["reaffirm<br/><i>deliberate verb, never a hook side effect</i><br/>stale + prior agree + hash-match → auto-agree<br/>(never same-session, ADR-010)<br/>mismatch files NOTHING (dispatch)"]
     POLICY["ready<br/><i>issues × premise validity<br/>tier-sensitive blocking</i>"]
     VAL["validate + order_check<br/><i>schema mirror · backdated /<br/>equal-ts duplicate detection</i>"]
   end
@@ -45,6 +46,7 @@ flowchart TB
   AA -- "truth issue / premise" --> INTAKE
   HU -- "retract (human gate)" --> LEDGER
   VS -- "verdict agree/diverge/cannot_verify" --> LEDGER
+  RAFF -- "auto-agree (hash-match only)" --> LEDGER
   DISP -- "fixed prompt + record" --> VS
   PROMPT --> DISP
   LEDGER --> CORE
@@ -81,6 +83,7 @@ classDiagram
     anchor_commit
     evidence_paths OR ttl_days
     scope_basis / basis
+    concerns ~42010 triage tags, never a gate~
   }
   class verdict {
     claim → id
@@ -109,7 +112,7 @@ classDiagram
   }
   class contradicts {
     a → id, b → id
-    ~v0.9.0 — absent from paper §1/§6.3 (review Minor 6)~
+    ~v0.9.0 — covered in the living paper v3 §1 + Appendix A (INV-R)~
   }
   Envelope <|-- claim
   Envelope <|-- verdict
@@ -144,7 +147,7 @@ stateDiagram-v2
     live --> disputed : contradicts edge fires<br/>(both sides live)
     diverged --> live : agree (recoverable)
     cannot_verify --> live : agree (recoverable)
-    stale --> live : agree — re-anchors<br/>⚠ TTL claims re-stale next scan<br/>(review Major 2)
+    stale --> live : agree — re-anchors<br/>(verifier judgment, or reaffirm<br/>auto-agree on evidence hash-match)<br/>⚠ TTL-staled are re-filed, not reaffirmed
     unverified --> retracted : human retraction
     live --> retracted : human retraction
     diverged --> retracted : human retraction
@@ -207,7 +210,8 @@ flowchart LR
 ```
 
 Confluence: any permutation of the same event set folds to one state
-(exhaustive-permutation tested; 166/166 seeded faults green).
+(exhaustive-permutation tested; the canary prints its own fault count —
+all seeded faults green).
 The real CRDT is the grow-only set of log lines under git union merge;
 the fold is a deterministic query over it.
 

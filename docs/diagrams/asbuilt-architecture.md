@@ -1,4 +1,4 @@
-> NOTE: drawn at v0.9.13; v0.9.14 (2026-07-20) added ADR-032 scope-override decay and ADR-033 override-velocity stats on top — additive only, no structural change. See docs/roadmap-v3.md Batch 5.
+> NOTE: drawn at v0.9.13; v0.9.14 (2026-07-20) added ADR-032 scope-override decay and ADR-033 override-velocity stats on top — additive only, no structural change. See docs/roadmap-v3.md Batch 5. v0.9.15 (2026-07-23) added ISO/IEC/IEEE 42010 concern-tag triage metadata (`--concern` on claim, `list --concern`, stats `concerns` section, schema `$id` v0.11) — additive only, never a gate, fold untouched; plus an invalidate-scan rename-blindness fix (`git mv` of a watched path now stales its watchers).
 
 # Truth Ledger — As-Built Architecture (v0.9.13)
 
