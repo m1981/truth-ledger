@@ -36,7 +36,7 @@ certainly don't need all of it, in order, today.
 - **Auditing the trust model?** §11 (what's *enforced* vs. merely
   *hoped*) → §12 (the accepted holes) → §13. One-line threat model:
   drift, not adversaries.
-- **Just need a term?** §14 is a 170-entry glossary — every term is
+- **Just need a term?** §14 is a 176-entry glossary — every term is
   defined at first use above and restated there.
 
 ---
@@ -723,6 +723,40 @@ template-side; the hook wiring is per-repo. In this repo it is wired
 for both Claude Code and the pi harness — same deny list, same
 per-session metric file.
 
+### Spec-coverage manifests — assertions attached to their tests
+
+*A satellite-pattern review trigger piloted in a consumer repo: named
+spec assertions, a sibling manifest, and two ordinary claims that
+notice drift.*
+
+The spec-health and doc-health satellites above police *citations of
+ledger ids*; they say nothing about whether a spec's testable sentences
+have tests. The spec-coverage mechanism (design + live pilot:
+`docs/growth-gate/spec-coverage-manifests.md`) watches that seam with
+no new machinery: each testable assertion in a wired spec gets an
+inline `SC-<slug>-NNN` id, the same ids live one-per-line in a
+pre-sorted sibling manifest (`<spec>.sc.txt`), and each citing test
+names its id in its docstring. Two **sentinel-recipe claims** per spec
+— the spec↔manifest sentinel and the tests↔manifest sentinel, each a
+slug-scoped grep-and-diff — then ride the ordinary
+stale → reaffirm → dispatch loop: a commit touching a watched path
+stales the sentinel(s) watching it (the spec↔manifest pair watches spec
+and manifest; the tests↔manifest sentinel also watches the test tree); `reaffirm` auto-agrees an empty diff; a non-empty
+diff names the drifted assertions and waits for a dispatched judgment.
+Not a gate — a review trigger; the staling *is* the mechanism working.
+
+Each assertion carries an **assertion-dark grade** r0–r3 — a different
+instrument from file-darkness, which is `impact --inverse` over files.
+r2 (in the manifest, no test cites it) is the tests↔manifest diff's
+`>` lines, listed by name. The honest caveat is r1: a citation is a
+*report*, not a judgment — the id merely occurs in a test file; only
+r0 (an ADR-014 acceptance oracle actually running the suite at `done`)
+proves execution. Pilot: kuchnie's
+`catalog/docs/specs/configurator-api.md`, sentinels `tr-fcca2d96` /
+`tr-40a5beb5`. One namespace note: `SC-` ids are spec-local assertion
+names, **not** ledger ids — spec-health's ADR-001 matrix never judges
+them.
+
 ### The agent-instruction surface — the documents that carry the rules
 
 Every gate above assumes an agent that already knows the ledger exists
@@ -1055,6 +1089,12 @@ verdict), the definition carries it too.
 - **`tr-` prefix** — the id namespace for claims (`tr-xxxx`).
 - **`wk-` prefix** — the id namespace for work items / issues
   (`wk-xxxx`); duplicate `wk-` ids are first-wins (ADR-006).
+- **`SC-` (id prefix)** — *not* a ledger id and not a record kind: a
+  spec-local assertion name (`SC-<slug>-NNN`) minted inline in a
+  spec-coverage-wired spec and mirrored in its sibling manifest.
+  Regex-distinct from `tr-`/`wk-`, so spec-health's id tripwire ignores
+  it and the ADR-001 matrix never judges it
+  (docs/growth-gate/spec-coverage-manifests.md).
 
 ### Evidence capsule & payload fields
 
@@ -1404,7 +1444,24 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
   (ADR-002).
 - **satellites** — auxiliary health checks: **spec-health** (specs may
   state facts only by citing ledger ids) and **doc-health** (the same for
-  prose) (ADR-003, paper §4).
+  prose) (ADR-003, paper §4); the spec-coverage sentinels sit beside
+  them in spirit but are not a third satellite script — they ride the
+  ordinary claim machinery (scan, reaffirm, dispatch).
+- **spec-coverage manifest** — the ids-only, pre-sorted sibling file
+  (`<spec>.sc.txt`) mirroring a wired spec's inline `SC-<slug>-NNN`
+  assertion ids; the machine-diffable half of the spec-coverage
+  mechanism. Watched by two sentinel-recipe claims per spec (the
+  spec↔manifest and tests↔manifest sentinels) that ride the normal
+  stale→reaffirm→dispatch loop — a review trigger, never a gate
+  (docs/growth-gate/spec-coverage-manifests.md; pilot: kuchnie,
+  `tr-fcca2d96`/`tr-40a5beb5`).
+- **assertion-dark (grades r0–r3)** — the spec-coverage grading of a
+  *spec assertion's* attachment to tests: r0 proven executed (ADR-014
+  accept-cmd at `done`), r1 cited by ≥1 test file (a report, not a
+  judgment), r2 in the manifest with no citing test (the tests↔manifest
+  diff's `>` lines, by name), r3 testable prose never minted an id
+  (undetectable — the honest limit). A different instrument from
+  **file**-darkness, which is `impact --inverse` over tracked files.
 - **the queue** — the human review queue surfaced by `truth queue`:
   diverged + stale P0/P1 + unverifiable P0.
 - **tombstone** — a `retracted` (or `cancelled`) record; a deliberate,

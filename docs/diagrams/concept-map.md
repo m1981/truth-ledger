@@ -58,6 +58,10 @@ flowchart TB
   GATE --> VAL
   PM --> SCAN
   LEDGER -.-> GATE
+
+  SCOV["●new spec-coverage sentinels (pilot: consumer repo kuchnie)<br/>two sentinel-recipe claims per wired spec:<br/>the spec↔manifest diff + the tests↔manifest diff<br/>(inline SC-&lt;slug&gt;-NNN assertion ids · sibling .sc.txt<br/>manifest · test docstring citations) — ordinary claims,<br/>no new verb; a review trigger, never a gate"]
+  SCAN ==>|"an edit to a watched path stales<br/>the sentinel(s) watching it"| SCOV
+  SCOV ==>|"reaffirm clears an empty diff;<br/>a non-empty diff names the drifted ids<br/>(tests↔manifest &gt; lines = r2) → dispatch"| LEDGER
 ```
 
 ---

@@ -1,6 +1,6 @@
-# The Loophole Map — Five Agent Events, Simulated
+# The Loophole Map — Six Agent Events, Simulated
 
-> Reader: anyone assessing what the truth ledger can and cannot enforce against agent behavior | Enables: knowing, per event type, which gates are CLI refusals and which residuals are behavioral — and what the worst case actually is | Update-trigger: a gate ships or a residual closes (current: CLI v0.9.15 — content re-synced at v0.9.13 on 2026-07-20, ADR-032/033 override-decay content added 2026-07-21; header pinned in lockstep by TestCrossSurfaceVersions since v0.9.13)
+> Reader: anyone assessing what the truth ledger can and cannot enforce against agent behavior | Enables: knowing, per event type, which gates are CLI refusals and which residuals are behavioral — and what the worst case actually is | Update-trigger: a gate ships or a residual closes (current: CLI v0.9.15 — content re-synced at v0.9.13 on 2026-07-20, ADR-032/033 override-decay content added 2026-07-21, Event F spec-coverage added 2026-07-26; header pinned in lockstep by TestCrossSurfaceVersions since v0.9.13)
 
 Provenance: adapted from a second-deployment session walkthrough
 (repo `temporal-go-agent-sdk`, 2026-07 — the same session behind
@@ -299,6 +299,40 @@ paper v3 §10.)*
 
 ---
 
+## F. Agent Cites a Spec Assertion
+
+```mermaid
+flowchart TD
+    F0["Agent asserts 'this spec<br/>assertion is tested'"] --> M1{"assertion minted? inline<br/>SC-&lt;slug&gt;-NNN marker in the spec"}
+    M1 -->|"NO — testable prose, no id"| R3["assertion-dark r3 ☠<br/>invisible to both sentinels<br/>(honest limit: minting is judged work)"]
+    M1 -->|yes| M2{"id mirrored in the sibling<br/>pre-sorted manifest?"}
+    M2 -->|"no — marker without its twin"| SM["the spec↔manifest sentinel<br/>diffs non-empty at next scan ⚠<br/>stays stale → dispatch"]
+    M2 -->|yes| M3{"≥1 test-file docstring<br/>cites the id verbatim?"}
+    M3 -->|"no citing test"| TM["the tests↔manifest sentinel<br/>prints it as a &gt; line ⚠<br/>assertion-dark r2, by name → dispatch"]
+    M3 -->|yes| R1["r1: cited ✅ — a REPORT<br/>(the string occurs in a test file)"]
+    R1 -.->|"only an ADR-014 accept-cmd<br/>running the suite at done"| R0["r0: proven executed ✅"]
+```
+
+**Loophole:** citation-without-verification. r1 — the grade the cite
+path above ends on — is string-presence in a test file, nothing more:
+the tests↔manifest sentinel greps test files for the ids and diffs
+against the manifest, so deleting every citing test method and pasting
+all the ids into one comment line of one test file passes
+byte-identical to the honest state, forever, without even a dispatch
+(reproduced). Behavioral, not enforced — kin of B's hollow VERIFIED,
+one layer up: a citation is a *report*, not a judgment. Only r0 (an
+ADR-014 `--accept-cmd` oracle actually running the suite at `done`)
+proves execution, and only the sentinel's non-empty-diff dispatch
+produces a judgment that a test asserts what its id names. The two
+sentinel-recipe claims are deliberately a review trigger, never a gate
+— staling on every legitimate spec/manifest/test edit is their whole
+job (the `tr-ebac6513` ADR-series precedent). Per this map's
+Provenance rule, the contract (id grammar, manifest shape, tested
+recipes, mandatory recipe rules) is not restated here — semantics
+source of truth: `docs/growth-gate/spec-coverage-manifests.md`.
+
+---
+
 ## Verdict — The Loopholes, Ranked
 
 | Event | Loophole | Enforced or behavioral? | Status |
@@ -308,6 +342,7 @@ paper v3 §10.)*
 | C. Finish | `done` trusts the word only where no oracle was declared (`--accept-cmd` shipped v0.7.0/ADR-014, closed upstream #1); a supersede can free HELD work with an unverified replacement — mechanical dead states only, warned, auditable | Oracle: enforced at close, opt-in per issue; supersede: retracted door human-gated | ADR-014 v0.7.0; ADR-017 v0.9.3; HELD exit ADR-013 v0.6.4 |
 | D. Verify | Self-`agree` refused; session identity self-attested; reaffirm adds batch self-verdict amplification (loud) + coverage-narrower-than-watch auto-clear (audited via `reaffirm_cleared`) | Enforced as refusal; bypass is one visible export (F4 class); mismatch never auto-agreed (INV-S) | ADR-010 v0.6; screen bypass closed ADR-021 v0.9.6; reaffirm ADR-030 v0.9.12 |
 | E. Concurrent | Fresh-id timestamp forgery (dup-id substitution refused in EVERY ts shape — one rule) | Accepted residual; detection gate-conditional (ADR-025, banner v0.9.11) | §8.6; ADR-031 v0.9.13 (subsumes ADR-008/016) |
+| F. Cite | Citation-without-verification gaming (all ids pasted into one comment line passes byte-identical; r1 is a report, not a judgment) | Behavioral (sentinels mechanical; execution proof stays ADR-014) | New at v0.9.15 pilot, docs/growth-gate/spec-coverage-manifests.md |
 
 ---
 

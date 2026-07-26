@@ -1,4 +1,4 @@
-> NOTE: drawn at v0.9.13; v0.9.14 (2026-07-20) added ADR-032 scope-override decay and ADR-033 override-velocity stats on top — additive only, no structural change. See docs/roadmap-v3.md Batch 5. v0.9.15 (2026-07-23) added ISO/IEC/IEEE 42010 concern-tag triage metadata (`--concern` on claim, `list --concern`, stats `concerns` section, schema `$id` v0.11) — additive only, never a gate, fold untouched; plus an invalidate-scan rename-blindness fix (`git mv` of a watched path now stales its watchers).
+> NOTE: drawn at v0.9.13; v0.9.14 (2026-07-20) added ADR-032 scope-override decay and ADR-033 override-velocity stats on top — additive only, no structural change. See docs/roadmap-v3.md Batch 5. v0.9.15 (2026-07-23) added ISO/IEC/IEEE 42010 concern-tag triage metadata (`--concern` on claim, `list --concern`, stats `concerns` section, schema `$id` v0.11) — additive only, never a gate, fold untouched; plus an invalidate-scan rename-blindness fix (`git mv` of a watched path now stales its watchers). 2026-07-26: spec-coverage manifests pilot live in a consumer repo (docs/growth-gate/spec-coverage-manifests.md) — per-spec assertion ids + sibling manifest watched by two sentinel-recipe claims riding the existing scan→reaffirm→dispatch loop; drawn below ●new, additive only, no CLI change.
 
 # Truth Ledger — As-Built Architecture (v0.9.13)
 
@@ -46,6 +46,8 @@ flowchart TB
 
   GG["docs/growth-gate/ ●new<br/>archived TLR hash-tree successor<br/>+ 18/18 oracle — build ONLY on first<br/>in-the-wild forged timestamp"]
 
+  SPCOV["●new spec-coverage sentinels (pilot: kuchnie, consumer-side)<br/>per wired spec: inline SC-&lt;slug&gt;-NNN assertion ids +<br/>pre-sorted sibling .sc.txt manifest + test docstring citations;<br/>two sentinel-recipe claims — the spec↔manifest and the<br/>tests↔manifest diffs (tr-fcca2d96 / tr-40a5beb5) —<br/>ordinary claims: no new verb, no new satellite script;<br/>assertion-level, beside the file-level impact --inverse"]
+
   AA -->|"truth claim"| GATES --> LEDGER
   HU -->|"retract (ceremony)"| LEDGER
   VS -->|"verdict agree/diverge"| LEDGER
@@ -58,6 +60,8 @@ flowchart TB
   PM --> SC
   DR --> BA
   GG -.dormant successor.- LEDGER
+  SC ==>|"an edit to a watched path stales<br/>the sentinel(s) watching it"| SPCOV
+  SPCOV ==>|"reaffirm re-agrees an empty diff;<br/>a non-empty diff names the drifted ids<br/>(tests↔manifest &gt; lines = r2) → dispatch"| LEDGER
 ```
 
 ---

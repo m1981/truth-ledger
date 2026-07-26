@@ -19,6 +19,7 @@ The table below is the full trigger surface — some rows human/agent-initiated,
 | Pre-edit intent (where wired) | `truth impact` via a PreToolUse whisper hook (ADR-005; deny stage for frozen paths, whisper stage injects the prediction) | **the agent harness, automatically, at edit intent** | ✅ Fully — but consumer-side: the verb ships in the template (v0.5.7, FAULTS W1–W4), the hook and deny list deliberately do not (ADR-003 rule 2) |
 | Session birth (where wired) | `truth-session-digest.py` via a SessionStart hook (FS-4, v0.6): one bounded block — queue, top live P0/P1 claims, the check-facts line — so read-only sessions discover the ledger without loading instruction files | **the agent harness, automatically, at session start** | ✅ Fully — same consumer-side placement as the whisper (ADR-003 rule 2); empty ledger or queue injects nothing |
 | Spec & doc hygiene | `spec-health.sh` (cited ids judged by the ADR-001 matrix) + `doc-health.sh` (forbidden names, broken links) — v0.5.1/v0.5.2 satellites | Consuming repo's pre-commit on staged specs/markdown; weekly sweep | ✅ Fully |
+| Spec-coverage drift (wired specs) | the ordinary scan stales the wired spec's two sentinel-recipe claims — the spec↔manifest sentinel and the tests↔manifest sentinel — when a commit touches a path that sentinel watches (spec and manifest for the first; manifest, spec and the test tree for the second); `reaffirm` auto-agrees while the three stay consistent (empty diff, hash-match), and a non-empty diff lists the drifted `SC-` ids and routes to `dispatch` (pilot: kuchnie, `tr-fcca2d96`/`tr-40a5beb5`; docs/growth-gate/spec-coverage-manifests.md) | **git, automatically** (the scan); reaffirm/dispatch per §3 rung 3 | ✅ surfacing and grading; the review judgment stays a dispatch |
 | Verification | `dispatch` → fresh session → `verdict --recheck` → judgment | Human or script routes the context | ⚠️ Partially (see §3, rung 3) |
 | Mechanical re-confirmation | `truth reaffirm [--dry-run] [--json]` — walks every stale claim, one pure triage per claim (ADR-030, v0.9.12); a write verb, run it in a fresh verifier session | Human or script, daily or after a scan stales claims | ✅ The *mechanical* half only: hash-match auto-agrees (fixed basis `"reaffirm: hash-match, no judgment re-run"`); every judgment case is surfaced, never decided (see §3, rung 3) |
 | Triage | `truth queue` | Human, daily | ✅ The *surfacing*; not the deciding |
@@ -51,6 +52,8 @@ The ledger is deliberately quiet, so learn its signatures.
 **Agent-side triggers** are visible in transcripts: watch for `scripts/truth ready` or `list --live` early in a session (discovery working), `truth start` when work is claimed, and `truth claim` / `done --claim` after verification work (filing discipline working). Their *absence* in transcripts is the leading indicator that a runtime is not loading the snippet — the silent-death failure mode.
 
 **The satellites** announce themselves the same way the gate does: `spec-health: N failure(s), M warning(s) across K spec(s)` and `doc-health: N failure(s) across K live doc(s)` scrolling by during a commit that stages specs or markdown. A satellite blocking a commit is working as designed — a spec standing on a dead fact or a doc pointing at a moved file is exactly what should not merge.
+
+**A spec-coverage staling** looks like any other scan hit: a `stale: tr-XXXXXXXX (paths changed)` line naming one of a wired spec's two sentinels after a commit touches the spec, its `.sc.txt` manifest, or its tests. The tell is in `reaffirm`: a still-consistent state auto-agrees on the empty diff like any hash-match, while real drift surfaces as a diverged-evidence dispatch row whose recheck diff prints the drifted `SC-` ids — on the tests↔manifest sentinel a `> SC-...` line is an assertion-dark grade r2 item (in the manifest, no citing test); on the spec↔manifest sentinel it is spec-vs-manifest drift — named, never counted. That named list is the instrument's whole output; deciding what to do about it stays a dispatch (docs/growth-gate/spec-coverage-manifests.md).
 
 **Forensics**: the ledger *is* the log. Every record carries `actor`, `session`, and `ts`, so `git log -p .truth/claims.jsonl` gives a complete, tamper-evident audit trail of who triggered what, when — including which invalidations fired on which merge commits. A reaffirm agree is grep-able by its fixed basis string, and carries a `reaffirm_cleared: {prior_anchor, touched}` payload field recording which watched-file changes its anchor advance auto-cleared — replay any mechanical clearance from the ledger alone (ADR-030).
 
@@ -337,7 +340,10 @@ severity intuition:
 ("dark"). Dark is not a defect to blanket-fix — universal coverage is
 its own smell (false intentionality, churn, blast radius; paper §9). A
 file is correctly dark or correctly watched by its **kind**, and there
-are three kinds.
+are three kinds. (One instrument boundary, stated once: `impact
+--inverse` grades **file**-darkness; spec-coverage manifests are the
+assertion-level instrument beside it, grading a wired spec's individual
+`SC-` assertions — docs/growth-gate/spec-coverage-manifests.md.)
 
 **RECORD — dark by design.** A record fixes a decision or a moment: the
 ADRs, field notes (`docs/field-notes-*.md`), trial prompts
@@ -382,6 +388,7 @@ watcher:
   | `docs/truth-ledger-explained.md` — the explainer | `tr-11beb903` (version-synced to the CLI) |
   | `template/docs/beads-integration-guide.md` — the ready/adapter seam | `tr-301931eb` (`bd ready --json` default + adapter seam) |
   | `template/.truth/README.md` — the tracker-seam contract | `tr-ef37611b` (+ `tr-7b5a5e72`, `tr-d570e6c2`, `tr-fcdd4af2`) |
+  | kuchnie `catalog/docs/specs/configurator-api.md` + its sibling `.sc.txt` manifest — the wired spec-coverage pilot pair | `tr-fcca2d96` + `tr-40a5beb5` in the **kuchnie ledger** (the spec↔manifest and tests↔manifest sentinels; sentinel recipe = the slug-scoped `SC-cfgapi-[0-9]{3}` grep-and-diff). Consumer-side claims — the per-file `impact` loop below sees only this repo's ledger, so this pair's DARK check runs in kuchnie |
 
   The meta stub `docs/beads-integration-guide.md` is a pointer, not a
   contract ("one home per fact"); its only integrity property — the
