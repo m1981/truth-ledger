@@ -410,4 +410,25 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   tr-b949e4e0 pilot). NOTE: kuchnie tr-54214e5f carries an ADR-032
   30-day scope-ok decay (~2026-08-22) -- re-word to existential before
   then or let it re-file. Queue: paper-v2 family diverged tombstones
-  await operator retraction.
+  await operator retraction. (Retracted by operator 2026-07-23,
+  52bbb36 -- queue empty.)
+- 2026-07-26: spec-coverage manifests -- requirements-based traceability
+  (spec assertion <-> test citation) designed and adversarially
+  falsified (two rounds: designer self-falsified the empty-manifest
+  hole; falsifier killed the unscoped extraction regex, hit ADR-018
+  jaccard on serial adoption, measured corpus-level gaming). Verdict
+  BUILD-WITH-AMENDMENTS: slug-scoped recipes SC-<slug>-NNN, per-spec
+  pre-sorted manifest <spec>.sc.txt, slug registry, 2 sentinel claims
+  per spec, grades r0-r3 (r1 = citation is a report, r0/ADR-014 alone
+  proves execution; r3 unminted prose undetectable -- honest limit).
+  PILOT SHIPPED on kuchnie catalog/docs/specs/configurator-api.md
+  (505e02c content, 2738e0b ledger): 6 markers, manifest, 8 docstring
+  citations, sentinels tr-fcca2d96 (spec-manifest, sort without -u
+  closes duplicate-id blindness) + tr-40a5beb5 (tests-manifest,
+  catalog/tests/** glob live at scan time), verified agree by
+  verifier-r-0726, 21 tests green, governance clean. OPEN: design doc
+  not yet archived in growth-gate (option 1 pending operator say-so);
+  docs integration map drafted (explained.md sec 10 subsection +
+  glossary, ops-guide trigger row + coverage-policy LIVING CONTRACT
+  entry, loophole-map event F citation-without-verification, tutorial
+  3.6 paragraph, asbuilt+concept-map nodes) -- not yet applied.
