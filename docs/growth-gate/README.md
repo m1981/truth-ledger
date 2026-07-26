@@ -1,8 +1,9 @@
 # Growth-gate archive: gated successor designs
 
 Designs that survived adversarial review but are deliberately NOT built —
-each waits behind a named trigger, so the answer is never re-derived and
-never ships ahead of its demand signal.
+or built only to pilot depth — each waiting behind a named trigger, so
+the answer is never re-derived and never ships ahead of its demand
+signal.
 
 ## 1. Fork-permanent hash-tree ordering (TLR)
 
@@ -39,3 +40,26 @@ the canary/oracle channel's job.
 **Trigger: a consumer needing code-element traceability (24765/29119
 grade), or the operator running the kuchnie first wave (step 1, the
 catalog BOM pins, adopted 2026-07-22).**
+
+## 4. Spec-coverage manifests — spec↔test traceability
+
+`spec-coverage-manifests.md` — the D3 manifest pattern applied to spec
+assertions: `SC-<slug>-NNN` ids inline + pre-sorted sibling manifest +
+docstring citations + two sentinel diff claims per spec; assertion-dark
+grades r0–r3. Designed and twice-falsified 2026-07-26 (slug-scoped
+recipes, the `test -s` guard, `sort` without `-u` on the spec side).
+**Status: PILOT LIVE** — kuchnie configurator-api, sentinels
+tr-fcca2d96/tr-40a5beb5.
+**Trigger for the second wave: the operator wiring the next spec.**
+
+## 5. V&V archetype pairings — testing design per spec archetype
+
+`vv-archetype-pairings.md` — the historically-proven verification
+technique per archetype (DbC→PBT, use cases→BDD, ACL→Pact,
+pipeline→golden master, ATAM→fitness functions), the honest ISO/IEEE
+map (29148/29119/1012/25023 vs DO-178C/26262), and the red-teamed
+design for a V&V section in the archetype blanks (twelve findings:
+canonical sentinel forms, TTL'd validation attestations via
+UNVERIFIED+ttl, id-citing oracle lines, title-only residuals).
+**Trigger: the operator green-lighting the V&V blank section
+(docs-only, any future release).**

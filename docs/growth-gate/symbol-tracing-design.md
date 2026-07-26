@@ -40,8 +40,12 @@ rg -U -o '(?m)^(?:@.*\n)*(?:async )?def NAME\(.*(?:\n(?:[ \t].*|\).*)?)*' FILE
 rg -U -o '(?m)^    (?:@.*\n    )*(?:async )?def NAME\(.*(?:\n(?:[ \t]{5,}.*|[ \t]*)?)*' FILE
 
 # D3 manifest sentinel (-h REQUIRED for multi-file; manifest committed
-# pre-sorted to match sort -u):
-grep -whoFf MANIFEST FILES... | sort -u | diff - MANIFEST
+# pre-sorted to match sort -u). AMENDMENT B1 (inherited from
+# spec-coverage-manifests.md, reproduced 2026-07-26): prefix with
+# `test -s MANIFEST && ` -- without the guard, deleting the manifest
+# AND its citations yields empty output exit 0, byte-identical to PASS,
+# and recheck silently auto-agrees the disappearance:
+test -s MANIFEST && grep -whoFf MANIFEST FILES... | sort -u | diff - MANIFEST
 ```
 
 **Forbidden recipes** (falsified): `grep -A N` and `head|tail` window
