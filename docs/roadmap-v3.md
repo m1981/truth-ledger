@@ -498,3 +498,28 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   measured burst rate P1 pins would flood the human queue; genuine
   mismatches dispatch regardless of tier. Next: phase 4 (spec-coverage
   second spec).
+- 2026-07-27 (phase 4): spec-coverage second spec (wtuu) live in
+  kuchnie -- and it demanded real carpentry, not just wiring. Both
+  named candidates lacked tests; the operator chose implementing
+  worktop-uu-seeding with a furniture-technology expert agent. Domain
+  resolution: the spec's "40 decors / 80 variants" described the
+  manufacturer's offer, not the DB -- seeded 18 decors x 2 widths = 36
+  U-U variants (38mm, 4100x900/4100x1200), 0190 excluded (legacy, no
+  documented 2U offer); the DB's PF-U-600 variants carried NO edges,
+  so 18 HPL edge rolls (code = decor code, per the manufacturer table)
+  were materialised first. Red-team (also expert) found two substantive
+  domain gaps filed as wk-4fc28a19 (ten decors inherit wrong structure
+  code RS from upstream YAML) and wk-bca0a74b (U-U absent from
+  worktop_specs: worktops endpoint hides what the configurator
+  offers). Bonus finds: catalog-service.md's "extras in any order" was
+  FALSE (curated kitchens must precede decor style tags or style
+  associations silently seed 0) and production carries 6 hand-era
+  decor_style_tags rows the tagger cannot regenerate -- rebuild path
+  re-verified on scratch (five extras, 2/148/222/145/123/87) and
+  re-pinned as tr-0dda200b, predecessor referenced by title only to
+  survive its future retraction. Wiring: SC-wtuu-001..007 + manifest +
+  docstring citations + sentinels tr-22772c10/tr-a2acd399 + ADR-014
+  oracle wk-25d33212 (suite executed green at close). 3/3 verifier
+  agree; the rebuild verifier independently reproduced the whole
+  scratch rebuild. Next: phase 5 (incident-to-gap ritual), operator
+  attestation still open.
