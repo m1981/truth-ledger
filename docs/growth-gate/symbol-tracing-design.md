@@ -36,8 +36,13 @@ BOM pins (2 claims, kuchnie, 2026-07-22).
 # multi-line signatures closing at column 0):
 rg -U -o '(?m)^(?:@.*\n)*(?:async )?def NAME\(.*(?:\n(?:[ \t].*|\).*)?)*' FILE
 
-# method pin (4-space class body; async- and decorator-aware):
-rg -U -o '(?m)^    (?:@.*\n    )*(?:async )?def NAME\(.*(?:\n(?:[ \t]{5,}.*|[ \t]*)?)*' FILE
+# method pin (4-space class body; async- and decorator-aware).
+# AMENDMENT A4 (2026-07-27, kuchnie second wave): the `    \).*`
+# alternative is MANDATORY -- without it a multi-line signature closing
+# at exactly 4-space indent (`    ) -> T:`) stops the extraction
+# mid-signature and the pin silently loses the body (observed on
+# DrawerSystem.decompose_drawer_box; the method-scope analog of A1):
+rg -U -o '(?m)^    (?:@.*\n    )*(?:async )?def NAME\(.*(?:\n(?:[ \t]{5,}.*|    \).*|[ \t]*)?)*' FILE
 
 # D3 manifest sentinel (-h REQUIRED for multi-file; manifest committed
 # pre-sorted to match sort -u). AMENDMENT B1 (inherited from
