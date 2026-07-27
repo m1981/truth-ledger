@@ -8,6 +8,35 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.16 (V&V blank sections -- docs-only release, zero scripts/ or
+  .truth/ contract changes):
+  * Every archetype blank (docs/templates/archetype-*.md) gains a
+    Verification & Validation section, pre-paired per archetype from
+    the red-teamed pairing table: verification names the technique and
+    cites the id that CARRIES the oracle (a wk- with --accept-cmd or a
+    standing tr- sentinel) -- never the command text; validation is a
+    human instrument recorded as an UNVERIFIED + --ttl-days
+    attestation (expiry = re-walkthrough + re-file + edit the line);
+    residuals are named by TITLE only, because an id in that section is
+    a live tripwire, the opposite of "accepted". E's determinism check
+    is confined to the ADR-014 accept-cmd lane; F's "the gate passes"
+    is stated as session-close/session-gates.d enforcement, not a
+    ledger oracle.
+  * spec-archetypes.md gains "Appendix -- oracle recipes that survive
+    the screen": the canonical layer-rule sentinel (the mandatory
+    `tr -d ' '`; `!`-negation refused; filing over exit-1 = hollow
+    VERIFIED), ADR-007/032 scope-override discipline, path-tripwired
+    schema sentinels vs hash-pin divergence generators, the ADR-014
+    lane for golden masters, the attestation pattern end-to-end with
+    its disclosed costs, the consumer section-contract note, and a
+    consumer-safe pointer at the spec-coverage traceability sibling.
+  * prompts/truth-verifier.md: attestations have no recheck -- a claim
+    with no evidence command files cannot_verify under --recheck; the
+    verifier judges it manually and files agree/diverge on judgment.
+  * Carries the archetype three-question-header fix (8137ce8): each
+    blank's Reader/Enables/Update-trigger block sits inside the first
+    15 lines, satisfying consumer new-doc gates.
+
 v0.9.15 (stakeholder concerns -- ISO/IEC/IEEE 42010 triage metadata,
   red-teamed pre-release; spec-archetype satellite):
   * `claim --concern TAG` (repeatable) stamps 42010 stakeholder-concern

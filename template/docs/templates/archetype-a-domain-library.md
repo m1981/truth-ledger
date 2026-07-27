@@ -4,10 +4,10 @@ Source: spec-archetypes.md (Field Guide) · Lineage: DDD + Design by Contract
 Copy to <component>/docs/specs/<kebab-case>.md, fill every bracket,
 delete guidance comments and this banner. Section contract is fixed by
 this template set — do not rename or remove Intent / Decisions / Ground
-truths / Work / Acceptance (id-citing rule: `.truth/README.md` § Feature
-specs). Cite only tr-/wk- ids that exist and are live — never invent
-one. Zero-id specs get a WARN from spec-health.sh, not a failure —
-better an honest empty section than a fabricated id.
+truths / Work / Acceptance / Verification & Validation (id rule:
+`.truth/README.md` § Feature specs). Cite only live tr-/wk- ids — never
+invent one. Zero-id specs get a WARN from spec-health.sh, not a
+failure — better an honest empty section than a fabricated id.
 -->
 # Spec: <Component name> — <one-line role, e.g. "the decomposition domain hub">
 
@@ -95,3 +95,32 @@ Pre-written `done --claim` texts, scoped to evidence commands:
 
 - "<claim text an evidence command can actually show — never a
   repo-wide clause backed by a package-scoped grep>" (`wk-XXXXXXXX`)
+
+## Verification & Validation
+
+<!-- Pairing fixed by the Field Guide (spec-archetypes.md § Appendix —
+oracle recipes). Verification is mechanized; validation stays human.
+The oracle line cites the id that CARRIES the command — a wk- with
+--accept-cmd, or a standing sentinel tr- — never the command text
+itself (prose has no tripwire; restating it here is the failure the
+house rule exists for). -->
+
+Verification: property-based tests + contract assertions, one per row
+of the Operation contracts table; layer rule (no I/O imports) as a
+standing sentinel — oracle carried by `wk-XXXXXXXX` (`--accept-cmd`) or
+standing sentinel `tr-XXXXXXXX`.
+
+Validation: domain-expert language walkthrough — <who>, <date> —
+attestation `tr-XXXXXXXX` (UNVERIFIED, `--ttl-days N`; expiry means
+re-walkthrough + re-file + edit this line).
+<!-- The attestation vehicle: an UNVERIFIED claim with an explicit
+--ttl-days — no evidence command, a human event on the record. When it
+expires (ADR-019), redo the walkthrough, file a fresh claim, and edit
+this line to cite it. -->
+
+Residual (accepted, not closable): <by TITLE only, e.g. "wrong
+abstraction — revealed only by the next requirement change">
+<!-- Titles only in this subsection. An id written here is a live
+tripwire that fails this spec when it dies — the opposite of
+"accepted, not closable". -->
+

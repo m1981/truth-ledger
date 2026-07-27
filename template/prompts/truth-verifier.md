@@ -37,6 +37,12 @@ Procedure, in order:
    still produces that output, not that the claim's TEXT is a sound
    interpretation of it. Your agree (or diverge) is filed by you, once,
    after step 2.
+   No evidence command means no recheck. A claim filed as a human
+   attestation (UNVERIFIED + TTL — a walkthrough happened, a sign-off
+   was given) has nothing deterministic to re-run; `--recheck` on it
+   files `cannot_verify`. Judge attestations manually instead: read the
+   claim, decide whether the attested event plausibly stands as
+   written, and file agree or diverge on that judgment.
 
 2. DECODE INDEPENDENTLY. State to yourself what the claim asserts, then
    ask: does the evidence actually support that assertion? Check the

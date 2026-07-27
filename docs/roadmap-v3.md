@@ -432,3 +432,27 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   glossary, ops-guide trigger row + coverage-policy LIVING CONTRACT
   entry, loophole-map event F citation-without-verification, tutorial
   3.6 paragraph, asbuilt+concept-map nodes) -- not yet applied.
+- 2026-07-27: option C built -- the V&V section lands in all six
+  archetype blanks per the red-teamed design
+  (docs/growth-gate/vv-archetype-pairings.md): verification pre-paired
+  per the Part 1 table with the oracle CITED by id, never restated
+  (F8); validation as an UNVERIFIED + --ttl-days attestation with the
+  ADR-019 expiry loop spelled out in the blank (F9); residuals by
+  TITLE only (F6); E confined to the ADR-014 accept-cmd lane (F4), F
+  stated as session-close/session-gates.d enforcement, not a ledger
+  oracle (F12). Field guide gains "Appendix -- oracle recipes that
+  survive the screen" (canonical layer-rule sentinel with the
+  mandatory tr -d ' ' (F1/F2), ADR-007/032 discipline (F3),
+  path-tripwired schema sentinels vs hash-pin divergence generators
+  (F5), attestation pattern with disclosed costs, consumer-safe
+  pointer at the spec-coverage traceability sibling).
+  prompts/truth-verifier.md gains the attestation paragraph (recheck
+  files cannot_verify -- judge manually). Shipped as v0.9.16,
+  docs-only (also carries the 8137ce8 three-question-header fix);
+  ADR-026 lockstep bumped across truth docstring, .truth/README
+  title, check-truth.sh, ops-guide + loophole-map headers,
+  explained.md scope + glossary, asbuilt NOTE;
+  TestCrossSurfaceVersions green. Kuchnie takes it via copier update
+  AND must extend its own spec-convention section contract with the
+  V&V section (F7) -- until that doc changes, the section is a dead
+  letter there by its own precedence rule.
