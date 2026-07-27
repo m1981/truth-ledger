@@ -477,3 +477,24 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   command is handed to the operator, an agent cannot attest a human
   event that has not happened. Next: phase 3 (symbol-tracing second
   wave) per the approved order.
+- 2026-07-27 (phase 3): symbol-tracing second wave live in kuchnie per
+  the adoption sketch. Two D3 contract-symbol manifests committed
+  (kuchnie-core/docs/contract-symbols-core.txt, 16
+  geometry/decomposition symbols; kitchen-erp/docs/
+  contract-symbols-pricing.txt, 10 pricing symbols) with sentinel
+  claims tr-12b7419f/tr-e602c0b0, plus 9 D1 definition pins
+  (decompose_drawer_box, lw, runner_clearance_per_side_mm multi-region
+  x4 per A3, front_reveal, door_width, drawer_front_width,
+  import_price_file, _last_known_price, generate_cost_trace_lines) --
+  11 claims, 11 independent verifier sessions, 11 agree. Two earned
+  amendments: **A4** (method-pin recipe needs the 4-space-closing
+  `    \).*` alternative -- the verbatim recipe silently lost a method
+  body whose multi-line signature closes at 4-space indent; folded
+  into this design doc) and a red-team ADR-018 catch (pin texts
+  sharing the boilerplate tail collided at jaccard 0.617 between the
+  door_width/drawer_front_width pair -- diversified, refiled clean;
+  rule: pin families need per-claim tail variation, not just distinct
+  symbol names). Tier deliberately P2 (vs first-wave P1): at the
+  measured burst rate P1 pins would flood the human queue; genuine
+  mismatches dispatch regardless of tier. Next: phase 4 (spec-coverage
+  second spec).
