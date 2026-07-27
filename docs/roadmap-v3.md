@@ -456,3 +456,24 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   AND must extend its own spec-convention section contract with the
   V&V section (F7) -- until that doc changes, the section is a dead
   letter there by its own precedence rule.
+- 2026-07-27 (later): phase 2 executed in kuchnie -- the V&V section
+  stops being decorative: first real ADR-014 acceptance oracle wired.
+  wk-e7a2992d ("Wire the configurator pytest suite as the ADR-014
+  verification oracle for the configurator-api spec", --accept-cmd
+  .venv/bin/python -m pytest catalog/tests/test_configurator.py -q,
+  kind verification) filed, started, and closed with the oracle
+  executed green at close (21 passed, executed=true rc=0 on the close
+  event -- the r0 execution proof). configurator-api.md gained its
+  Verification & Validation section citing the wk- id as oracle
+  carrier (commit f611ade); completion claim tr-f2c1c720 (citation
+  sentinel, evidence scoped to what the grep shows -- red-team moved
+  the execution narrative to the close event's basis) verified agree
+  by an independent session. Spec-edit restales of both spec-coverage
+  sentinels reaffirmed by hash-match, exactly as predicted. The
+  validation half is deliberately open: the spec's Validation line is
+  an attestation-pending placeholder citing NO id -- filing the TTL'd
+  attestation (UNVERIFIED, --ttl-days 90) requires the operator to
+  actually walk the BOM output against a real production sheet; the
+  command is handed to the operator, an agent cannot attest a human
+  event that has not happened. Next: phase 3 (symbol-tracing second
+  wave) per the approved order.
