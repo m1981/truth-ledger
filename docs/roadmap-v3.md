@@ -523,3 +523,27 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   agree; the rebuild verifier independently reproduced the whole
   scratch rebuild. Next: phase 5 (incident-to-gap ritual), operator
   attestation still open.
+- 2026-07-27 (phase 5): incident-to-gap ritual + question bank adopted
+  in kuchnie as PRACTICE (the cheap extraction from
+  clean-room-convergence.md sec 2 -- deliberately unmechanized).
+  docs/incident-to-gap.md: classify every surprise ("was the
+  expectation ever written?"), queue closes ONLY as spec assertion /
+  claim / wk- issue / recorded rejection / expiring deferral, every
+  incident births a bank question. docs/question-bank.md opens
+  QB-001..007, distilled from this week's REAL incidents: seeding-order
+  falsification, edge-less U variants, structure-code inheritance,
+  split read surfaces, claim-family jaccard collision, extraction
+  under-capture, hand-era data residue. Red-team fixes landed
+  pre-commit (the bank is append-only from birth): QB-006 numbers
+  corrected, QB-005's closure recorded in-repo
+  (truth-ledger-machinery.md tail-variation rule) instead of citing an
+  out-of-repo log, "Gap open as" rephrased status-neutrally as
+  "Tracked as" (an untripwired present-tense status would lie forever
+  once the wk closes), R11 glossed for kuchnie readers. Sentinel
+  tr-1ced3045 (output-stable anchor greps, deliberately count-free so
+  monotonic bank growth never stales it) verified agree;
+  development-process watcher tr-45750046 restale reaffirmed
+  hash-match. Phases 2-5 of the approved plan are now COMPLETE; phase
+  6 (expiring deferrals mechanized) stays optional/demand-gated;
+  operator still owes the configurator validation attestation and the
+  ~2026-08-08 R11 audit.
