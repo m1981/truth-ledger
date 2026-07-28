@@ -8,6 +8,16 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.17 (machinery filing hygiene -- docs-only release, zero scripts/
+  or .truth/ contract changes):
+  * docs/truth-ledger-machinery.md sec 2 gains the tail-variation rule:
+    claim families filed as a batch must vary their texts beyond the
+    distinguishing token, or a shared boilerplate tail pushes sibling
+    claims over the ADR-018 near-duplicate threshold and the gate
+    refuses the batch midway (observed at jaccard 0.617 on a kuchnie
+    symbol-pin pair, 2026-07-27). Upstreamed from the kuchnie consumer
+    so the copier-managed copy and the template stay convergent.
+
 v0.9.16 (V&V blank sections -- docs-only release, zero scripts/ or
   .truth/ contract changes):
   * Every archetype blank (docs/templates/archetype-*.md) gains a

@@ -4,7 +4,7 @@
 every layer, gate, hook, and deliberate loophole in a system built to
 keep AI coding agents' claims honest.
 
-**Scope** CLI v0.9.16 · paper v3 (2026-07-20) · ADR-001–033 ·
+**Scope** CLI v0.9.17 · paper v3 (2026-07-20) · ADR-001–033 ·
 **Sources** paper §N = `docs/truth-ledger-paper-v3.md`; ADR-NNN =
 `template/docs/adr/NNN-*.md`
 
@@ -725,13 +725,14 @@ per-session metric file.
 
 ### Spec-coverage manifests — assertions attached to their tests
 
-*A satellite-pattern review trigger piloted in a consumer repo: named
+*A satellite-pattern review trigger live in a consumer repo (two
+wired specs): named
 spec assertions, a sibling manifest, and two ordinary claims that
 notice drift.*
 
 The spec-health and doc-health satellites above police *citations of
 ledger ids*; they say nothing about whether a spec's testable sentences
-have tests. The spec-coverage mechanism (design + live pilot:
+have tests. The spec-coverage mechanism (design + live consumer wiring:
 `docs/growth-gate/spec-coverage-manifests.md`) watches that seam with
 no new machinery: each testable assertion in a wired spec gets an
 inline `SC-<slug>-NNN` id, the same ids live one-per-line in a
@@ -751,9 +752,12 @@ r2 (in the manifest, no test cites it) is the tests↔manifest diff's
 `>` lines, listed by name. The honest caveat is r1: a citation is a
 *report*, not a judgment — the id merely occurs in a test file; only
 r0 (an ADR-014 acceptance oracle actually running the suite at `done`)
-proves execution. Pilot: kuchnie's
-`catalog/docs/specs/configurator-api.md`, sentinels `tr-fcca2d96` /
-`tr-40a5beb5`. One namespace note: `SC-` ids are spec-local assertion
+proves execution — and r0 stopped being hypothetical on 2026-07-27:
+two ADR-014 oracles executed green at close in the consumer
+(`wk-e7a2992d`, `wk-25d33212`). Live in kuchnie on two specs:
+`catalog/docs/specs/configurator-api.md` (sentinels `tr-fcca2d96` /
+`tr-40a5beb5`) and `catalog/docs/specs/worktop-uu-seeding.md`
+(`tr-22772c10` / `tr-a2acd399`). One namespace note: `SC-` ids are spec-local assertion
 names, **not** ledger ids — spec-health's ADR-001 matrix never judges
 them.
 
@@ -1453,8 +1457,9 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
   mechanism. Watched by two sentinel-recipe claims per spec (the
   spec↔manifest and tests↔manifest sentinels) that ride the normal
   stale→reaffirm→dispatch loop — a review trigger, never a gate
-  (docs/growth-gate/spec-coverage-manifests.md; pilot: kuchnie,
-  `tr-fcca2d96`/`tr-40a5beb5`).
+  (docs/growth-gate/spec-coverage-manifests.md; live in kuchnie on two
+  specs — cfgapi `tr-fcca2d96`/`tr-40a5beb5`, wtuu
+  `tr-22772c10`/`tr-a2acd399`).
 - **assertion-dark (grades r0–r3)** — the spec-coverage grading of a
   *spec assertion's* attachment to tests: r0 proven executed (ADR-014
   accept-cmd at `done`), r1 cited by ≥1 test file (a report, not a
@@ -1541,7 +1546,7 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
 ### Acronyms & standards
 
 - **ADR** — Architecture Decision Record.
-- **CLI** — command-line interface; here the `truth` script (v0.9.16).
+- **CLI** — command-line interface; here the `truth` script (v0.9.17).
 - **CI** — continuous integration; the clone-proof backstop for the
   commit gate when local hooks are absent (ADR-025).
 - **JSONL** — JSON Lines: one JSON object per line, the ledger's format.

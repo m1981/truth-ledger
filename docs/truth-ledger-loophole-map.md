@@ -1,6 +1,6 @@
 # The Loophole Map — Six Agent Events, Simulated
 
-> Reader: anyone assessing what the truth ledger can and cannot enforce against agent behavior | Enables: knowing, per event type, which gates are CLI refusals and which residuals are behavioral — and what the worst case actually is | Update-trigger: a gate ships or a residual closes (current: CLI v0.9.16 — content re-synced at v0.9.13 on 2026-07-20, ADR-032/033 override-decay content added 2026-07-21, Event F spec-coverage added 2026-07-26, V&V blank sections added 2026-07-27; header pinned in lockstep by TestCrossSurfaceVersions since v0.9.13)
+> Reader: anyone assessing what the truth ledger can and cannot enforce against agent behavior | Enables: knowing, per event type, which gates are CLI refusals and which residuals are behavioral — and what the worst case actually is | Update-trigger: a gate ships or a residual closes (current: CLI v0.9.17 — content re-synced at v0.9.13 on 2026-07-20, ADR-032/033 override-decay content added 2026-07-21, Event F spec-coverage added 2026-07-26, V&V blank sections added 2026-07-27; header pinned in lockstep by TestCrossSurfaceVersions since v0.9.13)
 
 Provenance: adapted from a second-deployment session walkthrough
 (repo `temporal-go-agent-sdk`, 2026-07 — the same session behind
@@ -342,7 +342,7 @@ source of truth: `docs/growth-gate/spec-coverage-manifests.md`.
 | C. Finish | `done` trusts the word only where no oracle was declared (`--accept-cmd` shipped v0.7.0/ADR-014, closed upstream #1); a supersede can free HELD work with an unverified replacement — mechanical dead states only, warned, auditable | Oracle: enforced at close, opt-in per issue; supersede: retracted door human-gated | ADR-014 v0.7.0; ADR-017 v0.9.3; HELD exit ADR-013 v0.6.4 |
 | D. Verify | Self-`agree` refused; session identity self-attested; reaffirm adds batch self-verdict amplification (loud) + coverage-narrower-than-watch auto-clear (audited via `reaffirm_cleared`) | Enforced as refusal; bypass is one visible export (F4 class); mismatch never auto-agreed (INV-S) | ADR-010 v0.6; screen bypass closed ADR-021 v0.9.6; reaffirm ADR-030 v0.9.12 |
 | E. Concurrent | Fresh-id timestamp forgery (dup-id substitution refused in EVERY ts shape — one rule) | Accepted residual; detection gate-conditional (ADR-025, banner v0.9.11) | §8.6; ADR-031 v0.9.13 (subsumes ADR-008/016) |
-| F. Cite | Citation-without-verification gaming (all ids pasted into one comment line passes byte-identical; r1 is a report, not a judgment) | Behavioral (sentinels mechanical; execution proof stays ADR-014) | New at v0.9.15 pilot, docs/growth-gate/spec-coverage-manifests.md |
+| F. Cite | Citation-without-verification gaming (all ids pasted into one comment line passes byte-identical; r1 is a report, not a judgment) | Behavioral (sentinels mechanical; execution proof stays ADR-014) | New at v0.9.15; second consumer spec + first executed r0 oracles 2026-07-27; docs/growth-gate/spec-coverage-manifests.md |
 
 ---
 

@@ -98,6 +98,14 @@ stateDiagram-v2
 **Why it matters:** facts decay automatically. Nobody has to remember
 to distrust old knowledge — the ledger forgets *for* you, loudly.
 
+**Filing hygiene — the tail-variation rule (2026-07-27):** claim
+families filed as a batch (symbol pins, sentinel pairs) must vary their
+texts beyond the distinguishing token — a shared boilerplate tail can
+push two sibling claims over the ADR-018 near-duplicate threshold and
+the gate refuses the batch midway (observed at jaccard 0.617 on the
+door_width × drawer_front_width pin pair before their tails were
+diversified).
+
 ---
 
 ## 3. Life of a work item — planning that stands on facts

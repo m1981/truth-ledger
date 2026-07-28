@@ -547,3 +547,18 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   6 (expiring deferrals mechanized) stays optional/demand-gated;
   operator still owes the configurator validation attestation and the
   ~2026-08-08 R11 audit.
+- 2026-07-28: post-phases doc sync (audit of the nine upstream docs
+  against phases 2-5). Addendum closing the 2026-07-26 entry's OPENs:
+  the spec-coverage design IS archived
+  (docs/growth-gate/spec-coverage-manifests.md) and the docs
+  integration map WAS applied in full (56c5af3). Today's sync:
+  "pilot" framing retired across ops-guide (LIVING CONTRACT row now
+  enumerates both kuchnie pairs), explained (three spots + glossary;
+  r0 noted as exercised twice via ADR-014 oracles), asbuilt SPCOV
+  node + NOTE delta clause, loophole-map F status cell, concept-map
+  SCOV node. Tail-variation rule upstreamed into
+  template/docs/truth-ledger-machinery.md and shipped as v0.9.17
+  (docs-only) so the kuchnie copy and template converge instead of
+  conflicting at the next copier update. Tutorial, paper-v3 audited
+  clean -- dated windows and mechanism-only framing survive the
+  delta untouched.
