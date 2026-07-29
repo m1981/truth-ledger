@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""truth v0.9.17 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.18 -- append-only claims ledger with a native work kernel.
 
 Facts are appended as JSONL records to .truth/claims.jsonl (INV-A:
 append-only, commit-gated by scripts/check-truth.sh); every status is
@@ -11,7 +11,7 @@ or env), unit-tested by scripts/test-truth-core.py; git, files,
 evidence execution, argparse, and printing live at the edge,
 acceptance-tested by scripts/truth-canary.sh (seeded faults, every one
 must be caught). Event kinds, fold semantics, invariants: see
-.truth/README.md and docs/adr/.
+.truth/README.md and docs/adr/truth/.
 
 Full version history: CHANGELOG.md (extracted from this docstring at
 v0.9.13, roadmap-v3 R5). Line 2 above keeps the version self-statement

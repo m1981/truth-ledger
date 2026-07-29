@@ -17,7 +17,7 @@ paths below are relative to it).
 
 - Primary: `docs/truth-ledger-paper-v2.md` (the paper under review)
 - Context (skim as needed, not under review): `docs/truth-ledger-operations-guide.md`,
-  `docs/truth-ledger-loophole-map.md`, ADRs under `docs/adr/` or wherever
+  `docs/truth-ledger-loophole-map.md`, ADRs under `docs/adr/truth/` or wherever
   `ls`/`grep` finds them, the CLI at `template/scripts/truth`, tests, and the
   canary suite.
 - The repository at HEAD is the artifact the paper describes. Note the paper's

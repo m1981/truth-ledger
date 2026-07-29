@@ -59,7 +59,9 @@ Procedure, in order:
      rather than the claimed fact (a count that grew, a reordered
      listing), add `--mechanical` to your diverge (ADR-012) — the claim
      still dies and queues, but the human sees it needs a better recipe,
-     not a correction.
+     not a correction. A divergence caused by a version pin superseded
+     by a release is GENUINE (the fact changed, not the recipe) — never
+     soften it with `--mechanical`.
      If the claim carries a `scope_basis` (ADR-007), attack it: the
      author asserted that a scoped command covers a universal sentence —
      verify the scope actually reaches everything the quantifier claims.

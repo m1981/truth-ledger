@@ -1,6 +1,6 @@
 # Truth Ledger — Operations Guide: Triggers, Observability, and Automation
 
-> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: CLI v0.9.17 — content re-synced at v0.9.13 on 2026-07-20, ADR-032/033 override-decay content added 2026-07-21; header pinned in lockstep by TestCrossSurfaceVersions since v0.9.13. Surface changes since the v0.6.2 diagrams below, in order: `done` executes a declared acceptance oracle (ADR-014, v0.7.0); `impact --inverse` is the backward-trace audit row (issue #5, v0.7.1); `baseline` the release-accounting row (issue #3, v0.8.0); `contradicts` the consistency row (issue #4, v0.9.0); every write verb carries the commit-gate banner and VERIFIED filing the exit-code warning (v0.9.11); `reaffirm` is the mechanical re-confirmation row (ADR-030, v0.9.12); v0.6.3 added output within doctor, v0.6.4 a flag within premise)
+> Reader: any developer operating a truth ledger day-to-day | Enables: knowing every point where the ledger executes, spotting it firing, and automating everything except the three judgments that must stay human | Update-trigger: CLI trigger surface or hook wiring changes (current: CLI v0.9.18 — content re-synced at v0.9.13 on 2026-07-20, ADR-032/033 override-decay content added 2026-07-21; header pinned in lockstep by TestCrossSurfaceVersions since v0.9.13. Surface changes since the v0.6.2 diagrams below, in order: `done` executes a declared acceptance oracle (ADR-014, v0.7.0); `impact --inverse` is the backward-trace audit row (issue #5, v0.7.1); `baseline` the release-accounting row (issue #3, v0.8.0); `contradicts` the consistency row (issue #4, v0.9.0); every write verb carries the commit-gate banner and VERIFIED filing the exit-code warning (v0.9.11); `reaffirm` is the mechanical re-confirmation row (ADR-030, v0.9.12); v0.6.3 added output within doctor, v0.6.4 a flag within premise)
 
 ## 1. The trigger map — every point where the ledger executes
 
@@ -362,7 +362,8 @@ records up: that manufactures churn and a false air of intentionality.
 
   *One deliberate exception, at the set level.* The ADR **series**
   carries a single RECORD-integrity claim — `tr-ebac6513`, watching
-  `template/docs/adr/*.md` — asserting the series is dense (001-033,
+  `template/docs/adr/truth/*.md` (docs/adr/truth/ since v0.9.18) —
+  asserting the series is dense (001-033,
   contiguous, endpoints present) and every ADR carries a `Status:` line.
   It **will** stale on every new ADR and on any Status-header edit; that
   staling is its whole job — a new ADR should re-assert the series'

@@ -3,7 +3,7 @@
 > Reader: anyone being introduced to the truth ledger (presentation audience, new collaborator) | Enables: understanding the machinery well enough to trust its gates and file claims/issues correctly | Update-trigger: a consumed template version changes fold semantics, gates, or verbs
 
 Presentation-friendly diagrams of how the truth ledger works. Source of
-truth for semantics: `.truth/README.md` and the ADRs in `docs/adr/`.
+truth for semantics: `.truth/README.md` and the ADRs in `docs/adr/truth/`.
 GitHub renders these natively; for slides, paste each block into any
 mermaid renderer (e.g. mermaid.live).
 
@@ -98,13 +98,49 @@ stateDiagram-v2
 **Why it matters:** facts decay automatically. Nobody has to remember
 to distrust old knowledge — the ledger forgets *for* you, loudly.
 
-**Filing hygiene — the tail-variation rule (2026-07-27):** claim
+### Filing hygiene & aftermath — rules earned in consumer production
+
+**The tail-variation rule (2026-07-27):** claim
 families filed as a batch (symbol pins, sentinel pairs) must vary their
 texts beyond the distinguishing token — a shared boilerplate tail can
 push two sibling claims over the ADR-018 near-duplicate threshold and
 the gate refuses the batch midway (observed at jaccard 0.617 on the
 door_width × drawer_front_width pin pair before their tails were
 diversified).
+
+**Pre-scan batch texts mechanically:** before filing a claim family,
+run the CLI's own quantifier and jaccard functions over every text —
+don't eyeball it. ADR-007 matches PHRASES as well as tokens ("the
+project" fires even through an apostrophe), and the ADR-018 threshold
+is measured against the *active* claim set, not guessed against the
+sibling you happen to be looking at.
+
+**Retraction citation sweep:** before recommending or executing a
+retraction, grep the whole corpus — specs, docs, use-cases — for the
+id. A retracted id cited by any spec blocks every spec commit via the
+health gate; swap the citations to the successor claim FIRST, then
+retract.
+
+**The doc↔claim two-commit dance:** when a doc must cite a claim that
+in turn watches that doc, commit the doc citing the claim by TITLE
+first, file the claim (its paths are now tracked), then a second
+commit swaps the title for the id. Filing before the content commit is
+either refused (INV-M) or restales at birth.
+
+**Version-pin divergences are genuine:** when a pinned version string
+is superseded by a release, the FACT changed, not the measuring recipe
+— diverge without `--mechanical`, and file a successor claim pinned to
+the new version.
+
+**Copier-managed files:** a consumer-local edit to a template-managed
+file must be upstreamed into the template at the next release, or the
+next `copier update` conflicts on it. The tail-variation rule above
+took exactly that path — earned in a consumer, promoted here.
+
+**Batch execution hygiene:** file claim batches through argv-array
+drivers, never shell-interpolated loops — shell echo can rewrite
+backslash escapes inside evidence commands. And after a union-merge
+pull, commit the reaffirm agrees before pushing.
 
 ---
 

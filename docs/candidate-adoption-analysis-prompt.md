@@ -17,7 +17,7 @@ Repository root: `/Users/michal/PycharmProjects/truth-ledger`.
   clean-room description including its own failure mode and countermeasure).
 - The artifact: `template/scripts/truth` (v0.9.13; pure core banner ~line
   560 — decisions in the core, I/O in the shell), `template/CHANGELOG.md`,
-  `template/docs/adr/` (read 007, 009, 012, 018, 030, 031 at minimum).
+  `template/docs/adr/truth/` (read 007, 009, 012, 018, 030, 031 at minimum).
 - Settled law: `docs/roadmap-v3.md` (governing constraints + do-not-do
   list — binding, not advisory), the gate-vs-queue decision rule in
   `docs/truth-ledger-operations-guide.md`, `docs/growth-gate/README.md`

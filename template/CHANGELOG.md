@@ -8,6 +8,38 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.18 (ADR namespace + harness promotions -- docs-only release, zero
+  scripts/ or .truth/ contract changes):
+  * The 33 machinery ADRs move docs/adr/ -> docs/adr/truth/: the number
+    space there belongs to the template alone, namespaced apart from
+    the consumer's own docs/adr/ series. Born of a real collision in a
+    consumer -- two ADR-001s (and more) in one directory, and immutable
+    ledger citations made renumbering impossible; namespacing is the
+    only fix that composes. Ships docs/adr/truth/README.md stating the
+    convention; every template-shipped reference is rewritten (the
+    archetype blanks' Decisions placeholders stay docs/adr/ -- those
+    point at CONSUMER decisions). MIGRATION, consumers: `copier update`
+    adds the docs/adr/truth/ copies but does not remove the old
+    template-synced ADRs at docs/adr/ -- delete those stale root copies
+    yourself, and update any citations (specs, docs, claim evidence
+    paths) from docs/adr/NNN-*.md to docs/adr/truth/NNN-*.md.
+  * docs/truth-ledger-machinery.md sec 2: the tail-variation paragraph
+    grows into "Filing hygiene & aftermath -- rules earned in consumer
+    production", promoting six more rules from consumer harness runs:
+    pre-scan batch texts with the CLI's own quantifier/jaccard
+    functions (ADR-007 matches phrases, ADR-018 measures against
+    active claims); sweep the corpus for citations before any
+    retraction (a retracted id cited by a spec blocks every spec
+    commit); the doc<->claim two-commit dance (cite by title, file,
+    then swap in the id); version-pin divergences are genuine, never
+    --mechanical; consumer-local edits to copier-managed files must be
+    upstreamed at the next release; batch filings go through
+    argv-array drivers (never shell-interpolated loops) and
+    post-union-merge reaffirm agrees are committed before pushing.
+  * prompts/truth-verifier.md ADR-012 guidance: a divergence caused by
+    a version pin superseded by a release is GENUINE (the fact
+    changed) -- never softened with --mechanical.
+
 v0.9.17 (machinery filing hygiene -- docs-only release, zero scripts/
   or .truth/ contract changes):
   * docs/truth-ledger-machinery.md sec 2 gains the tail-variation rule:
