@@ -585,3 +585,19 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   (001-015, 034-035) now owns docs/adr/ alone, sync successor
   tr-6fc53853 verified. Lesson banked: a namespace migration's cost
   is measured in WATCHERS, not files.
+- 2026-07-29 (later): v0.9.19 shipped (docs-only) -- "The authoring
+  loop" codified in machinery.md beside the filing-hygiene rules: four
+  roles (implementing worker / adversarial reviewer BEFORE commit /
+  orchestrator who alone commits, content before claims / per-dispatch
+  verifiers) + two mandatory triggers. Closes the QB-010 routing gap
+  the operator spotted: the choreography lived in one agent's session
+  memory. The consume itself then PROVED the loop's worth: a stash-pop
+  conflict resolution silently dropped the copier version of
+  machinery.md, the sync claim was filed hollow (evidence already
+  exit-1, warning swallowed by a tail -1 capture), and the independent
+  verifier killed it -- exactly the hollow-VERIFIED catch the fourth
+  role exists for. Restored, re-filed (tr-06522739 agree), banked as
+  QB-011 (intake-warnings). Explainer sync tr-56682235; retraction
+  queue grows by tr-d61e96fd (meta), tr-6fc53853 + tr-0e884e02
+  (kuchnie). Retro doctrine candidates turned out already promoted
+  (development-process.md sec 2a, 2026-07-16) -- no action needed.
