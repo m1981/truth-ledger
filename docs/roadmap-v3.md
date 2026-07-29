@@ -562,3 +562,26 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   conflicting at the next copier update. Tutorial, paper-v3 audited
   clean -- dated windows and mechanism-only framing survive the
   delta untouched.
+- 2026-07-29: v0.9.18 shipped (docs-only) -- the ADR namespace fix +
+  harness promotions. The 33 machinery ADRs move docs/adr/ ->
+  docs/adr/truth/ (QB-009: a real number collision in kuchnie, ~15
+  duplicated numbers, "ADR-009" ambiguous between evidence-screen and
+  a consumer rename; renumbering impossible under immutable ledger
+  citations, namespacing composes). machinery.md sec 2 grows "Filing
+  hygiene & aftermath": seven agent-agnostic rules promoted from
+  consumer production (QB-010 -- the operator caught them rotting in
+  session memory): mechanical pre-scan of batch texts, retraction
+  citation sweep, doc<->claim two-commit dance, version-pin
+  divergences are genuine, copier-managed upstreaming, argv-array
+  drivers, post-merge reaffirm commits. Verifier prompt gains the
+  version-pin sentence. Ledger drill was the release's real cost: 20
+  meta claims watched the old ADR paths -- all re-anchored as
+  successors (--duplicate-ok, the honest G8 use; the density sentinel
+  additionally reworded existentially past ADR-007), 21/21 verified
+  agree by four parallel verifier sessions; 10 broken-evidence
+  predecessors diverged via recheck, 11 live-superseded await operator
+  retraction (batch in the operator queue). Kuchnie consume clean:
+  copier itself removed the 33 root copies, kuchnie's domain series
+  (001-015, 034-035) now owns docs/adr/ alone, sync successor
+  tr-6fc53853 verified. Lesson banked: a namespace migration's cost
+  is measured in WATCHERS, not files.
