@@ -8,6 +8,22 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.19 (the authoring loop -- docs-only release, zero scripts/ or
+  .truth/ contract changes):
+  * docs/truth-ledger-machinery.md sec 2 gains "The authoring loop":
+    the four-role division of labor proven in consumer production --
+    implementing worker (fresh context, never commits, never writes
+    the ledger), adversarial reviewer (attacks BEFORE commit, armed
+    with the CLI's own gate functions, scratch-copy two-state tests),
+    orchestrator (alone runs suites, commits content before filing,
+    scan+reaffirm in a fresh session), verifiers (one per dispatch,
+    never the author, parallel-safe). Two mandatory triggers: an
+    adversarial review per feature/release, and immediate verifier
+    dispatch for freshly filed claims (reaffirm skips the
+    never-agreed). Closes the routing gap the consumer's QB-010
+    question caught: the choreography lived only in one agent's
+    session memory.
+
 v0.9.18 (ADR namespace + harness promotions -- docs-only release, zero
   scripts/ or .truth/ contract changes):
   * The 33 machinery ADRs move docs/adr/ -> docs/adr/truth/: the number

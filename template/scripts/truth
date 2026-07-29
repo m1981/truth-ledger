@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""truth v0.9.18 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.19 -- append-only claims ledger with a native work kernel.
 
 Facts are appended as JSONL records to .truth/claims.jsonl (INV-A:
 append-only, commit-gated by scripts/check-truth.sh); every status is

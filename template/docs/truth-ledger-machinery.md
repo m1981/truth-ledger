@@ -142,6 +142,36 @@ drivers, never shell-interpolated loops — shell echo can rewrite
 backslash escapes inside evidence commands. And after a union-merge
 pull, commit the reaffirm agrees before pushing.
 
+### The authoring loop — who does what, in which order
+
+The ledger's refusals assume a division of labor. The shape that has
+held up in consumer production (dozens of feature and release cycles)
+uses four roles — human, agent, or a mix; the roles matter, not the
+runner:
+
+1. **An implementing worker**, fresh context, writes the code, tests,
+   and docs. It never commits and never writes the ledger — its output
+   is a working tree and a report.
+2. **An adversarial reviewer**, fresh context, attacks the change
+   BEFORE anything is committed — the ledger and every append-only
+   record forgive nothing after. Arm it with the CLI's own gate
+   functions (quantifier, jaccard, screen) and let it run two-state
+   tests on scratch copies, never on the tree.
+3. **An orchestrator** alone re-runs the suites, commits the CONTENT
+   first (INV-M refuses untracked watch paths, and a claim filed
+   before its watched content lands restales at birth), then files
+   the claims, then runs scan and reaffirm in a fresh session.
+4. **Verifiers**, one per dispatch, never the author (the ADR-010
+   refusal is structural, but the habit matters more than the gate).
+   They parallelize safely — ledger appends are single-write.
+
+Close with a separate `ledger:` commit, pull before push. Two triggers
+are not optional: an adversarial review for every feature or release
+(each one in production has caught something the suites did not), and
+a verifier dispatch IMMEDIATELY for freshly filed claims — reaffirm
+skips the never-agreed, so an unverified claim's first restale bricks
+it. Mismatches always go to a dispatch judgment, never batch-agreed.
+
 ---
 
 ## 3. Life of a work item — planning that stands on facts
