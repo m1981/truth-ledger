@@ -4,7 +4,7 @@
 every layer, gate, hook, and deliberate loophole in a system built to
 keep AI coding agents' claims honest.
 
-**Scope** CLI v0.9.22 · paper v3 (2026-07-20) · ADR-001–036 ·
+**Scope** CLI v0.9.23 · paper v3 (2026-07-20) · ADR-001–037 ·
 **Sources** paper §N = `docs/truth-ledger-paper-v3.md`; ADR-NNN =
 `template/docs/adr/truth/NNN-*.md`
 
@@ -892,7 +892,12 @@ unified duplicate-id rule (ADR-031); same-session `agree` refused
 requiring `TRUTH_HUMAN=1` plus a typed-id confirmation (ADR-011), and —
 since v0.9.22 (ADR-036) — refusing with exit 6 while a scope-covered
 file still cites the id (`.truth/citation-scope`; `truth citations` is
-the ceremony-free preflight) — and,
+the ceremony-free preflight); a watch on a path in the consumer's
+`.truth/generated-paths` list refused for every evidence class, since a
+generated artifact restales on each regeneration (ADR-037, v0.9.23 —
+the same release lints recipes in the advisory block: `grep -n`,
+version- and date-shaped literals, with path/schema-id/frozen-date
+carve-outs; warnings never refuse) — and,
 notably, the refusal messages themselves stopped teaching the bypass,
 since agent-facing refusal text is itself attack surface.
 
@@ -1337,7 +1342,7 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
   loop (liveness only as strong as hook wiring). Distinct from findings —
   these are open directions, not fixed bugs.
 - **`INV-*`** — invariants (above); the properties the suite defends.
-- **`ADR-NNN`** — Architecture Decision Records (001–033); each closes
+- **`ADR-NNN`** — Architecture Decision Records (001–037); each closes
   one loophole or adds one capability.
 - **canary `FAULT <code>`** — seeded faults the weekly `truth-canary.sh`
   injects; the letter families (e.g. `D` TTL, `H` human-gate, `V`
@@ -1562,7 +1567,7 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
 ### Acronyms & standards
 
 - **ADR** — Architecture Decision Record.
-- **CLI** — command-line interface; here the `truth` script (v0.9.22).
+- **CLI** — command-line interface; here the `truth` script (v0.9.23).
 - **CI** — continuous integration; the clone-proof backstop for the
   commit gate when local hooks are absent (ADR-025).
 - **JSONL** — JSON Lines: one JSON object per line, the ledger's format.

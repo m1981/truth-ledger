@@ -54,6 +54,10 @@ _skip_if_exists:
   # a template-side edit would have merged over consumer policy
   # (tr-f49a00ee). Fixed with the gate-system release.
   - .truth/accept-allow
+  # ADR-037 (SI-4): which artifacts are generated is per-repository
+  # policy; the template ships the list empty-with-header and never
+  # overwrites a consumer's entries.
+  - .truth/generated-paths
   # ADR-022: NOTE the deliberate asymmetry -- .truth/evidence-deny is the
   # opposite: TEMPLATE-owned. It is intentionally NOT skipped here, so a
   # `copier update` keeps the shell/executor deny baseline current for

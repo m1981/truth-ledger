@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.9.22)
+# .truth — append-only claims ledger (v0.9.23)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -494,6 +494,21 @@ verdicts; a multi-id ack stays refused on principle (ADR-011: one
 typed id authorizes one tombstone). git-grep unavailable fails CLOSED
 (the one earned exception -- the verb is terminal). Canary FAULT TG
 (11 arms).
+
+**Recipe lints + generated-paths** (ADR-037, v0.9.23): filing a
+VERIFIED claim lints the recipe on the screen's own token stream (one
+parser) -- `grep -n` (line numbers shift under unrelated edits),
+version-shaped and date-shaped literals (release/calendar expiries)
+warn in the advisory block, with three carve-outs: path-context
+tokens, the schema `$id` shape, and frozen-record dates. Warnings
+never refuse. A watch matching the consumer-owned
+`.truth/generated-paths` list IS refused (every evidence class -- a
+generated file restales on each regeneration; watch the source);
+`--generated-ok "<sentence>"` stores `generated_ok_basis` (schema
+v0.14), is counted, and decays like `--scope-ok` (ADR-032) so the
+judgment is re-asked. The template ships the list EMPTY (= conscious
+"nothing is generated", silent); deleting it leaves the check dark
+with one advisory line saying so. Canary FAULT RC (10 arms).
 
 ## Daily operation
 

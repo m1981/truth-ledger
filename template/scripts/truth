@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""truth v0.9.22 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.23 -- append-only claims ledger with a native work kernel.
 
 Facts are appended as JSONL records to .truth/claims.jsonl (INV-A:
 append-only, commit-gated by scripts/check-truth.sh); every status is
@@ -45,6 +45,11 @@ PROMPT_REL = "prompts/truth-verifier.md"
 CITATION_SCOPE_REL = ".truth/citation-scope"
 CITATION_SCOPE_DEFAULT = ("docs/specs/**",)
 CITATIONS_EXIT_CITED = 6
+# ADR-037: which artifacts are GENERATED is a per-repository fact the
+# template cannot know -- consumer policy (SI-4), shipped EMPTY with a
+# header (committed-empty = consciously nothing, silent; ABSENT = the
+# check is dark, one advisory line says so).
+GENERATED_PATHS_REL = ".truth/generated-paths"
 EVIDENCE_CLASSES = ("VERIFIED", "INFERRED", "UNVERIFIED")
 TIERS = ("P0", "P1", "P2")
 VERDICTS = ("agree", "diverge", "cannot_verify", "retracted")
@@ -647,10 +652,11 @@ def render_advisory_block(messages):
     return "\n".join(lines) if lines else None
 
 def intake_advisories(events, tier, ttl_days_arg, scope_ok, evidence_class,
-                      payload):
+                      payload, generated_ok=None):
     """The post-append advisory set shared by `claim` and `done --claim`
     (ADR-034): FS-1 half-life note (moved post-append -- it advises, so
-    it rides the block), ADR-032 default-expiry notice, and the v0.9.11
+    it rides the block), ADR-032 default-expiry notice, the ADR-037
+    recipe lints and generated-list-absent notice, and the v0.9.11
     hollow-VERIFIED exit warning. Returns the non-None messages, table
     order; the renderer prefixes and escapes."""
     msgs = []
@@ -663,8 +669,28 @@ def intake_advisories(events, tier, ttl_days_arg, scope_ok, evidence_class,
             msgs.append(f"ledger median half-life for {tier}: {median}d; "
                         f"you chose {ttl_days_arg}d (FS-1 suggestion, "
                         "not a gate)")
-    _, _, decay_notice = override_decay(scope_ok, ttl_days_arg)
+    stored_gen = payload.get("generated_ok_basis")
+    flag = "--scope-ok" if scope_ok else "--generated-ok"
+    _, _, decay_notice = override_decay(scope_ok or stored_gen,
+                                        ttl_days_arg, flag=flag)
     msgs.append(decay_notice)
+    if generated_ok and not stored_gen:
+        # ADR-037: a stated override that matched nothing must not drop
+        # silently (and it does not decay -- nothing was recorded).
+        msgs.append("--generated-ok stated but the watch matched nothing "
+                    f"on {GENERATED_PATHS_REL} -- the basis was NOT "
+                    "stored (ADR-037); drop the flag or fix the list")
+    # ADR-037: recipe lints on the recorded command (pure, screen-token
+    # stream), and the generated-list-absent notice for path claims --
+    # the check is dark until the consumer commits the list; a
+    # committed-EMPTY list is conscious policy and stays silent (SI-4).
+    msgs.extend(recipe_lints((payload.get("evidence") or {}).get("command")))
+    if payload.get("evidence_paths") \
+            and load_generated_globs()[1] == "absent":
+        msgs.append(f"no {GENERATED_PATHS_REL} -- the generated-artifact "
+                    "check is dark; commit the list (empty is a conscious "
+                    "'nothing is generated') to arm or silence this "
+                    "(ADR-037)")
     # field-notes-batch-m item 2 remedy: the filing already succeeded and
     # its exit code stands; the captured intake returncode (first run --
     # already in the evidence capsule, never re-run) just gets a voice.
@@ -759,7 +785,7 @@ def quantifier_scope_conflict(text, evidence_cmd):
         return None
     return (q, s)
 
-def override_decay(scope_basis, ttl_days):
+def override_decay(scope_basis, ttl_days, flag="--scope-ok"):
     """ADR-032: a --scope-ok override (scope_basis, ADR-007) filed WITHOUT
     an explicit --ttl-days decays -- it is stamped a default shelf life so
     the scope judgment cannot rot silently: when the default TTL lapses the
@@ -782,15 +808,93 @@ def override_decay(scope_basis, ttl_days):
     --ttl-days is the visible opt-out (ADR-032 exclusions)."""
     if scope_basis and ttl_days is None:
         return (DEFAULT_OVERRIDE_TTL_DAYS, True,
-                "--scope-ok override filed with no --ttl-days -- "
+                f"{flag} override filed with no --ttl-days -- "
                 f"stamped a default {DEFAULT_OVERRIDE_TTL_DAYS}-day expiry "
-                "(ADR-032) so the scope judgment is re-asked when it "
+                "(ADR-032) so the override judgment is re-asked when it "
                 "lapses. Pass an explicit --ttl-days (a large value is the "
                 "visible opt-out) to choose a different shelf life.")
     return (ttl_days, False, None)
 
 _SCREEN_SEPARATORS = frozenset((";", "|", "||", "&&", "&"))
 _SCREEN_PUNCT = frozenset("();<>|&")
+
+def _evidence_toks(cmd):
+    """The ONE screen-side tokenization of an evidence command (shlex
+    posix + punctuation mode, whitespace_split) -- shared by the ADR-009
+    screen and the ADR-037 recipe lints. A second screen-side parser is
+    forbidden (the F1/F5 drift lesson; a whitespace splitter would be
+    gameable by quote-splitting, 'v0.9''.8'). Returns (toks, err)."""
+    lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
+    try:
+        return list(lex), None
+    except ValueError as e:
+        return None, f"unparseable command ({e}) (ADR-009)"
+
+# ADR-037: recipe-lint lexicons. Shapes and carve-outs change only with
+# the RC-canary faults (the ADR-007 constants-with-faults precedent).
+GREP_FAMILY = frozenset(("grep", "rg", "egrep", "fgrep", "zgrep"))
+VERSION_SHAPE_RE = re.compile(r"\bv?\d+\.\d+(?:\.\d+)?\b")
+DATE_SHAPE_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+SCHEMA_ID_RE = re.compile(r"truth-ledger-record\.v\d")
+FROZEN_DATE_RE = re.compile(r"(?:Accepted|Amended|Date:)\s*\(?\d{4}-")
+
+def recipe_lints(cmd):
+    """ADR-037: warnings, never refusals (a gate refusing legitimate
+    filings teaches its own bypass -- ADR-014's confused-deputy lesson)
+    about evidence recipes with a known expiry. Three carve-outs, each a
+    measured legitimate-invariant class: a token containing '/' is
+    path-context (filenames legitimately carry versions and dates), the
+    schema-$id shape is a deliberately release-independent anchor (the
+    very fix of the tr-22853f21 defect), and a frozen-record date
+    (Accepted/Amended/Date headers) never changes. Pure; consumes the
+    screen's own token stream."""
+    if not cmd:
+        return []
+    toks, err = _evidence_toks(cmd)
+    if not toks or err:
+        return []
+    msgs = []
+    program, expecting, n_flagged = None, True, False
+    for t in toks:
+        if t in _SCREEN_SEPARATORS:
+            expecting, program = True, None
+            continue
+        if t and set(t) <= _SCREEN_PUNCT:
+            continue
+        if expecting:
+            program, expecting = t, False
+            continue
+        # Per-token: a literal '-n' PATTERN (grep -e -n) false-fires;
+        # warning-only, accepted (arg-value parsing is the screen's own
+        # stated non-goal).
+        if program in GREP_FAMILY and t in ("-n", "--line-number") \
+                and not n_flagged:
+            n_flagged = True
+            msgs.append("recipe: -n makes the output shift under "
+                        "unrelated edits -- mechanical divergence on the "
+                        "first insertion above the match (ADR-012/"
+                        "ADR-037). Drop -n unless the line number is the "
+                        "fact.")
+            continue
+        if "/" in t or SCHEMA_ID_RE.search(t):
+            continue
+        m = VERSION_SHAPE_RE.search(t)
+        if m:
+            msgs.append(f"recipe: {m.group(0)!r} is a volatile literal "
+                        "with a release-shaped expiry (ADR-037) -- anchor "
+                        "to an invariant (a def/test name, an ADR id, a "
+                        "FAULT tag) or file with --ttl-days. A deliberate "
+                        "version pin is legitimate; its divergence at the "
+                        "next bump is genuine, successor material.")
+            continue
+        d = DATE_SHAPE_RE.search(t)
+        if d and not FROZEN_DATE_RE.search(t):
+            msgs.append(f"recipe: {d.group(0)!r} is a date-shaped "
+                        "literal with a calendar expiry (ADR-037) -- "
+                        "anchor to an invariant unless the date names a "
+                        "frozen record.")
+    return msgs
 
 def screen_evidence_command(cmd, allowlist, allow_rel=EVIDENCE_ALLOW_REL,
                             missing_tail=None, unlisted_hint=None,
@@ -835,12 +939,9 @@ def screen_evidence_command(cmd, allowlist, allow_rel=EVIDENCE_ALLOW_REL,
                 "separator to the executing shell (a newline is /bin/sh's "
                 "statement terminator); evidence commands must be a single "
                 "printable line (ADR-021)")
-    lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
-    lex.whitespace_split = True
-    try:
-        toks = list(lex)
-    except ValueError as e:
-        return f"unparseable command ({e}) (ADR-009)"
+    toks, tok_err = _evidence_toks(cmd)
+    if tok_err:
+        return tok_err
     if not toks:
         return "empty command (ADR-009)"
     expecting_program = True
@@ -1172,13 +1273,15 @@ def override_report(events, now, folded=None):
     del now  # signature parity; the report reads records, not the clock
     claims, _ = folded if folded is not None else fold(events)
     scope_filings = overridden_dupes = screened_false = 0
-    exit_overrides = hollow_warned = 0
+    exit_overrides = hollow_warned = generated_overrides = 0
     max_scope_ttl = None
     for e in claims.values():
         p = e["claim"]["payload"]
         # ADR-035: exit-override count (CC-2 single home) plus the
         # warned-population denominator -- a recorded non-zero exit with
         # no stated basis is the negation-path/pre-R1 warned class.
+        if p.get("generated_ok_basis"):
+            generated_overrides += 1
         if p.get("evidence_exit_basis"):
             exit_overrides += 1
         elif (p.get("evidence") or {}).get("returncode"):
@@ -1234,6 +1337,7 @@ def override_report(events, now, folded=None):
             "evidence_exit_filings": exit_overrides,
             "hollow_warned": hollow_warned,
             "orphan_filings": orphan_filings,
+            "generated_ok_filings": generated_overrides,
             "max_scope_ttl_days": max_scope_ttl,
             "repeats": repeats}
 
@@ -1699,6 +1803,20 @@ def validate_events(events):
             if "scope_basis" in p and not p["scope_basis"]:
                 errors.append(f"line {n}: empty scope_basis (ADR-007: the "
                               "override carries a sentence, not a boolean)")
+            # ADR-037: generated_ok_basis is a sentence and only path
+            # claims can carry it. Present-but-EMPTY paths beside a basis
+            # is refused; an absent key is tolerated (the FS-2 mutant
+            # generator dels fields, and the two contract surfaces must
+            # agree on every derived mutant -- the ADR-035 returncode
+            # tolerance pattern).
+            if "generated_ok_basis" in p:
+                if not p["generated_ok_basis"]:
+                    errors.append(f"line {n}: empty generated_ok_basis "
+                                  "(ADR-037)")
+                elif "evidence_paths" in p and not p["evidence_paths"]:
+                    errors.append(f"line {n}: generated_ok_basis beside "
+                                  "empty evidence_paths -- nothing was "
+                                  "watched, nothing to excuse (ADR-037)")
             # ADR-035: only a failing command has anything to excuse. A
             # basis beside a recorded exit of 0 is schema noise (X5); a
             # legacy capsule lacking returncode is tolerated (recheck
@@ -2154,8 +2272,19 @@ def _gate_scope_decay(ctx):
     # life BEFORE the class precheck reads ttl_days, so the effective
     # ttl rides the ordinary INV-B/ADR-019 machinery untouched; the
     # notice is voiced post-append through the CC-1 advisory block.
+    # ADR-037 extends the decay to --generated-ok (decay INCLUDED, the
+    # ADR-032 exclusions form: "this path is generated" rots as build
+    # systems change, and the re-ask is exactly the scan->re-file loop).
+    # Keyed on the STORED generated basis, never the raw flag: a
+    # --generated-ok that matched nothing is dropped (and voiced), and
+    # a dropped override must not decay -- ADR-032 re-asks a RECORDED
+    # judgment (the R3 adversarial review's catch). This row therefore
+    # runs AFTER the generated gate in the table.
+    gen_stored = ctx.get("payload_generated_basis")
+    flag = "--scope-ok" if ctx["scope_basis"] else "--generated-ok"
     ctx["ttl_days"], ctx["ttl_default"], _ = \
-        override_decay(ctx["scope_basis"], ctx["ttl_days"])
+        override_decay(ctx["scope_basis"] or gen_stored,
+                       ctx["ttl_days"], flag=flag)
     return None
 
 def _gate_inv_m(ctx):
@@ -2193,6 +2322,50 @@ def _gate_inv_m(ctx):
                 "pattern like 'dir/**' or 'dir/*.py'.")
     return None
 
+def load_generated_globs():
+    """Shell (ADR-037/SI-4): the consumer's generated-artifact globs.
+    Returns (globs, source), source in {'file','empty','absent'}.
+    utf-8-sig; pathspec-magic line starts refused (SI-1)."""
+    path = os.path.join(repo_root(), GENERATED_PATHS_REL)
+    if not os.path.exists(path):
+        return [], "absent"
+    globs = []
+    with open(path, encoding="utf-8-sig") as f:
+        for i, line in enumerate(f, 1):
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            if s[0] in ":-!":
+                sys.exit(f"truth: {GENERATED_PATHS_REL} line {i} starts "
+                         f"with {s[0]!r} -- pathspec magic is refused; "
+                         "the list holds CLI globs (ADR-037/SI-1)")
+            globs.append(s)
+    return globs, ("file" if globs else "empty")
+
+def _gate_generated(ctx):
+    # ADR-037: a watch on a generated artifact restales on every
+    # regeneration -- refused for ANY evidence class carrying paths
+    # (an INFERRED claim restales identically; the INV-M stance).
+    if not ctx["paths"]:
+        return None
+    globs, source = load_generated_globs()
+    ctx["generated_source"] = source
+    if source != "file":
+        return None
+    hits = sorted(p for p in ctx["paths"]
+                  if any(match_paths(p, [g]) or p == g for g in globs))
+    if not hits:
+        return None
+    if ctx["generated_basis"]:
+        ctx["payload_generated_basis"] = ctx["generated_basis"]
+        return None
+    return ("truth: --paths entry matches the committed generated-"
+            f"artifact list ({GENERATED_PATHS_REL}): {hits!r} -- a watch "
+            "on a generated file restales on every regeneration "
+            "(ADR-037). Watch the SOURCE the generator reads, or state "
+            "why the artifact itself is the fact: --generated-ok "
+            "\"<sentence>\".")
+
 def _gate_class_precheck(ctx):
     if ctx["evidence_class"] == "VERIFIED":
         return verified_intake_error(ctx["evidence_cmd"], ctx["paths"],
@@ -2219,8 +2392,9 @@ INTAKE_GATES = (
     ("pre-execution", "text-nonempty", _gate_text_nonempty),
     ("pre-execution", "near-duplicate-g8", _gate_duplicate),
     ("pre-execution", "quantifier-scope-adr007", _gate_quantifier_scope),
-    ("pre-execution", "scope-decay-adr032", _gate_scope_decay),
     ("pre-execution", "paths-inv-m", _gate_inv_m),
+    ("pre-execution", "generated-paths-adr037", _gate_generated),
+    ("pre-execution", "scope-decay-adr032", _gate_scope_decay),
     ("pre-execution", "class-precheck", _gate_class_precheck),
     ("post-execution", "evidence-exit-adr035", _gate_evidence_exit),
     # further post-execution rows land with the linter and blast ADRs
@@ -2240,7 +2414,7 @@ def run_intake_stage(stage, ctx):
 def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
                         ttl_days, basis, single_run, duplicate_ok, claims,
                         scope_basis=None, unsafe_ok=False,
-                        evidence_exit_basis=None):
+                        evidence_exit_basis=None, generated_basis=None):
     """Full claim intake, driven by the ADR-034 staged gate table --
     WITHOUT appending. Shared by `claim` and `done --claim` so
     claim-at-death goes through the identical intake, and so `done` can
@@ -2252,6 +2426,7 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
            "claims": claims, "duplicate_ok": duplicate_ok,
            "scope_basis": scope_basis,
            "evidence_exit_basis": evidence_exit_basis,
+           "generated_basis": generated_basis,
            "head": head_commit() if evidence_class == "VERIFIED" else None,
            "overridden_duplicates": [], "ttl_default": False}
     run_intake_stage("pre-execution", ctx)
@@ -2267,6 +2442,8 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
         payload["ttl_default"] = True
     if ctx["overridden_duplicates"]:
         payload["overridden_duplicates"] = ctx["overridden_duplicates"]
+    if ctx.get("payload_generated_basis"):
+        payload["generated_ok_basis"] = ctx["payload_generated_basis"]
 
     if evidence_class == "VERIFIED":
         # -- execution boundary (ADR-029): screen, then double-run.
@@ -2306,7 +2483,7 @@ def cmd_claim(a):
                                   a.paths, a.tier, a.ttl_days, a.basis,
                                   a.single_run, a.duplicate_ok, claims,
                                   a.scope_ok, a.evidence_unsafe_ok,
-                                  a.evidence_exit_ok)
+                                  a.evidence_exit_ok, a.generated_ok)
     if a.concern:
         # stored sorted+deduplicated: canonical form keeps the record's
         # canonical serialization (ADR-016 fold key) order-independent of
@@ -2314,7 +2491,8 @@ def cmd_claim(a):
         payload["concerns"] = sorted(set(a.concern))
     rec = append_record("claim", payload)
     advisories = intake_advisories(events, a.tier, a.ttl_days, a.scope_ok,
-                                   a.evidence_class, payload)
+                                   a.evidence_class, payload,
+                                   generated_ok=a.generated_ok)
     if a.json:
         out = dict(rec)
         if advisories:
@@ -2917,7 +3095,8 @@ def cmd_done(a):
                                             a.single_run, a.duplicate_ok,
                                             claims, a.scope_ok,
                                             a.evidence_unsafe_ok,
-                                            a.evidence_exit_ok)
+                                            a.evidence_exit_ok,
+                                            a.generated_ok)
     # ADR-014: the acceptance oracle gates a plain close -- it runs after
     # the cheap intake checks and before ANY append (both-or-neither
     # extends to the oracle). --cancel/--reopen skip it: killing or
@@ -2978,7 +3157,7 @@ def cmd_done(a):
         # hollow-VERIFIED warning, FS-1 note) -- one CC-1 block, stderr.
         block = render_advisory_block(intake_advisories(
             events, a.tier, a.ttl_days, a.scope_ok, a.evidence_class,
-            claim_payload))
+            claim_payload, generated_ok=a.generated_ok))
         if block:
             print(block, file=sys.stderr)
 
@@ -3258,7 +3437,8 @@ def cmd_stats(a):
           f"dup-overrides={o['overridden_duplicates']} "
           f"unscreened={o['screened_false_filings']} "
           f"exit-ok={o['evidence_exit_filings']} "
-          f"orphan-ok={o['orphan_filings']}"
+          f"orphan-ok={o['orphan_filings']} "
+          f"generated-ok={o['generated_ok_filings']}"
           + (f", max scope ttl {mx}d" if mx is not None else ""))
     # ADR-035: warned population beside the single-homed override count
     # (the refused class leaves no record, so it has no counter).
@@ -3557,6 +3737,12 @@ def main():
                    help="file despite a failed evidence-command safety "
                         "screen (ADR-009); recheck will refuse to execute "
                         "the command, so verification becomes manual")
+    c.add_argument("--generated-ok", metavar="SENTENCE",
+                   help="watch a path on the committed generated-artifact "
+                        "list anyway (ADR-037): one sentence why the "
+                        "artifact itself is the fact; stored as "
+                        "generated_ok_basis, counted, and decays like "
+                        "--scope-ok (ADR-032 default expiry)")
     c.add_argument("--evidence-exit-ok", metavar="SENTENCE",
                    help="one sentence: why a FAILING evidence command "
                         "proves this positive sentence (ADR-035; stored "
@@ -3700,6 +3886,8 @@ def main():
                     help="see `truth claim --scope-ok` (ADR-007)")
     dn.add_argument("--evidence-unsafe-ok", action="store_true",
                     help="see `truth claim --evidence-unsafe-ok` (ADR-009)")
+    dn.add_argument("--generated-ok", metavar="SENTENCE",
+                    help="see `truth claim --generated-ok` (ADR-037)")
     dn.add_argument("--evidence-exit-ok", metavar="SENTENCE",
                     help="see `truth claim --evidence-exit-ok` (ADR-035)")
     dn.add_argument("--accept-unsafe-ok", dest="accept_unsafe_ok",

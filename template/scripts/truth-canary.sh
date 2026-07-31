@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor + ADR-028 FAULT IF future-dated-issue transition coherence + ADR-009/M4 FAULT SD screen-gates-execution ordering + v0.9.12 R3/ADR-030 FAULT RA reaffirm-mismatch-never-auto-filed + v0.9.13 R6/ADR-031 unified duplicate-id rule: B1/B3-B5 expect the one message, FAULT K2 later-ts distinct duplicate flips to refused + v0.9.14 R12/ADR-032 FAULT SD-decay --scope-ok default-expiry (4 arms incl. negative control) + R13/ADR-033 FAULT OV override-velocity verbatim-repeat advisory (2 arms incl. negative control) + v0.9.20/ADR-034 FAULT GS staged gate table + CC-1 advisory block (5 arms incl. negative control) + v0.9.21/ADR-035 FAULT X positive-claim exit gate (8 arms incl. negative control + validate mirror) + v0.9.22/ADR-036 FAULT TG tombstone citation gate (11 arms incl. scope policy, fail-closed, preflight, unicode quotepath)).
+# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor + ADR-028 FAULT IF future-dated-issue transition coherence + ADR-009/M4 FAULT SD screen-gates-execution ordering + v0.9.12 R3/ADR-030 FAULT RA reaffirm-mismatch-never-auto-filed + v0.9.13 R6/ADR-031 unified duplicate-id rule: B1/B3-B5 expect the one message, FAULT K2 later-ts distinct duplicate flips to refused + v0.9.14 R12/ADR-032 FAULT SD-decay --scope-ok default-expiry (4 arms incl. negative control) + R13/ADR-033 FAULT OV override-velocity verbatim-repeat advisory (2 arms incl. negative control) + v0.9.20/ADR-034 FAULT GS staged gate table + CC-1 advisory block (5 arms incl. negative control) + v0.9.21/ADR-035 FAULT X positive-claim exit gate (8 arms incl. negative control + validate mirror) + v0.9.22/ADR-036 FAULT TG tombstone citation gate (11 arms incl. scope policy, fail-closed, preflight, unicode quotepath) + v0.9.23/ADR-037 FAULT RC recipe lints + generated-paths (10 arms incl. per-segment, carve-outs, decay, quote-split, dropped-override)).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -21,6 +21,7 @@ mkrepo() {
   cp "$HERE/truth" scripts/truth
   cp "$HERE/../.truth/evidence-allow" .truth/evidence-allow
   cp "$HERE/../.truth/evidence-deny" .truth/evidence-deny  # ADR-022 baseline
+  cp "$HERE/../.truth/generated-paths" .truth/generated-paths  # ADR-037 (empty=silent)
   cp "$HERE/check-truth.sh" scripts/check-truth.sh
   cp "$HERE/spec-health.sh" scripts/spec-health.sh
   cp "$HERE/doc-health.sh" scripts/doc-health.sh
@@ -2174,6 +2175,110 @@ else
 fi
 cd "$TG_PREV"
 rm -rf "$TG"
+
+# ---- FAULT RC (ADR-037, v0.9.23): recipe lints + generated-paths --------
+say "FAULT RC (ADR-037): recipe rot classes warn; generated-artifact watches refuse"
+RC="$(mktemp -d)"; RC_PREV="$PWD"
+mkrepo "$RC"
+mkdir -p gen
+echo "data" > f.txt
+echo "out" > gen/out.csv
+git add -A && git commit -qm "rc: init" --no-verify -q
+RC1ERR=$($T claim "f.txt line one carries the data marker" --class VERIFIED \
+         --evidence-cmd "grep -n data f.txt" --paths f.txt 2>&1 >/dev/null)
+if printf '%s\n' "$RC1ERR" | grep -q "advisory: recipe: -n"; then
+  ok "RC1: grep -n earns the line-number lint"
+else
+  miss "RC1: -n lint missing"
+fi
+RC1B=$($T claim "f.txt sorts its data content stably" --class VERIFIED \
+       --evidence-cmd "grep data f.txt | sort -n" --paths f.txt \
+       --duplicate-ok 2>&1 >/dev/null)
+if printf '%s\n' "$RC1B" | grep -q "advisory: recipe: -n"; then
+  miss "RC1b: sort -n false-fired the grep lint (segment blindness)"
+else
+  ok "RC1b: sort -n does not fire the grep -n lint (per-segment)"
+fi
+RC2ERR=$($T claim "the banner in f.txt names the current release train" \
+         --class VERIFIED --evidence-cmd "grep v9.9.9 f.txt" --paths f.txt \
+         --evidence-exit-ok "banner probe exits 1 until the banner lands" \
+         2>&1 >/dev/null)
+if printf '%s\n' "$RC2ERR" | grep -q "'v9.9.9' is a volatile literal"; then
+  ok "RC2: a version-shaped literal warns naming the token"
+else
+  miss "RC2: version literal lint missing"
+fi
+RC3ERR=$($T claim "the schema id anchor and dated path stay greppable" \
+         --class VERIFIED \
+         --evidence-cmd "grep truth-ledger-record.v0 f.txt | cat docs-2026-01-01/x.md" \
+         --paths f.txt --duplicate-ok --evidence-exit-ok "compound absence probe" \
+         2>&1 >/dev/null)
+RC3N=$(git -C . rev-parse >/dev/null 2>&1; tail -1 .truth/claims.jsonl | grep -c '"kind": "claim"')
+if printf '%s\n' "$RC3ERR" | grep -q "volatile literal\|date-shaped"; then
+  miss "RC3: a carve-out class false-fired (schema-id or path token)"
+elif [ "$RC3N" -ne 1 ]; then
+  miss "RC3: the carve-out filing never appended (vacuous arm)"
+else
+  ok "RC3: schema-\$id and path-context tokens do not warn (carve-outs, filing appended)"
+fi
+printf 'gen/**\n' > .truth/generated-paths
+RC4ERR=$($T claim "regeneration rewrites the csv artifact between runs" \
+         --class INFERRED --basis b --paths "gen/out.csv" 2>&1); RC4RC=$?
+if [ "$RC4RC" -ne 0 ] && printf '%s\n' "$RC4ERR" | grep -q "generated-artifact list"; then
+  ok "RC4: an INFERRED watch on a generated path is refused (INV-M stance)"
+else
+  miss "RC4: generated watch not refused for a non-VERIFIED class (rc=$RC4RC)"
+fi
+$T claim "the shipped csv artifact itself is the customer-read fact" \
+   --class INFERRED --basis b --paths "gen/out.csv" \
+   --generated-ok "the artifact is the deliverable" >/dev/null 2>&1
+if python3 -c "import json,sys; p=json.loads(open('.truth/claims.jsonl').read().splitlines()[-1])['payload']; sys.exit(0 if p.get('generated_ok_basis') and p.get('ttl_default') is True and p.get('ttl_days')==30 else 1)"; then
+  ok "RC4b: --generated-ok stores the basis and takes the ADR-032 default decay"
+else
+  miss "RC4b: generated override basis/decay not stamped"
+fi
+rm .truth/generated-paths
+RC5ERR=$($T claim "f.txt keeps the data marker for the absent-list arm" \
+         --class VERIFIED --evidence-cmd "grep -n data f.txt" --paths f.txt \
+         --duplicate-ok 2>&1 >/dev/null)
+if printf '%s\n' "$RC5ERR" | grep -q "generated-artifact check is dark" \
+   && printf '%s\n' "$RC5ERR" | grep -q "advisory: recipe: -n"; then
+  ok "RC5: absent list voices the dark notice; the lints still fire"
+else
+  miss "RC5: absent-list degradation broken"
+fi
+cp "$HERE/../.truth/generated-paths" .truth/generated-paths
+RC6ERR=$($T claim "f.txt plainly carries its committed marker line" \
+         --class VERIFIED --evidence-cmd "grep data f.txt" --paths f.txt \
+         --duplicate-ok 2>&1 >/dev/null)
+RC6N=$(tail -1 .truth/claims.jsonl | grep -c '"kind": "claim"')
+if printf '%s\n' "$RC6ERR" | grep -q "^truth: advisory:"; then
+  miss "RC6: a clean filing under the shipped empty list printed advisories"
+elif [ "$RC6N" -ne 1 ]; then
+  miss "RC6: the clean filing never appended (vacuous arm)"
+else
+  ok "RC6: committed-empty list is conscious policy -- silence on clean (SI-4)"
+fi
+RC7ERR=$($T claim "the quote-split literal still reads as one token" \
+         --class VERIFIED --evidence-cmd "grep 'v9.8''.7' f.txt" --paths f.txt \
+         --duplicate-ok --evidence-exit-ok "absence probe for the split literal" \
+         2>&1 >/dev/null)
+if printf '%s\n' "$RC7ERR" | grep -q "volatile literal"; then
+  ok "RC7: a quote-split version literal still warns (shlex token stream, one parser)"
+else
+  miss "RC7: quote-splitting evaded the volatile-literal lint"
+fi
+RC8ERR=$($T claim "the dropped generated override must not decay" \
+         --class INFERRED --basis b --paths f.txt \
+         --generated-ok "matches nothing on the list" 2>&1 >/dev/null)
+RC8OK=$(python3 -c "import json; p=json.loads(open('.truth/claims.jsonl').read().splitlines()[-1])['payload']; print('ok' if 'generated_ok_basis' not in p and not p.get('ttl_default') and p.get('ttl_days') is None else 'bad')")
+if [ "$RC8OK" = ok ] && printf '%s\n' "$RC8ERR" | grep -q "NOT.*stored\|was NOT"; then
+  ok "RC8: a --generated-ok that matched nothing is voiced, not stored, and does NOT decay"
+else
+  miss "RC8: dropped override stored or decayed silently (state=$RC8OK)"
+fi
+cd "$RC_PREV"
+rm -rf "$RC"
 
 say ""
 say "canary result: $PASS caught, $FAIL missed"

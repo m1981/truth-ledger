@@ -8,6 +8,28 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.23 (ADR-037: recipe lints + generated-paths -- R3 of the 2026-07
+  gates adoption):
+  * Recipe lints on the screen's OWN shlex token stream (a second
+    screen-side parser stays forbidden; quote-splitting cannot evade):
+    grep-family -n/--line-number (per-segment -- sort -n never fires),
+    version- and date-shaped literals with three carve-outs
+    (path-context tokens, the schema-$id shape, frozen-record dates).
+    Warnings in the CC-1 advisory block, never refusals (ADR-014's
+    confused-deputy lesson).
+  * .truth/generated-paths (consumer policy, _skip_if_exists, ships
+    EMPTY = conscious silence; absent = dark with one advisory line;
+    pathspec-magic lines refused): a --paths entry matching it is
+    REFUSED for every evidence class at the INV-M position;
+    --generated-ok stores generated_ok_basis (schema $id v0.14,
+    mirror rules, FS-2 fixtures), counted, and DECAYS per ADR-032
+    (override_decay generalized; the notice names the actual flag).
+  * override report: generated-ok row (CC-2 single home).
+  * Canary FAULT RC (10 arms incl. the dropped-override arm: a
+    --generated-ok matching nothing is voiced, not stored, and does
+    not decay -- the decay row keys on the STORED basis, after the
+    generated gate); core TestRecipeLints.
+
 v0.9.22 (ADR-036: the tombstone citation gate -- R2 of the 2026-07
   gates adoption):
   * `verdict <id> retracted` and `done --cancel`, after the ADR-011

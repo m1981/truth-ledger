@@ -1942,6 +1942,16 @@ CORPUS = [
      True),
     ("claim empty evidence_exit_basis",
      rec("claim", claim_p(evidence_exit_basis="")), False),
+    # ---- ADR-037 generated-ok basis (v0.9.23). The present-but-empty
+    # paths cross-field split is mirror-only (crafted-record checks),
+    # never in this shared corpus; del-paths mutants agree by design. ----
+    ("claim with generated_ok_basis and paths",
+     rec("claim", claim_p(evidence_paths=["gen/out.csv"],
+                          generated_ok_basis="the artifact is the fact")),
+     True),
+    ("claim empty generated_ok_basis",
+     rec("claim", claim_p(evidence_paths=["gen/out.csv"],
+                          generated_ok_basis="")), False),
     # MEDIUM-1: --duplicate-ok override trace
     ("claim with overridden_duplicates",
      rec("claim", claim_p(overridden_duplicates=["tr-00000001",
@@ -2326,11 +2336,11 @@ class TestCrossSurfaceVersions(unittest.TestCase):
     # $id to the shape and no test could see it. This pins the shape: any
     # edit to the schema (minus its own $id) breaks the fingerprint, forcing
     # a conscious "is this a shape change? then bump $id" review.
-    # v0.12: ADR-035 adds evidence_exit_basis; v0.13: ADR-036 adds
-    # orphan_basis on verdict and issue_event (shape changes).
-    EXPECTED_SCHEMA_ID = "truth-ledger-record.v0.13"
+    # v0.12: ADR-035 evidence_exit_basis; v0.13: ADR-036 orphan_basis
+    # (verdict + issue_event); v0.14: ADR-037 generated_ok_basis.
+    EXPECTED_SCHEMA_ID = "truth-ledger-record.v0.14"
     PINNED_SHAPE_SHA256 = \
-        "bf8cb4a236fddc8950070a97bf4a6df426a81682443bbab3be56c62f95143e13"
+        "5ed7841c083ec52f28b192b909f990469ce2f880f0720ae171b045bfa510f6df"
 
     def _schema(self):
         import json as _json
@@ -2500,9 +2510,12 @@ class TestAdvisoryAssembler(unittest.TestCase):
     def test_gate_table_pre_execution_order_is_pinned(self):
         # Order is data (ADR-034); this pin is the unit half of GS1/GS2.
         names = [n for st, n, _ in tm.INTAKE_GATES if st == "pre-execution"]
+        # scope-decay sits AFTER the generated gate: it decays only a
+        # STORED override basis (the R3 review's dropped-flag catch).
         self.assertEqual(names, ["text-nonempty", "near-duplicate-g8",
                                  "quantifier-scope-adr007",
-                                 "scope-decay-adr032", "paths-inv-m",
+                                 "paths-inv-m", "generated-paths-adr037",
+                                 "scope-decay-adr032",
                                  "class-precheck"])
 
     def test_stats_consumers_folded_parity(self):
@@ -2552,6 +2565,34 @@ class TestExitGate(unittest.TestCase):
         # copies, not a shared reference: widening one must not widen
         # the other (ADR-035)
         self.assertIsNot(tm.NEGATION_TOKENS, tm.QUANTIFIER_TOKENS)
+
+class TestRecipeLints(unittest.TestCase):
+    """ADR-037: pure lint decisions on the screen's own token stream."""
+
+    def test_grep_n_lints_but_sort_n_does_not(self):
+        self.assertTrue(any("-n" in m for m in
+                            tm.recipe_lints("grep -n data f.txt")))
+        self.assertEqual(tm.recipe_lints("grep data f.txt | sort -n"), [])
+
+    def test_version_and_date_shapes_warn(self):
+        self.assertTrue(any("v1.2.3" in m for m in
+                            tm.recipe_lints("grep v1.2.3 f.txt")))
+        self.assertTrue(any("2026-01-15" in m for m in
+                            tm.recipe_lints("grep 2026-01-15 f.txt")))
+
+    def test_carve_outs_stay_silent(self):
+        # path-context, schema-$id, frozen-record date
+        self.assertEqual(tm.recipe_lints("cat docs/v1.2.3/notes.md"), [])
+        self.assertEqual(
+            tm.recipe_lints("grep truth-ledger-record.v0.14 s.json"), [])
+        self.assertEqual(
+            tm.recipe_lints("grep 'Accepted (2026-07-20' adr.md"), [])
+
+    def test_quote_split_literal_still_warns(self):
+        # shlex concatenates adjacent quoted parts into ONE token -- a
+        # whitespace splitter would have been gameable here (F1/F5).
+        self.assertTrue(any("v9.8.7" in m for m in
+                            tm.recipe_lints("grep 'v9.8''.7' f.txt")))
 
 class TestCommitGateBanner(unittest.TestCase):
     """R2: loud fail-open -- an unwired ADR-025 commit gate is announced
