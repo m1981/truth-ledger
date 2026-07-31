@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor + ADR-028 FAULT IF future-dated-issue transition coherence + ADR-009/M4 FAULT SD screen-gates-execution ordering + v0.9.12 R3/ADR-030 FAULT RA reaffirm-mismatch-never-auto-filed + v0.9.13 R6/ADR-031 unified duplicate-id rule: B1/B3-B5 expect the one message, FAULT K2 later-ts distinct duplicate flips to refused + v0.9.14 R12/ADR-032 FAULT SD-decay --scope-ok default-expiry (4 arms incl. negative control) + R13/ADR-033 FAULT OV override-velocity verbatim-repeat advisory (2 arms incl. negative control) + v0.9.20/ADR-034 FAULT GS staged gate table + CC-1 advisory block (5 arms incl. negative control) + v0.9.21/ADR-035 FAULT X positive-claim exit gate (8 arms incl. negative control + validate mirror)).
+# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor + ADR-028 FAULT IF future-dated-issue transition coherence + ADR-009/M4 FAULT SD screen-gates-execution ordering + v0.9.12 R3/ADR-030 FAULT RA reaffirm-mismatch-never-auto-filed + v0.9.13 R6/ADR-031 unified duplicate-id rule: B1/B3-B5 expect the one message, FAULT K2 later-ts distinct duplicate flips to refused + v0.9.14 R12/ADR-032 FAULT SD-decay --scope-ok default-expiry (4 arms incl. negative control) + R13/ADR-033 FAULT OV override-velocity verbatim-repeat advisory (2 arms incl. negative control) + v0.9.20/ADR-034 FAULT GS staged gate table + CC-1 advisory block (5 arms incl. negative control) + v0.9.21/ADR-035 FAULT X positive-claim exit gate (8 arms incl. negative control + validate mirror) + v0.9.22/ADR-036 FAULT TG tombstone citation gate (11 arms incl. scope policy, fail-closed, preflight, unicode quotepath)).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -2043,6 +2043,137 @@ else
 fi
 cd "$XG_PREV"
 rm -rf "$XG"
+
+# ---- FAULT TG (ADR-036, v0.9.22): tombstone citation gate ---------------
+# After the ADR-011 ceremony, `verdict retracted` / `done --cancel`
+# grep the id bare at the repo root (SI-2) and refuse with a distinct
+# exit code while scope-covered files cite it. Scope is consumer policy
+# (SI-4): absent -> default docs/specs/** + notice; committed-empty ->
+# silent; pathspec-magic lines refused; dead scope loud. --orphan-ok
+# stores its basis; the ledger itself never blocks (TG9).
+say "FAULT TG (ADR-036): retraction must refuse while the id is cited inside the scope"
+TG="$(mktemp -d)"; TG_PREV="$PWD"
+mkrepo "$TG"
+mkdir -p docs/specs docs/notes
+echo "data" > f.txt
+git add -A && git commit -qm "tg: init" --no-verify -q
+TG_ID=$($T claim "f.txt holds the data marker" --class VERIFIED \
+        --evidence-cmd "grep data f.txt" --paths f.txt 2>/dev/null)
+echo "grounded on $TG_ID" > docs/specs/spec-a.md
+git add -A && git commit -qm "tg: spec" --no-verify -q
+TG1ERR=$(TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$TG_ID $T verdict "$TG_ID" retracted \
+         --basis kill 2>&1); TG1RC=$?
+if [ "$TG1RC" -eq 6 ] && printf '%s\n' "$TG1ERR" | grep -q "docs/specs/spec-a.md" \
+   && ! printf '%s\n' "$TG1ERR" | grep -q "orphan-ok"; then
+  ok "TG1: cited retraction refused (exit 6), file listed, bypass unnamed"
+else
+  miss "TG1: cited retraction not refused correctly (rc=$TG1RC)"
+fi
+TG_ID2=$($T claim "f.txt still carries its committed data line" \
+         --class VERIFIED --evidence-cmd "grep data f.txt" --paths f.txt \
+         --duplicate-ok 2>/dev/null)
+sed -i.bak "s/$TG_ID/$TG_ID2/" docs/specs/spec-a.md && rm -f docs/specs/spec-a.md.bak
+git add -A && git commit -qm "tg: swap" --no-verify -q
+if TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$TG_ID $T verdict "$TG_ID" retracted \
+     --basis kill >/dev/null 2>&1; then
+  ok "TG2: after the citation swaps to a successor, the retraction proceeds"
+else
+  miss "TG2: swap did not unblock the retraction"
+fi
+echo "see also $TG_ID2" > docs/notes/aside.md
+git add -A && git commit -qm "tg: note" --no-verify -q
+printf 'docs/specs/**\n' > .truth/citation-scope
+if TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$TG_ID2 $T verdict "$TG_ID2" retracted \
+     --basis kill --orphan-ok "spec cites it as history by policy" \
+     >/dev/null 2>&1 \
+   && tail -1 .truth/claims.jsonl | grep -q orphan_basis; then
+  ok "TG3: --orphan-ok proceeds past an in-scope citation and stores the basis"
+else
+  miss "TG3: orphan-ok path broken"
+fi
+TG_ID3=$($T claim "f.txt keeps holding that same data line today" \
+         --class VERIFIED --evidence-cmd "grep data f.txt" --paths f.txt \
+         --duplicate-ok 2>/dev/null)
+echo "outside-scope mention of $TG_ID3" >> docs/notes/aside.md
+git add -A && git commit -qm "tg: outside" --no-verify -q
+if TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$TG_ID3 $T verdict "$TG_ID3" retracted \
+     --basis kill >/dev/null 2>&1; then
+  ok "TG4: a citation OUTSIDE the scope file's globs does not block"
+else
+  miss "TG4: out-of-scope citation blocked a retraction"
+fi
+TG_ID4=$($T claim "f.txt anchors one more data assertion for the gate" \
+         --class VERIFIED --evidence-cmd "grep data f.txt" --paths f.txt \
+         --duplicate-ok 2>/dev/null)
+mkdir -p shim
+printf '#!/usr/bin/env bash\nif [ "$1" = grep ]; then exit 128; fi\nexec /usr/bin/git "$@"\n' > shim/git
+chmod +x shim/git
+TG5ERR=$(TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$TG_ID4 PATH="$PWD/shim:$PATH" \
+         $T verdict "$TG_ID4" retracted --basis kill 2>&1); TG5RC=$?
+if [ "$TG5RC" -ne 0 ] && printf '%s\n' "$TG5ERR" | grep -q "cannot verify citations"; then
+  ok "TG5: git-grep unavailable refuses loudly (fails CLOSED)"
+else
+  miss "TG5: unavailable grep did not fail closed (rc=$TG5RC)"
+fi
+echo "cited again: $TG_ID4" > docs/specs/spec-b.md
+git add -A && git commit -qm "tg: spec-b" --no-verify -q
+TG6OUT=$($T citations "$TG_ID4" tr-deadbeef 2>/dev/null); TG6RC=$?
+if [ "$TG6RC" -eq 6 ] && printf '%s\n' "$TG6OUT" | grep -q "spec-b.md" \
+   && printf '%s\n' "$TG6OUT" | grep -q "tr-deadbeef: clean"; then
+  ok "TG6: preflight lists the citing file, marks the clean id, exits 6"
+else
+  miss "TG6: preflight contract broken (rc=$TG6RC)"
+fi
+TG7RC=0
+( cd docs && TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$TG_ID4 \
+  python3 ../scripts/truth verdict "$TG_ID4" retracted --basis kill \
+  >/dev/null 2>&1 ) || TG7RC=$?
+if [ "$TG7RC" -eq 6 ]; then
+  ok "TG7: the sweep still refuses from a subdirectory (SI-2 cwd anchor)"
+else
+  miss "TG7: subtree cwd truncated the sweep (rc=$TG7RC)"
+fi
+printf 'nosuch-dir/**\n' > .truth/citation-scope
+TG8ERR=$(TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$TG_ID4 $T verdict "$TG_ID4" retracted \
+         --basis kill 2>&1 >/dev/null); TG8RC=$?
+if [ "$TG8RC" -eq 0 ] && printf '%s\n' "$TG8ERR" | grep -q "dead scope"; then
+  ok "TG8: dead scope voices the loud notice and the sweep proceeds"
+else
+  miss "TG8: dead-scope path broken (rc=$TG8RC)"
+fi
+TG_ID5=$($T claim "the ledger records its own id references in bases" \
+         --class VERIFIED --evidence-cmd "grep data f.txt" --paths f.txt \
+         2>/dev/null)
+printf '.truth/**\n' > .truth/citation-scope
+if TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$TG_ID5 $T verdict "$TG_ID5" retracted \
+     --basis "superseded; predecessor $TG_ID5 recorded here" \
+     >/dev/null 2>&1; then
+  ok "TG9: with the scope covering .truth/**, the ledger's own citation of the id still never blocks (structural exclusion)"
+else
+  miss "TG9: the ledger's own citations blocked a retraction"
+fi
+printf ':(exclude)docs/**\n' > .truth/citation-scope
+if $T citations tr-deadbeef >/dev/null 2>&1; then
+  miss "TG10: a pathspec-magic scope line was accepted"
+else
+  ok "TG10: a pathspec-magic scope line is refused at load (SI-1)"
+fi
+rm -f .truth/citation-scope
+TG_ID6=$($T claim "f.txt data stays greppable for the unicode arm" \
+         --class VERIFIED --evidence-cmd "grep data f.txt" --paths f.txt \
+         --duplicate-ok 2>/dev/null)
+printf 'cited by %s\n' "$TG_ID6" > "docs/specs/spéc-ü.md"
+git add -A && git commit -qm "tg: unicode spec" --no-verify -q
+TG11RC=0
+TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$TG_ID6 $T verdict "$TG_ID6" retracted \
+  --basis kill >/dev/null 2>&1 || TG11RC=$?
+if [ "$TG11RC" -eq 6 ]; then
+  ok "TG11: a NON-ASCII-named citing file still blocks (git grep -z, SI-2 -- quotepath cannot hide it)"
+else
+  miss "TG11: unicode-named citing file was invisible to the sweep (fail-open, rc=$TG11RC)"
+fi
+cd "$TG_PREV"
+rm -rf "$TG"
 
 say ""
 say "canary result: $PASS caught, $FAIL missed"

@@ -4,7 +4,7 @@
 every layer, gate, hook, and deliberate loophole in a system built to
 keep AI coding agents' claims honest.
 
-**Scope** CLI v0.9.21 · paper v3 (2026-07-20) · ADR-001–035 ·
+**Scope** CLI v0.9.22 · paper v3 (2026-07-20) · ADR-001–036 ·
 **Sources** paper §N = `docs/truth-ledger-paper-v3.md`; ADR-NNN =
 `template/docs/adr/truth/NNN-*.md`
 
@@ -889,7 +889,10 @@ an explicit, visible override or a raw attack: every intake refusal in
 §06; the append-only prefix check and schema validation at commit; the
 unified duplicate-id rule (ADR-031); same-session `agree` refused
 (ADR-010); a failing acceptance oracle refusing `done`; tombstones
-requiring `TRUTH_HUMAN=1` plus a typed-id confirmation (ADR-011) — and,
+requiring `TRUTH_HUMAN=1` plus a typed-id confirmation (ADR-011), and —
+since v0.9.22 (ADR-036) — refusing with exit 6 while a scope-covered
+file still cites the id (`.truth/citation-scope`; `truth citations` is
+the ceremony-free preflight) — and,
 notably, the refusal messages themselves stopped teaching the bypass,
 since agent-facing refusal text is itself attack surface.
 
@@ -1157,7 +1160,11 @@ verdict), the definition carries it too.
 - **`claim`** — file a claim end-to-end; runs the full intake battery
   (§06). `done --claim` files through the same path.
 - **`verdict`** — record a verification verdict; `--recheck` re-runs the
-  evidence and compares hashes first.
+  evidence and compares hashes first. `retracted` additionally runs the
+  ADR-036 citation sweep (v0.9.22).
+- **`citations`** — ADR-036 preflight (v0.9.22): which scope-covered
+  files cite the given ids; read-only, no ceremony; exit 0 clean / 6
+  cited.
 - **`dispatch`** — print the verifier context (fixed prompt + raw record
   only, never the author's reasoning) to route into a fresh session.
 - **`reaffirm`** — batch, mechanical re-confirmation of stale claims;
@@ -1555,7 +1562,7 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
 ### Acronyms & standards
 
 - **ADR** — Architecture Decision Record.
-- **CLI** — command-line interface; here the `truth` script (v0.9.21).
+- **CLI** — command-line interface; here the `truth` script (v0.9.22).
 - **CI** — continuous integration; the clone-proof backstop for the
   commit gate when local hooks are absent (ADR-025).
 - **JSONL** — JSON Lines: one JSON object per line, the ledger's format.

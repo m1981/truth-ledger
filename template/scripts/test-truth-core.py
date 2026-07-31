@@ -1829,6 +1829,23 @@ CORPUS = [
     ("verdict retracted ok", rec("verdict", {"claim": "tr-00000001",
                                              "verdict": "retracted",
                                              "basis": "b"}), True),
+    # ---- ADR-036 orphan_basis (v0.9.22). Cross-field (basis on a
+    # non-retracted verdict / non-cancelled event) is a deliberate
+    # schema-vs-mirror DISAGREEMENT, so it lives in canary TG, never
+    # in this shared corpus. ----
+    ("verdict retracted with orphan_basis",
+     rec("verdict", {"claim": "tr-00000001", "verdict": "retracted",
+                     "basis": "b",
+                     "orphan_basis": "citations are historical record"}),
+     True),
+    ("verdict empty orphan_basis",
+     rec("verdict", {"claim": "tr-00000001", "verdict": "retracted",
+                     "basis": "b", "orphan_basis": ""}), False),
+    ("issue_event cancelled with orphan_basis",
+     rec("issue_event", {"issue": "wk-00000001", "event": "cancelled",
+                         "basis": "b",
+                         "orphan_basis": "spec cites it as history"},
+         rid="tr-000000e6"), True),
     ("verdict bad value", rec("verdict", {"claim": "tr-00000001",
                                           "verdict": "maybe", "basis": "b"}), False),
     ("verdict bad claim ref", rec("verdict", {"claim": "nope",
@@ -2309,10 +2326,11 @@ class TestCrossSurfaceVersions(unittest.TestCase):
     # $id to the shape and no test could see it. This pins the shape: any
     # edit to the schema (minus its own $id) breaks the fingerprint, forcing
     # a conscious "is this a shape change? then bump $id" review.
-    # v0.12: ADR-035 adds the evidence_exit_basis field (a shape change).
-    EXPECTED_SCHEMA_ID = "truth-ledger-record.v0.12"
+    # v0.12: ADR-035 adds evidence_exit_basis; v0.13: ADR-036 adds
+    # orphan_basis on verdict and issue_event (shape changes).
+    EXPECTED_SCHEMA_ID = "truth-ledger-record.v0.13"
     PINNED_SHAPE_SHA256 = \
-        "86f3cb9a4ef3f31fe94ef7f13832fe9eb9f9078c8145701df4fd9f00e552d2b5"
+        "bf8cb4a236fddc8950070a97bf4a6df426a81682443bbab3be56c62f95143e13"
 
     def _schema(self):
         import json as _json

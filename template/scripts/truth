@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""truth v0.9.21 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.22 -- append-only claims ledger with a native work kernel.
 
 Facts are appended as JSONL records to .truth/claims.jsonl (INV-A:
 append-only, commit-gated by scripts/check-truth.sh); every status is
@@ -36,6 +36,15 @@ from datetime import datetime, timedelta, timezone
 
 LEDGER_REL = ".truth/claims.jsonl"
 PROMPT_REL = "prompts/truth-verifier.md"
+# ADR-036: tombstone citation gate. The scope file is consumer POLICY
+# (SI-4): absent -> the built-in default below applies with a notice;
+# committed-empty -> consciously nothing (silent). The refusal exit code
+# is distinct so a sweep driver can tell "cited, swap first" from
+# unknown-id / ack-mismatch / unavailable, which all exit 1 (the
+# impact-3/4 / baseline-5 precedent).
+CITATION_SCOPE_REL = ".truth/citation-scope"
+CITATION_SCOPE_DEFAULT = ("docs/specs/**",)
+CITATIONS_EXIT_CITED = 6
 EVIDENCE_CLASSES = ("VERIFIED", "INFERRED", "UNVERIFIED")
 TIERS = ("P0", "P1", "P2")
 VERDICTS = ("agree", "diverge", "cannot_verify", "retracted")
@@ -1184,6 +1193,13 @@ def override_report(events, now, folded=None):
             overridden_dupes += 1
         if (p.get("evidence") or {}).get("screened") is False:
             screened_false += 1
+    # ADR-036: deliberate-orphaning count (CC-2 single home) -- verdict
+    # and issue-tombstone sides together; read from raw events (a
+    # retracted claim's verdict is what carries it).
+    orphan_filings = sum(
+        1 for _, ev in events
+        if ev.get("kind") in ("verdict", "issue_event")
+        and (ev.get("payload") or {}).get("orphan_basis"))
     decay_expiries = 0
     for _, ev in events:
         if ev.get("kind") != "invalidation":
@@ -1217,6 +1233,7 @@ def override_report(events, now, folded=None):
             "screened_false_filings": screened_false,
             "evidence_exit_filings": exit_overrides,
             "hollow_warned": hollow_warned,
+            "orphan_filings": orphan_filings,
             "max_scope_ttl_days": max_scope_ttl,
             "repeats": repeats}
 
@@ -1755,6 +1772,18 @@ def validate_events(events):
                               "SHA prefix of at least 7 chars when present "
                               "(ADR-027, schema minLength 7)")
         elif kind == "verdict":
+            # ADR-036: orphan_basis is a sentence, and only the terminal
+            # verb creates orphans -- a basis on any other verdict is
+            # schema noise (mirror-only cross-field rule; the schema
+            # stays necessary-not-sufficient, ADR-027).
+            if "orphan_basis" in p:
+                if not p["orphan_basis"]:
+                    errors.append(f"line {n}: empty orphan_basis (ADR-036: "
+                                  "the override carries a sentence)")
+                elif p.get("verdict") != "retracted":
+                    errors.append(f"line {n}: orphan_basis on a "
+                                  f"{p.get('verdict')!r} verdict -- only a "
+                                  "retraction orphans citations (ADR-036)")
             if p.get("verdict") not in VERDICTS or not p.get("claim") \
                     or not p.get("basis"):
                 errors.append(f"line {n}: malformed verdict")
@@ -1824,6 +1853,16 @@ def validate_events(events):
                 errors.append(f"line {n}: issue_event ref not wk-hex8")
             elif p.get("event") in ("closed", "cancelled") and not p.get("basis"):
                 errors.append(f"line {n}: {p['event']} issue_event missing basis")
+            # ADR-036: orphan_basis only on the issue tombstone
+            # (mirror-only cross-field rule, like the verdict side).
+            if "orphan_basis" in p:
+                if not p["orphan_basis"]:
+                    errors.append(f"line {n}: empty orphan_basis (ADR-036)")
+                elif p.get("event") != "cancelled":
+                    errors.append(f"line {n}: orphan_basis on a "
+                                  f"{p.get('event')!r} issue_event -- only "
+                                  "a cancellation orphans citations "
+                                  "(ADR-036)")
             if "accept" in p:
                 acc = p["accept"]
                 if not isinstance(acc, dict) \
@@ -2291,6 +2330,132 @@ def cmd_claim(a):
     if block:
         print(block, file=sys.stderr)
 
+# --- ADR-036: tombstone citation gate -------------------------------------
+def load_citation_scope():
+    """Shell: the consumer's citation-scope policy (SI-4). Returns
+    (globs, source), source in {'file','empty','default'}. utf-8-sig (a
+    BOM must not deaden the first glob); a line starting ':', '-' or '!'
+    is refused -- scope lines are CLI globs filtered by match_paths(),
+    never git pathspecs (SI-1: one ':(exclude)' idiom line would
+    silently invert the sweep to everything-except)."""
+    path = os.path.join(repo_root(), CITATION_SCOPE_REL)
+    if not os.path.exists(path):
+        return list(CITATION_SCOPE_DEFAULT), "default"
+    globs = []
+    with open(path, encoding="utf-8-sig") as f:
+        for i, line in enumerate(f, 1):
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            if s[0] in ":-!":
+                sys.exit(f"truth: {CITATION_SCOPE_REL} line {i} starts "
+                         f"with {s[0]!r} -- pathspec magic is refused; "
+                         "scope lines are CLI globs (match_paths), never "
+                         "git pathspecs (ADR-036/SI-1)")
+            globs.append(s)
+    return globs, ("file" if globs else "empty")
+
+def citation_grep(cid):
+    """Shell: bare repo-wide `git grep -l -F <cid>` at the repo root
+    (SI-2: a subtree cwd truncates the sweep to rc=1 = 'clean'; no
+    pathspecs ever -- filtering is the core's job). rc contract PINNED:
+    0 = hits, 1 = clean, anything else or spawn failure = unavailable.
+    Returns (paths, None) or (None, reason)."""
+    try:
+        # -z: NUL-separated, UNQUOTED names (SI-2) -- default quotepath
+        # octal-quotes any non-ASCII path, which match_paths can never
+        # match, silently dropping the hit: fail-open on the fail-closed
+        # gate (the R2 adversarial review's catch, TG11). '--' pins cid
+        # to the pattern slot (a dash-leading argument is not an option).
+        r = subprocess.run(["git", "grep", "-z", "-l", "-F", "--", cid],
+                           capture_output=True, text=True, cwd=repo_root())
+    except OSError as e:
+        return None, f"git grep could not run ({e})"
+    if r.returncode == 0:
+        return [p for p in r.stdout.split("\x00") if p], None
+    if r.returncode == 1:
+        return [], None
+    return None, f"git grep exited {r.returncode}"
+
+def citation_block_paths(hits, scope_globs):
+    """Pure (ADR-036): which grep hits actually block -- inside the
+    scope and never the ledger itself (retraction bases legitimately
+    cite predecessors/successors, so an unexcluded ledger would make
+    every second retraction self-blocking). TG4/TG9 pin this."""
+    return sorted(h for h in hits
+                  if h != LEDGER_REL and match_paths(h, scope_globs))
+
+def dead_scope_notice(scope_globs, source, tracked):
+    """Pure (SI-4): a non-empty scope FILE matching zero tracked files
+    is dead policy -- loud, never a silent clean sweep."""
+    if source != "file":
+        return None
+    if any(match_paths(t, scope_globs) for t in tracked):
+        return None
+    return (f"{CITATION_SCOPE_REL} matches zero tracked files -- the "
+            "citation sweep runs against dead scope; fix the globs or "
+            "commit an empty file to consciously disable (ADR-036)")
+
+def citation_sweep(cid, orphan_basis):
+    """Shell orchestration shared by `verdict retracted` and `done
+    --cancel`: voices the SI-4 notices, fails CLOSED on unavailable git
+    (the one earned exception -- the verb is terminal and the human is
+    already mid-ceremony), returns the blocking paths (possibly [])."""
+    globs, source = load_citation_scope()
+    if source == "empty":
+        return []
+    if source == "default":
+        print(f"truth: advisory: no {CITATION_SCOPE_REL} -- the citation "
+              "sweep runs against the built-in default scope "
+              f"({','.join(CITATION_SCOPE_DEFAULT)}); commit the file to "
+              "declare this repo's own (ADR-036)", file=sys.stderr)
+    else:
+        notice = dead_scope_notice(globs, source, tracked_files())
+        if notice:
+            print(f"truth: advisory: {notice}", file=sys.stderr)
+    hits, reason = citation_grep(cid)
+    if reason is not None:
+        if orphan_basis:
+            return []
+        sys.exit(f"truth: cannot verify citations -- {reason}. Retraction "
+                 "is rare and human-gated: run it where the corpus is "
+                 "greppable (ADR-036; fails CLOSED by design)")
+    return citation_block_paths(hits, globs)
+
+def cmd_citations(a):
+    """ADR-036 preflight: read-only, no ceremony. A batch sweep runs one
+    preflight pass, then per-id ceremonial verdicts on the clean set --
+    a multi-id ack stays refused on principle (ADR-011: one typed id
+    authorizes one tombstone). Exit 0 = nothing cited inside the scope;
+    CITATIONS_EXIT_CITED = at least one id is."""
+    globs, source = load_citation_scope()
+    if source == "default":
+        print(f"truth: advisory: no {CITATION_SCOPE_REL} -- sweeping the "
+              f"built-in default scope ({','.join(CITATION_SCOPE_DEFAULT)})",
+              file=sys.stderr)
+    elif source == "file":
+        notice = dead_scope_notice(globs, source, tracked_files())
+        if notice:
+            print(f"truth: advisory: {notice}", file=sys.stderr)
+    out, any_cited = {}, False
+    for cid in a.ids:
+        if source == "empty":
+            out[cid] = []
+            continue
+        hits, reason = citation_grep(cid)
+        if reason is not None:
+            sys.exit(f"truth: cannot verify citations -- {reason}")
+        blocking = citation_block_paths(hits, globs)
+        out[cid] = blocking
+        any_cited = any_cited or bool(blocking)
+    if a.json:
+        print(json.dumps(out))
+    else:
+        for cid in a.ids:
+            print(f"{cid}: " + (", ".join(_escape_ctrl(p) for p in out[cid])
+                                if out[cid] else "clean"))
+    sys.exit(CITATIONS_EXIT_CITED if any_cited else 0)
+
 def cmd_verdict(a):
     claims, _ = fold(load_events())
     if a.claim_id not in claims:
@@ -2346,6 +2511,27 @@ def cmd_verdict(a):
             err = human_ack_error(a.claim_id, "claim retraction")
             if err:
                 sys.exit(err)
+            # ADR-036: after the ADR-011 ceremony, before the append --
+            # refuse while the id is cited inside the scope. The refusal
+            # deliberately does NOT name its override (ADR-011's surface
+            # rule: bypasses live in --help and the README, not in error
+            # paths agents hit).
+            blocking = citation_sweep(a.claim_id, a.orphan_ok)
+            if blocking and not a.orphan_ok:
+                # SI-3: git-emitted names render escaped (with -z they
+                # arrive raw, so a hostile filename could otherwise
+                # inject terminal escapes into this listing)
+                listing = "\n".join(f"  {_escape_ctrl(p)}" for p in blocking)
+                print(f"truth: retraction blocked -- {a.claim_id} is "
+                      f"cited by {len(blocking)} scope-covered file(s) "
+                      f"(ADR-036):\n{listing}\n  Swap each citation to "
+                      "the successor claim first, then retract.",
+                      file=sys.stderr)
+                sys.exit(CITATIONS_EXIT_CITED)
+        elif a.orphan_ok:
+            sys.exit("truth: --orphan-ok only accompanies a retraction "
+                     "(ADR-036: it excuses orphaned citations, which "
+                     "only the terminal verb creates)")
         if a.verdict == "agree" \
                 and claims[a.claim_id]["claim"].get("session") == session() \
                 and os.environ.get("TRUTH_SELF_VERDICT") != "1":
@@ -2358,6 +2544,10 @@ def cmd_verdict(a):
                      f"scripts/truth dispatch {a.claim_id}")
         verdict, basis = a.verdict, a.basis
     payload = {"claim": a.claim_id, "verdict": verdict, "basis": basis}
+    if verdict == "retracted" and a.orphan_ok:
+        # ADR-036: deliberate orphaning, stored and counted (CC-2).
+        # Decay: declined -- a tombstone is terminal, nothing re-asks.
+        payload["orphan_basis"] = a.orphan_ok
     if a.mechanical:
         payload["subtype"] = "mechanical"
     if verdict == "agree" and \
@@ -2695,6 +2885,18 @@ def cmd_done(a):
         err = human_ack_error(a.issue_id, "issue cancellation")
         if err:
             sys.exit(err)
+        # ADR-036: the issue tombstone runs the identical citation sweep.
+        blocking = citation_sweep(a.issue_id, a.orphan_ok)
+        if blocking and not a.orphan_ok:
+            listing = "\n".join(f"  {_escape_ctrl(p)}" for p in blocking)  # SI-3
+            print(f"truth: cancellation blocked -- {a.issue_id} is cited "
+                  f"by {len(blocking)} scope-covered file(s) (ADR-036):\n"
+                  f"{listing}\n  Swap each citation first, then cancel.",
+                  file=sys.stderr)
+            sys.exit(CITATIONS_EXIT_CITED)
+    elif getattr(a, "orphan_ok", None):
+        sys.exit("truth: --orphan-ok only accompanies --cancel "
+                 "(ADR-036: the issue tombstone)")
     if not a.basis:
         sys.exit(f"truth: '{event}' requires --basis (cite what you did, "
                  "never a vibe)")
@@ -2758,6 +2960,8 @@ def cmd_done(a):
     claim_rec = (append_record("claim", claim_payload)
                  if claim_payload else None)
     event_payload = {"issue": a.issue_id, "event": event, "basis": a.basis}
+    if event == "cancelled" and a.orphan_ok:
+        event_payload["orphan_basis"] = a.orphan_ok  # ADR-036, CC-2
     if accept_note:
         event_payload["accept"] = accept_note
     append_record("issue_event", event_payload)
@@ -3053,7 +3257,8 @@ def cmd_stats(a):
           f"decay-expiries={o['decay_expiries']} "
           f"dup-overrides={o['overridden_duplicates']} "
           f"unscreened={o['screened_false_filings']} "
-          f"exit-ok={o['evidence_exit_filings']}"
+          f"exit-ok={o['evidence_exit_filings']} "
+          f"orphan-ok={o['orphan_filings']}"
           + (f", max scope ttl {mx}d" if mx is not None else ""))
     # ADR-035: warned population beside the single-homed override count
     # (the refused class leaves no record, so it has no counter).
@@ -3373,8 +3578,22 @@ def main():
     v.add_argument("--mechanical", action="store_true",
                    help="annotate a diverge: the measuring recipe changed, "
                         "not necessarily the fact (ADR-012)")
+    v.add_argument("--orphan-ok", metavar="SENTENCE",
+                   help="retract despite scope-covered citations of the id "
+                        "(ADR-036): one sentence why deliberate orphaning "
+                        "is right; stored as orphan_basis, counted in the "
+                        "override report")
     v.add_argument("--json", action="store_true")
     v.set_defaults(fn=cmd_verdict)
+
+    ci = sub.add_parser("citations", help="ADR-036 preflight: which "
+                        "scope-covered files cite these ledger ids "
+                        "(read-only, no ceremony; exit 0 = clean, "
+                        f"{CITATIONS_EXIT_CITED} = cited -- sweep before "
+                        "a batch retraction)")
+    ci.add_argument("ids", nargs="+")
+    ci.add_argument("--json", action="store_true")
+    ci.set_defaults(fn=cmd_citations)
 
     s = sub.add_parser("invalidate-scan",
                        help="mark claims stale: paths changed, TTL expired, or anchor lost")
@@ -3462,6 +3681,10 @@ def main():
                          "TRUTH_HUMAN_ACK=<id> for headless human use")
     dn.add_argument("--reopen", action="store_true",
                     help="reopen a closed item (work is cyclical)")
+    dn.add_argument("--orphan-ok", metavar="SENTENCE",
+                    help="cancel despite scope-covered citations of the "
+                         "wk- id (ADR-036); stored as orphan_basis on the "
+                         "event, counted in the override report")
     dn.add_argument("--claim", dest="claim_text",
                     help="text of the completion fact to file atomically")
     dn.add_argument("--class", dest="evidence_class", default="UNVERIFIED",

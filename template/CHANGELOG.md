@@ -8,6 +8,37 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.22 (ADR-036: the tombstone citation gate -- R2 of the 2026-07
+  gates adoption):
+  * `verdict <id> retracted` and `done --cancel`, after the ADR-011
+    ceremony and before the append, grep the exact id BARE at the
+    repo root (SI-2: a subtree cwd truncates a sweep to rc=1 =
+    'clean'; rc contract pinned 0=hits / 1=clean / else=unavailable
+    -> fails CLOSED, the one earned exception) and refuse with EXIT 6
+    (distinct, driver-usable -- the impact/baseline precedent) while
+    a scope-covered file cites the id. The refusal does not name its
+    override (ADR-011 surface rule); --orphan-ok "<sentence>" stores
+    orphan_basis (schema $id v0.13 on verdict AND issue_event;
+    validate mirror: non-empty, tombstone-only), counted in
+    override_report (orphan-ok row; decay declined -- terminal).
+  * Scope is consumer policy (.truth/citation-scope, SI-4): absent ->
+    built-in default docs/specs/** + notice; committed-empty ->
+    consciously silent; utf-8-sig; pathspec-magic lines (':'/'-'/'!')
+    refused at load (SI-1 -- one ':(exclude)' idiom line would invert
+    the sweep); dead scope (zero tracked matches) voices a loud
+    notice. Filtering is core-side match_paths, never git pathspecs;
+    .truth/claims.jsonl is structurally excluded (retraction bases
+    cite predecessors).
+  * New read-only verb `truth citations <id>...` -- the ceremony-free
+    preflight (exit 0 clean / 6 cited, --json): a batch retraction
+    runs one preflight, then per-id ceremonial verdicts; a multi-id
+    ack stays refused on principle (ADR-011).
+  * Canary FAULT TG (11 arms incl. fail-closed PATH-shim, subdir
+    fixture, dead scope, ledger exclusion, magic-prefix refusal, and
+    the unicode-quotepath arm: git grep -z emits raw names so a
+    non-ASCII citing file cannot hide (SI-2, adversarial-review
+    catch); listings render escaped (SI-3); '--' pins the id argument).
+
 v0.9.21 (ADR-035: the positive-claim exit gate -- R1 of the 2026-07
   gates adoption):
   * NEGATION_TOKENS lexicon (copies of the five negation-shaped

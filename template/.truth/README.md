@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.9.21)
+# .truth — append-only claims ledger (v0.9.22)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -474,6 +474,26 @@ by design) files with `--evidence-exit-ok "<sentence>"` — stored as
 in the override report; the basis is refused beside an exit of 0
 (nothing to excuse), at intake and by `validate`. Canary FAULT X
 (8 arms) gates the behavior.
+
+**The tombstone citation gate** (ADR-036, v0.9.22): `verdict <id>
+retracted` and `done --cancel` -- after the ADR-011 human ceremony,
+before the append -- grep the exact id bare at the repo root and
+**refuse with exit 6** while a scope-covered file cites it (swap each
+citation to the successor first). Scope is consumer policy
+(`.truth/citation-scope`, one glob per line, CLI glob grammar -- never
+git pathspecs; lines starting `:`/`-`/`!` are refused): absent means
+the built-in default `docs/specs/**` with a notice, committed-empty
+consciously disables, a non-empty file matching zero tracked files
+gets a loud dead-scope notice. `.truth/claims.jsonl` never blocks
+(retraction bases legitimately cite predecessors). Deliberate
+orphaning: `--orphan-ok "<sentence>"`, stored as `orphan_basis`
+(schema v0.13), counted in the override report. `truth citations
+<id>...` is the read-only, ceremony-free preflight (exit 0 clean / 6
+cited) -- a batch sweep runs one preflight, then per-id ceremonial
+verdicts; a multi-id ack stays refused on principle (ADR-011: one
+typed id authorizes one tombstone). git-grep unavailable fails CLOSED
+(the one earned exception -- the verb is terminal). Canary FAULT TG
+(11 arms).
 
 ## Daily operation
 
