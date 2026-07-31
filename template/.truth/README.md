@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.9.24)
+# .truth — append-only claims ledger (v0.9.25)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -519,6 +519,21 @@ stale on the very commit that lands its content (restale-at-birth;
 commit first, then file). Advisory only, never a refusal (a gate here
 would teach `git stash` as its bypass), machine-visible via --json
 advisories. Canary FAULT DW (7 arms).
+
+**The blast forecast** (ADR-039, v0.9.25): filing a path claim stamps
+`blast_forecast` -- the count of distinct commits touching the watch
+in the trailing 30 days, an UPPER BOUND on stalings (a claim stales
+only from live) -- and voices one advisory line at or above the
+floor. The floor SELF-CALIBRATES: P90 of stored forecasts over live
+path-claims once 20 exist, else the constant 15 (cold start). Shallow
+clones and unborn HEADs degrade LOUDLY (a notice, never a
+quietly-cold number); nothing is stored for them. `truth stats` gains
+the `blast` churn section: observed-vs-forecast per claim, the
+per-path staler ranking (read from invalidation `touched` lists), and
+the effective floor. A refusal gate deliberately does NOT ship -- it
+returns only as its own ADR once a field window of forecast-vs-
+observed data and the reaffirm-trial read exist. Canary FAULT BF
+(7 arms).
 
 ## Daily operation
 

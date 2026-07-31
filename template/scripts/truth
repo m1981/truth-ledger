@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""truth v0.9.24 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.25 -- append-only claims ledger with a native work kernel.
 
 Facts are appended as JSONL records to .truth/claims.jsonl (INV-A:
 append-only, commit-gated by scripts/check-truth.sh); every status is
@@ -50,6 +50,15 @@ CITATIONS_EXIT_CITED = 6
 # header (committed-empty = consciously nothing, silent; ABSENT = the
 # check is dark, one advisory line says so).
 GENERATED_PATHS_REL = ".truth/generated-paths"
+# ADR-039: blast forecast. Window and cold-start floor change only with
+# the BF faults; the EFFECTIVE floor self-calibrates per repo (P90 of
+# stored forecasts over live path-claims once enough exist) because a
+# per-repo percentile stored as a universal constant is a category
+# error -- at the adoption review the constant floor would have printed
+# on ~85% of this repo's own filings (tr-c3087292).
+BLAST_WINDOW_DAYS = 30
+BLAST_ADVISORY_FLOOR = 15
+BLAST_MIN_OBSERVATIONS = 20
 EVIDENCE_CLASSES = ("VERIFIED", "INFERRED", "UNVERIFIED")
 TIERS = ("P0", "P1", "P2")
 VERDICTS = ("agree", "diverge", "cannot_verify", "retracted")
@@ -692,8 +701,85 @@ def dirty_watch(entries, watch_patterns):
                 hits.add(p)
     return sorted(hits)
 
+# --- ADR-039: blast forecast (pure half) ----------------------------------
+def parse_name_log(out):
+    """Pure: `git log --format=%x01%H --name-only` output -> a list of
+    (commit, frozenset(files)). Chunks are split on the \\x01 marker;
+    quotepath=off at the shell edge keeps names raw (SI-2). A newline
+    inside a filename breaks the line parse -- accepted residual,
+    disclosed in ADR-039."""
+    hist = []
+    for chunk in out.split("\x01"):
+        lines = [ln for ln in chunk.splitlines() if ln.strip()]
+        if not lines:
+            continue
+        hist.append((lines[0], frozenset(lines[1:])))
+    return hist
+
+def blast_forecast(paths, history):
+    """Pure (ADR-039): distinct commits in the window touching any
+    watched path -- an UPPER BOUND on stalings, not an expectation (a
+    claim stales only from live, so N commits between re-verifications
+    produce ONE staling; the pilot's hottest claim showed 15
+    invalidations against 14 re-agrees). Matches the deduplicated
+    distinct-file set once, then counts commits by set intersection."""
+    if not paths or not history:
+        return 0
+    all_files = set().union(*(files for _, files in history))
+    watched = {f for f in all_files if match_paths(f, paths)}
+    if not watched:
+        return 0
+    return sum(1 for _, files in history if files & watched)
+
+def effective_blast_floor(claims):
+    """Pure (ADR-039): the advisory floor, self-calibrated -- P90 of
+    stored blast_forecast values over LIVE path-claims once >=
+    BLAST_MIN_OBSERVATIONS exist; the constant is the cold-start
+    fallback only. Returns (floor, source)."""
+    vals = sorted(
+        e["claim"]["payload"]["blast_forecast"] for e in claims.values()
+        if e["status"] == "live"
+        and isinstance(e["claim"]["payload"].get("blast_forecast"), int)
+        and not isinstance(e["claim"]["payload"].get("blast_forecast"), bool))
+    if len(vals) >= BLAST_MIN_OBSERVATIONS:
+        # clamped to >= 1: an all-cold corpus must not calibrate the
+        # floor to 0 and flag stone-cold watches as hot (R5 review, F2)
+        return max(1, vals[max(0, int(len(vals) * 0.9) - 1)]), "calibrated"
+    return BLAST_ADVISORY_FLOOR, "fallback"
+
+def blast_report(events, folded=None):
+    """ADR-039: the churn instrument -- observed invalidations vs
+    forecast-at-filing per path-claim (top 5 by observed), the per-path
+    staler ranking read from invalidation `touched` lists (no git work),
+    and the effective floor. Pure fold consumer; shares the fold."""
+    claims, _ = folded if folded is not None else fold(events)
+    inval_counts, staler = {}, {}
+    for _, ev in events:
+        if ev.get("kind") != "invalidation":
+            continue
+        p = ev.get("payload") or {}
+        cid = p.get("claim")
+        inval_counts[cid] = inval_counts.get(cid, 0) + 1
+        for t in p.get("touched") or []:
+            staler[t] = staler.get(t, 0) + 1
+    rows = []
+    for cid, e in claims.items():
+        if not e["claim"]["payload"].get("evidence_paths"):
+            continue
+        pf = e["claim"]["payload"].get("blast_forecast")
+        obs = inval_counts.get(cid, 0)
+        if pf is not None or obs:
+            rows.append({"claim": cid, "observed": obs, "forecast": pf})
+    rows.sort(key=lambda r: (-r["observed"], r["claim"]))
+    floor, src = effective_blast_floor(claims)
+    return {"rows": rows[:5],
+            "staler_ranking": [{"path": p, "invalidations": n} for p, n
+                               in sorted(staler.items(),
+                                         key=lambda kv: (-kv[1], kv[0]))[:5]],
+            "effective_floor": floor, "floor_source": src}
+
 def intake_advisories(events, tier, ttl_days_arg, scope_ok, evidence_class,
-                      payload, generated_ok=None):
+                      payload, generated_ok=None, claims=None):
     """The post-append advisory set shared by `claim` and `done --claim`
     (ADR-034): FS-1 half-life note (moved post-append -- it advises, so
     it rides the block), ADR-032 default-expiry notice, the ADR-037
@@ -747,6 +833,32 @@ def intake_advisories(events, tier, ttl_days_arg, scope_ok, evidence_class,
                             "this claim stales on the commit that lands "
                             "them (restale-at-birth, ADR-038). Commit the "
                             "content first, then file.")
+    # ADR-039: the blast advisory -- an upper bound on stalings, voiced
+    # only at or above the (self-calibrating) floor; shallow/unavailable
+    # history is voiced loudly instead of quietly reading cold.
+    if payload.get("evidence_paths"):
+        f = payload.get("blast_forecast")
+        if f is None:
+            shallow = False
+            try:
+                sh = subprocess.run(
+                    ["git", "rev-parse", "--is-shallow-repository"],
+                    capture_output=True, text=True, cwd=repo_root())
+                shallow = sh.returncode == 0 and sh.stdout.strip() == "true"
+            except (OSError, ValueError):
+                pass
+            msgs.append("blast: shallow history -- a forecast would be a "
+                        "floor, not a bound; skipped (ADR-039)" if shallow
+                        else "blast: history unavailable -- forecast "
+                             "skipped (ADR-039)")
+        elif claims is not None:
+            floor, src = effective_blast_floor(claims)
+            if f >= floor:
+                msgs.append(f"blast: watch matched {f} commits in the "
+                            f"last {BLAST_WINDOW_DAYS}d -- an upper bound "
+                            "on stalings; narrower --paths cut "
+                            f"re-verification load (ADR-039; floor {floor}"
+                            f", {src})")
     # field-notes-batch-m item 2 remedy: the filing already succeeded and
     # its exit code stands; the captured intake returncode (first run --
     # already in the evidence capsule, never re-run) just gets a voice.
@@ -1859,6 +1971,13 @@ def validate_events(events):
             if "scope_basis" in p and not p["scope_basis"]:
                 errors.append(f"line {n}: empty scope_basis (ADR-007: the "
                               "override carries a sentence, not a boolean)")
+            # ADR-039: blast_forecast is a non-negative integer stamped
+            # at intake; validate tolerates its absence (legacy).
+            if "blast_forecast" in p:
+                bf = p["blast_forecast"]
+                if isinstance(bf, bool) or not isinstance(bf, int) or bf < 0:
+                    errors.append(f"line {n}: blast_forecast must be a "
+                                  "non-negative integer (ADR-039)")
             # ADR-037: generated_ok_basis is a sentence and only path
             # claims can carry it. Present-but-EMPTY paths beside a basis
             # is refused; an absent key is tolerated (the FS-2 mutant
@@ -2444,6 +2563,18 @@ def _gate_evidence_exit(ctx):
         ctx["payload"]["evidence_exit_basis"] = ctx["evidence_exit_basis"]
     return None
 
+def _gate_blast(ctx):
+    # ADR-039 transform row -- never refuses. Stamps the forecast so
+    # the stats blast section can compare observed-vs-forecast later.
+    # Shallow or unavailable history stores NOTHING (a floor is not a
+    # bound); the advisory block voices why, post-append.
+    if not ctx["paths"]:
+        return None
+    history, state = blast_history()
+    if state == "ok":
+        ctx["blast_forecast"] = blast_forecast(ctx["paths"], history)
+    return None
+
 INTAKE_GATES = (
     ("pre-execution", "text-nonempty", _gate_text_nonempty),
     ("pre-execution", "near-duplicate-g8", _gate_duplicate),
@@ -2451,6 +2582,7 @@ INTAKE_GATES = (
     ("pre-execution", "paths-inv-m", _gate_inv_m),
     ("pre-execution", "generated-paths-adr037", _gate_generated),
     ("pre-execution", "scope-decay-adr032", _gate_scope_decay),
+    ("pre-execution", "blast-forecast-adr039", _gate_blast),
     ("pre-execution", "class-precheck", _gate_class_precheck),
     ("post-execution", "evidence-exit-adr035", _gate_evidence_exit),
     # further post-execution rows land with the linter and blast ADRs
@@ -2500,6 +2632,8 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
         payload["overridden_duplicates"] = ctx["overridden_duplicates"]
     if ctx.get("payload_generated_basis"):
         payload["generated_ok_basis"] = ctx["payload_generated_basis"]
+    if ctx.get("blast_forecast") is not None:
+        payload["blast_forecast"] = ctx["blast_forecast"]  # ADR-039
 
     if evidence_class == "VERIFIED":
         # -- execution boundary (ADR-029): screen, then double-run.
@@ -2548,7 +2682,8 @@ def cmd_claim(a):
     rec = append_record("claim", payload)
     advisories = intake_advisories(events, a.tier, a.ttl_days, a.scope_ok,
                                    a.evidence_class, payload,
-                                   generated_ok=a.generated_ok)
+                                   generated_ok=a.generated_ok,
+                                   claims=claims)
     if a.json:
         out = dict(rec)
         if advisories:
@@ -2582,6 +2717,36 @@ def working_tree_status():
     except (OSError, ValueError):
         return None
     return r.stdout if r.returncode == 0 else None
+
+# --- ADR-039: blast history (SHELL -- subprocess) -------------------------
+def blast_history():
+    """SI-2: (history, state), state in {'ok','shallow','unavailable'}.
+    Shallow clones truncate `git log` SILENTLY -- a quietly-cold
+    forecast would be the exact silent skip the design forbids, so
+    shallowness is probed first and nothing is stored for it (a floor
+    is not a bound). quotepath=off keeps names raw for match_paths."""
+    try:
+        sh = subprocess.run(["git", "rev-parse", "--is-shallow-repository"],
+                            capture_output=True, text=True, cwd=repo_root())
+        if sh.returncode == 0 and sh.stdout.strip() == "true":
+            return None, "shallow"
+        # --since-as-FILTER, never --since: plain --since STOPS the
+        # traversal at the first out-of-window commit, so one backdated
+        # commit near the tip empties the whole log -- a quietly-cold
+        # forecast stored as 0-under-ok, the exact 0-as-unknown ADR-039
+        # forbids (the R5 adversarial review's catch). On git < 2.36
+        # the option errors -> rc != 0 -> the loud unavailable path,
+        # which is the design's preferred failure mode.
+        r = subprocess.run(["git", "-c", "core.quotepath=off", "log",
+                            f"--since-as-filter={BLAST_WINDOW_DAYS}.days",
+                            "--format=%x01%H", "--name-only",
+                            "--no-renames"],
+                           capture_output=True, text=True, cwd=repo_root())
+    except (OSError, ValueError):
+        return None, "unavailable"
+    if r.returncode != 0:
+        return None, "unavailable"  # incl. unborn HEAD (exit 128)
+    return parse_name_log(r.stdout), "ok"
 
 # --- ADR-036: tombstone citation gate -------------------------------------
 def load_citation_scope():
@@ -3232,7 +3397,7 @@ def cmd_done(a):
         # hollow-VERIFIED warning, FS-1 note) -- one CC-1 block, stderr.
         block = render_advisory_block(intake_advisories(
             events, a.tier, a.ttl_days, a.scope_ok, a.evidence_class,
-            claim_payload, generated_ok=a.generated_ok))
+            claim_payload, generated_ok=a.generated_ok, claims=claims))
         if block:
             print(block, file=sys.stderr)
 
@@ -3478,8 +3643,10 @@ def cmd_stats(a):
     # ADR-033: the override-velocity section rides alongside stats. No
     # threshold, no gate -- a non-blocking advisory only.
     overrides = override_report(events, now_dt(), folded=folded)
+    blast = blast_report(events, folded=folded)
     if a.json:
         report["overrides"] = overrides
+        report["blast"] = blast
         print(json.dumps(report, indent=2))
         return
     print("claims by status: " + (", ".join(
@@ -3519,6 +3686,15 @@ def cmd_stats(a):
     # (the refused class leaves no record, so it has no counter).
     print(f"hollow: warned={o['hollow_warned']} "
           f"(overridden -> overrides exit-ok)")
+    # ADR-039: the churn instrument (report, never a gate).
+    b = blast
+    print(f"blast: floor {b['effective_floor']} ({b['floor_source']})"
+          + ("; top observed-vs-forecast: " + ", ".join(
+              f"{r['claim']}={r['observed']}/{r['forecast']}"
+              for r in b["rows"]) if b["rows"] else "")
+          + ("; top stalers: " + ", ".join(
+              f"{s['path']}={s['invalidations']}"
+              for s in b["staler_ranking"]) if b["staler_ranking"] else ""))
     for r in o["repeats"]:
         print(f"  advisory: {r['claim']} re-files the scope justification of "
               f"{r['prior']} (now {r['prior_status']}) verbatim -- same scope "

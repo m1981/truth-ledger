@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor + ADR-028 FAULT IF future-dated-issue transition coherence + ADR-009/M4 FAULT SD screen-gates-execution ordering + v0.9.12 R3/ADR-030 FAULT RA reaffirm-mismatch-never-auto-filed + v0.9.13 R6/ADR-031 unified duplicate-id rule: B1/B3-B5 expect the one message, FAULT K2 later-ts distinct duplicate flips to refused + v0.9.14 R12/ADR-032 FAULT SD-decay --scope-ok default-expiry (4 arms incl. negative control) + R13/ADR-033 FAULT OV override-velocity verbatim-repeat advisory (2 arms incl. negative control) + v0.9.20/ADR-034 FAULT GS staged gate table + CC-1 advisory block (5 arms incl. negative control) + v0.9.21/ADR-035 FAULT X positive-claim exit gate (8 arms incl. negative control + validate mirror) + v0.9.22/ADR-036 FAULT TG tombstone citation gate (11 arms incl. scope policy, fail-closed, preflight, unicode quotepath) + v0.9.23/ADR-037 FAULT RC recipe lints + generated-paths (10 arms incl. per-segment, carve-outs, decay, quote-split, dropped-override) + v0.9.24/ADR-038 FAULT DW dirty-watch advisory (7 arms incl. untracked-under-glob, rename, unicode, UU-conflict)).
+# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor + ADR-028 FAULT IF future-dated-issue transition coherence + ADR-009/M4 FAULT SD screen-gates-execution ordering + v0.9.12 R3/ADR-030 FAULT RA reaffirm-mismatch-never-auto-filed + v0.9.13 R6/ADR-031 unified duplicate-id rule: B1/B3-B5 expect the one message, FAULT K2 later-ts distinct duplicate flips to refused + v0.9.14 R12/ADR-032 FAULT SD-decay --scope-ok default-expiry (4 arms incl. negative control) + R13/ADR-033 FAULT OV override-velocity verbatim-repeat advisory (2 arms incl. negative control) + v0.9.20/ADR-034 FAULT GS staged gate table + CC-1 advisory block (5 arms incl. negative control) + v0.9.21/ADR-035 FAULT X positive-claim exit gate (8 arms incl. negative control + validate mirror) + v0.9.22/ADR-036 FAULT TG tombstone citation gate (11 arms incl. scope policy, fail-closed, preflight, unicode quotepath) + v0.9.23/ADR-037 FAULT RC recipe lints + generated-paths (10 arms incl. per-segment, carve-outs, decay, quote-split, dropped-override) + v0.9.24/ADR-038 FAULT DW dirty-watch advisory (7 arms incl. untracked-under-glob, rename, unicode, UU-conflict) + v0.9.25/ADR-039 FAULT BF blast forecast + churn report (7 arms incl. window boundary, shallow, unborn-HEAD)).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -2366,6 +2366,110 @@ else
 fi
 cd "$DW_PREV"
 rm -rf "$DW"
+
+# ---- FAULT BF (ADR-039, v0.9.25): blast forecast + churn report ---------
+say "FAULT BF (ADR-039): a hot watch must voice its blast forecast; cold, shallow and unborn repos must degrade loudly or silently as designed"
+BF="$(mktemp -d)"; BF_PREV="$PWD"
+mkrepo "$BF"
+echo "w0" > w.txt
+echo "cold" > cold.txt
+git add -A && git commit -qm "bf: init" --no-verify -q
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do
+  echo "w$i" >> w.txt && git commit -aqm "bf: touch $i" --no-verify -q
+done
+BF1=$($T claim "w.txt keeps accumulating its numbered lines" --class VERIFIED \
+      --evidence-cmd "grep w0 w.txt" --paths w.txt 2>&1 >/dev/null)
+if printf '%s\n' "$BF1" | grep -q "blast: watch matched 1[0-9] commits"; then
+  ok "BF1: a hot watch (>=floor commits/30d) voices the upper-bound advisory"
+else
+  miss "BF1: hot watch stayed silent"
+fi
+BF4OK=$(python3 -c "import json; p=json.loads(open('.truth/claims.jsonl').read().splitlines()[-1])['payload']; print('ok' if isinstance(p.get('blast_forecast'), int) and p['blast_forecast'] >= 15 else 'bad')")
+if [ "$BF4OK" = ok ] && $T validate >/dev/null 2>&1; then
+  ok "BF4: blast_forecast stored on the record; validate accepts it (and tolerates its absence on legacy lines)"
+else
+  miss "BF4: forecast not stored or validate refused (state=$BF4OK)"
+fi
+BF2=$($T claim "cold.txt sits untouched since the initial commit" \
+      --class VERIFIED --evidence-cmd "grep cold cold.txt" --paths cold.txt \
+      2>&1 >/dev/null)
+if printf '%s\n' "$BF2" | grep -q "^truth: advisory: blast:"; then
+  miss "BF2: a cold watch printed a blast line (fatigue budget broken)"
+else
+  ok "BF2: a sub-floor watch stays silent (negative control)"
+fi
+GIT_COMMITTER_DATE="2026-01-01T00:00:00 +0000" GIT_AUTHOR_DATE="2026-01-01T00:00:00 +0000" \
+  bash -c 'echo old >> cold.txt && git commit -aqm "bf: backdated" --no-verify -q'
+BF6N=$(python3 -c "
+import sys; sys.path.insert(0, 'scripts')
+import importlib.machinery, importlib.util
+ld = importlib.machinery.SourceFileLoader('t', 'scripts/truth')
+sp = importlib.util.spec_from_loader('t', ld); t = importlib.util.module_from_spec(sp); ld.exec_module(t)
+hist, state = t.blast_history()
+print(t.blast_forecast(['cold.txt'], hist) if state == 'ok' else 'ERR')")
+BF6W=$(python3 -c "
+import sys; sys.path.insert(0, 'scripts')
+import importlib.machinery, importlib.util
+ld = importlib.machinery.SourceFileLoader('t', 'scripts/truth')
+sp = importlib.util.spec_from_loader('t', ld); t = importlib.util.module_from_spec(sp); ld.exec_module(t)
+hist, state = t.blast_history()
+print(t.blast_forecast(['w.txt'], hist) if state == 'ok' else 'ERR')")
+# cold.txt has exactly ONE legitimate in-window commit (bf: init); the
+# backdated touch must be filtered OUT (count stays 1, does not become
+# 2) while the hot watch still counts fully -- a plain --since would
+# stop the traversal at the backdated tip and read BOTH as 0.
+if [ "$BF6N" = "1" ] && [ "$BF6W" -ge 16 ] 2>/dev/null; then
+  ok "BF6: the backdated commit is filtered OUT (cold stays 1, hot stays $BF6W) -- a filter, not a traversal stop"
+else
+  miss "BF6: window semantics broken (cold=$BF6N hot=$BF6W -- a plain --since would empty the log here)"
+fi
+BF5=$($T stats 2>/dev/null | grep "^blast:")
+if printf '%s\n' "$BF5" | grep -q "floor 15 (fallback)" \
+   && printf '%s\n' "$BF5" | grep -q "top observed-vs-forecast"; then
+  ok "BF5: stats renders the blast section (floor + observed-vs-forecast rows)"
+else
+  miss "BF5: stats blast section missing or malformed"
+fi
+BFSH="$(mktemp -d)"
+git clone -q --depth 1 "file://$PWD" "$BFSH/shallow" 2>/dev/null
+( cd "$BFSH/shallow" && mkdir -p .truth scripts \
+  && cp "$BF/scripts/truth" scripts/truth \
+  && cp "$BF/.truth/evidence-allow" .truth/ \
+  && cp "$BF/.truth/generated-paths" .truth/ 2>/dev/null; touch .truth/claims.jsonl
+  BF3=$(TRUTH_ACTOR=canary TRUTH_SESSION=s-bf python3 scripts/truth claim \
+        "w.txt carries its numbered lines in the shallow clone" \
+        --class VERIFIED --evidence-cmd "grep w0 w.txt" --paths w.txt \
+        2>&1 >/dev/null)
+  if printf '%s\n' "$BF3" | grep -q "blast: shallow history"; then
+    echo "BF3-OK" > "$BFSH/bf3"
+  fi )
+if [ -f "$BFSH/bf3" ]; then
+  ok "BF3: a shallow clone voices the floor-not-bound notice, never a quietly-cold number"
+else
+  miss "BF3: shallow history degraded silently"
+fi
+rm -rf "$BFSH"
+BFU="$(mktemp -d)"
+( cd "$BFU" && git init -q -b main . && git config user.email t@t \
+  && git config user.name t && mkdir -p .truth scripts \
+  && cp "$BF/scripts/truth" scripts/truth \
+  && cp "$BF/.truth/evidence-allow" .truth/ && touch .truth/claims.jsonl \
+  && echo seed > s.txt && git add -A
+  BF7=$(TRUTH_ACTOR=canary TRUTH_SESSION=s-bf python3 scripts/truth claim \
+        "the seeded file exists before the first commit lands" \
+        --class INFERRED --basis b --paths s.txt 2>&1 >/dev/null)
+  if printf '%s\n' "$BF7" | grep -q "blast: history unavailable" \
+     && ! tail -1 .truth/claims.jsonl | grep -q blast_forecast; then
+    echo "BF7-OK" > .bf7
+  fi )
+if [ -f "$BFU/.bf7" ]; then
+  ok "BF7: an unborn-HEAD repo voices history-unavailable and stores no forecast"
+else
+  miss "BF7: unborn HEAD read as a quietly-cold forecast"
+fi
+rm -rf "$BFU"
+cd "$BF_PREV"
+rm -rf "$BF"
 
 say ""
 say "canary result: $PASS caught, $FAIL missed"

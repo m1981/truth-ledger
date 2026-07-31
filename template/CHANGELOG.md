@@ -8,6 +8,30 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.25 (ADR-039: blast forecast + churn report -- R5, the FINAL
+  release of the 2026-07 gates adoption; schema $id v0.15):
+  * A path filing stamps blast_forecast: distinct commits touching
+    the watch in the trailing BLAST_WINDOW_DAYS (30), via one
+    `git log --format=%x01%H --name-only --no-renames` with
+    quotepath=off at the repo root (SI-2). An UPPER BOUND on
+    stalings, stated as such (a claim stales only from live; the
+    pilot's hottest claim showed 15 invalidations vs 14 re-agrees).
+  * Advisory at/above the floor; the floor SELF-CALIBRATES (P90 of
+    live stored forecasts once BLAST_MIN_OBSERVATIONS=20 exist,
+    constant 15 as cold-start fallback -- the adoption review proved
+    a fixed 15 would print on ~85% of this repo's own filings,
+    tr-c3087292). Shallow history and unborn HEAD degrade LOUDLY
+    with a notice and store nothing (a floor is not a bound).
+  * `truth stats` gains the blast section: observed-vs-forecast
+    (top 5), per-path staler ranking from invalidation `touched`
+    lists (no git work), effective floor + source; also in --json.
+  * The REFUSAL gate deliberately does not ship (the rev-1 proposal's
+    BLAST_THRESHOLD was falsified at home): it returns only as its
+    own ADR after >=30d of forecast-vs-observed data AND the
+    ~2026-08-08 reaffirm-trial read, threshold derived from the
+    measured distribution.
+  * Canary FAULT BF (7 arms); core TestBlastForecast.
+
 v0.9.24 (ADR-038: the dirty-watch advisory -- R4 of the 2026-07
   gates adoption; no schema change, per ADR-026 the $id stays v0.14):
   * Filing a claim with evidence_paths runs one

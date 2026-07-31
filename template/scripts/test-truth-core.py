@@ -1952,6 +1952,13 @@ CORPUS = [
     ("claim empty generated_ok_basis",
      rec("claim", claim_p(evidence_paths=["gen/out.csv"],
                           generated_ok_basis="")), False),
+    # ---- ADR-039 blast forecast (v0.9.25) ----
+    ("claim with blast_forecast",
+     rec("claim", claim_p(evidence_paths=["f.txt"], blast_forecast=3)),
+     True),
+    ("claim negative blast_forecast",
+     rec("claim", claim_p(evidence_paths=["f.txt"], blast_forecast=-1)),
+     False),
     # MEDIUM-1: --duplicate-ok override trace
     ("claim with overridden_duplicates",
      rec("claim", claim_p(overridden_duplicates=["tr-00000001",
@@ -2337,10 +2344,11 @@ class TestCrossSurfaceVersions(unittest.TestCase):
     # edit to the schema (minus its own $id) breaks the fingerprint, forcing
     # a conscious "is this a shape change? then bump $id" review.
     # v0.12: ADR-035 evidence_exit_basis; v0.13: ADR-036 orphan_basis
-    # (verdict + issue_event); v0.14: ADR-037 generated_ok_basis.
-    EXPECTED_SCHEMA_ID = "truth-ledger-record.v0.14"
+    # (verdict + issue_event); v0.14: ADR-037 generated_ok_basis;
+    # v0.15: ADR-039 blast_forecast.
+    EXPECTED_SCHEMA_ID = "truth-ledger-record.v0.15"
     PINNED_SHAPE_SHA256 = \
-        "5ed7841c083ec52f28b192b909f990469ce2f880f0720ae171b045bfa510f6df"
+        "46da42cc8b2d1140024fb5ffe72bf7148140e36aa0568570197c763af97edb96"
 
     def _schema(self):
         import json as _json
@@ -2475,9 +2483,9 @@ class TestEvidenceExitWarning(unittest.TestCase):
             # never re-run) is in the capsule, the warning is print-only
             self.assertEqual(filed["payload"]["evidence"]["returncode"], 1)
             self.assertEqual(sorted(filed["payload"]),
-                             ["anchor_commit", "cost_tier", "evidence",
-                              "evidence_class", "evidence_paths", "text",
-                              "ttl_days"])
+                             ["anchor_commit", "blast_forecast",
+                              "cost_tier", "evidence", "evidence_class",
+                              "evidence_paths", "text", "ttl_days"])
 
     def test_cli_zero_exit_stays_silent(self):
         with tempfile.TemporaryDirectory() as d:
@@ -2516,6 +2524,7 @@ class TestAdvisoryAssembler(unittest.TestCase):
                                  "quantifier-scope-adr007",
                                  "paths-inv-m", "generated-paths-adr037",
                                  "scope-decay-adr032",
+                                 "blast-forecast-adr039",
                                  "class-precheck"])
 
     def test_stats_consumers_folded_parity(self):
@@ -2616,6 +2625,47 @@ class TestDirtyWatch(unittest.TestCase):
         entries = [("R ", ["new.txt", "old.txt"])]
         self.assertEqual(tm.dirty_watch(entries, ["old.txt"]), ["old.txt"])
         self.assertEqual(tm.dirty_watch(entries, ["new.txt"]), ["new.txt"])
+
+class TestBlastForecast(unittest.TestCase):
+    """ADR-039: pure forecast, log parsing, and the self-calibrating
+    floor."""
+
+    def test_parse_name_log_chunks(self):
+        out = "\x01aaa\nf1.txt\nf2.txt\n\x01bbb\nf1.txt\n"
+        self.assertEqual(tm.parse_name_log(out),
+                         [("aaa", frozenset({"f1.txt", "f2.txt"})),
+                          ("bbb", frozenset({"f1.txt"}))])
+
+    def test_forecast_counts_distinct_commits_by_union(self):
+        hist = [("a", frozenset({"src/x.py", "docs/d.md"})),
+                ("b", frozenset({"src/y.py"})),
+                ("c", frozenset({"other.txt"}))]
+        # one commit touching two watched files counts ONCE (union)
+        self.assertEqual(tm.blast_forecast(["src/**", "docs/d.md"], hist), 2)
+        self.assertEqual(tm.blast_forecast(["other.txt"], hist), 1)
+        self.assertEqual(tm.blast_forecast(["nothing/**"], hist), 0)
+        self.assertEqual(tm.blast_forecast([], hist), 0)
+
+    def test_floor_falls_back_then_calibrates(self):
+        def claim_with(bf, status="live"):
+            return {"status": status,
+                    "claim": {"payload": {"evidence_paths": ["f"],
+                                          "blast_forecast": bf}}}
+        few = {f"tr-{i:08x}": claim_with(i) for i in range(5)}
+        self.assertEqual(tm.effective_blast_floor(few),
+                         (tm.BLAST_ADVISORY_FLOOR, "fallback"))
+        many = {f"tr-{i:08x}": claim_with(i) for i in range(30)}
+        floor, src = tm.effective_blast_floor(many)
+        self.assertEqual(src, "calibrated")
+        self.assertEqual(floor, 26)  # P90 of 0..29
+        # stale claims are excluded from calibration
+        stale = {f"tr-{i:08x}": claim_with(i, "stale") for i in range(30)}
+        self.assertEqual(tm.effective_blast_floor(stale),
+                         (tm.BLAST_ADVISORY_FLOOR, "fallback"))
+        # an all-cold corpus clamps to 1 -- never a floor of 0 that
+        # flags stone-cold watches as hot (R5 review, F2)
+        cold = {f"tr-{i:08x}": claim_with(0) for i in range(30)}
+        self.assertEqual(tm.effective_blast_floor(cold), (1, "calibrated"))
 
 class TestCommitGateBanner(unittest.TestCase):
     """R2: loud fail-open -- an unwired ADR-025 commit gate is announced
