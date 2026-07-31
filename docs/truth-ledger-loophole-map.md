@@ -1,6 +1,6 @@
 # The Loophole Map — Six Agent Events, Simulated
 
-> Reader: anyone assessing what the truth ledger can and cannot enforce against agent behavior | Enables: knowing, per event type, which gates are CLI refusals and which residuals are behavioral — and what the worst case actually is | Update-trigger: a gate ships or a residual closes (current: CLI v0.9.20 — content re-synced at v0.9.13 on 2026-07-20, ADR-032/033 override-decay content added 2026-07-21, Event F spec-coverage added 2026-07-26, V&V blank sections added 2026-07-27; v0.9.20/ADR-034 re-plumbs intake into a staged gate table and folds post-append notices into one `truth: advisory:` block — refusal semantics unchanged, no loophole moved; header pinned in lockstep by TestCrossSurfaceVersions since v0.9.13)
+> Reader: anyone assessing what the truth ledger can and cannot enforce against agent behavior | Enables: knowing, per event type, which gates are CLI refusals and which residuals are behavioral — and what the worst case actually is | Update-trigger: a gate ships or a residual closes (current: CLI v0.9.21 — content re-synced at v0.9.13 on 2026-07-20, ADR-032/033 override-decay content added 2026-07-21, Event F spec-coverage added 2026-07-26, V&V blank sections added 2026-07-27; v0.9.20/ADR-034 re-plumbs intake into a staged gate table and folds post-append notices into one `truth: advisory:` block — refusal semantics unchanged, no loophole moved; header pinned in lockstep by TestCrossSurfaceVersions since v0.9.13)
 
 Provenance: adapted from a second-deployment session walkthrough
 (repo `temporal-go-agent-sdk`, 2026-07 — the same session behind
@@ -89,14 +89,22 @@ ADR-024): INV-M checks that a literal path matches a tracked file, but
 a tracked **symlink** passes and can never fire — git sees only the
 unchanging link, not the target. Watch real paths.
 
-**New named residual since v0.6.4 — the hollow VERIFIED** (two real
-instances, field-notes-batch-m): `claim --class VERIFIED` files on
-*determinism* (the double-run hash-matches), not on exit 0, so a
-stably-failing probe files clean and "rechecks" forever by stable
-failure. Narrowed v0.9.11, not closed: intake now prints a
-non-blocking stderr warning when the captured evidence exit code is
-non-zero (a non-zero-but-stable probe can be a legitimate fact, so it
-never refuses). Also documented, not a hole (ADR-029): the
+**The hollow VERIFIED — CLOSED for the decidable slice since
+v0.9.21 (ADR-035)** (two real instances, field-notes-batch-m; a third
+escaped to a pilot verifier as QB-011): `claim --class VERIFIED`
+files on *determinism* (the double-run hash-matches), not on exit 0.
+v0.9.11 narrowed it with a non-blocking warning; v0.9.21 converts
+the exactly-decidable slice into an intake REFUSAL — a sentence with
+no NEGATION_TOKENS token plus a non-zero recorded exit demonstrates
+nothing it asserts and is refused naming ADR-035, with
+`--evidence-exit-ok "<basis>"` as the stored, counted override.
+Absence proofs (a negation token in the text — grep proving absence
+exits 1, and that exit IS the demonstration) keep the advisory path.
+Named residuals, owned in ADR-035: the token test reads the
+SENTENCE's polarity, not the recipe's — an inverted recipe (`! grep`)
+exits 0 and passes silently; a differential proof (`diff` exiting 1)
+pays a basis; mixed sentences with a negation token ride the
+advisory path even when their positive half is undemonstrated. Also documented, not a hole (ADR-029): the
 `--evidence-unsafe-ok` escape hatch bypasses the *whole* screen at
 intake — including the deny baseline — but the command runs in the
 author's own session (no new capability), lands `screened: false`, and

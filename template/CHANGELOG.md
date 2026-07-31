@@ -8,6 +8,31 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.21 (ADR-035: the positive-claim exit gate -- R1 of the 2026-07
+  gates adoption):
+  * NEGATION_TOKENS lexicon (copies of the five negation-shaped
+    quantifier tokens plus the ordinary negation vocabulary; X6 core
+    test pins the subset relation, one-directional by design).
+  * First post-execution gate-table row: a VERIFIED filing whose text
+    carries no negation token and whose recorded first-run exit is
+    non-zero is REFUSED naming ADR-035 (the pilot's QB-011 hollow
+    shape; simulated over 244 real filings pre-adoption: 5 refusals,
+    all genuine, zero false -- tr-166c4616). Absence proofs keep the
+    v0.9.11 advisory path. Applies identically to done --claim
+    (both-or-neither preserved; FAULT X7).
+  * --evidence-exit-ok "<sentence>" stores evidence_exit_basis
+    (schema $id v0.11 -> v0.12; validate mirror refuses an empty
+    basis, a basis beside exit 0, and tolerates legacy capsules
+    lacking returncode). Decay for this basis: DECLINED with reason
+    (ADR-032 exclusions form) -- a failing-by-design proof is a
+    permanent property and re-verification re-runs the command.
+  * override report: exit-ok filings counted (CC-2 single home);
+    stats gains hollow-warned (recorded exit!=0, no basis) beside a
+    pointer at the override row -- the refused class leaves no
+    record, so it has no counter.
+  * Canary FAULT X: 8 arms incl. negative control and the validate
+    mirror pair; core TestExitGate.
+
 v0.9.20 (ADR-034: the gate system -- staged intake table + CC-1
   advisory block; R0 of the 2026-07 gates adoption,
   docs/reviews/gates-2026-07/):

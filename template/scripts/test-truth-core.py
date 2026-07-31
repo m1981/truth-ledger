@@ -1911,6 +1911,20 @@ CORPUS = [
      rec("claim", claim_p(scope_basis="quantifier scoped to services/")), True),
     ("claim empty scope_basis",
      rec("claim", claim_p(scope_basis="")), False),
+    # ---- ADR-035 exit-override basis (v0.9.21). The present-true seed
+    # carries an rc=1 capsule; basis-beside-rc-0 is the deliberate
+    # cross-field DISAGREEMENT between the two surfaces (schema accepts,
+    # validate mirror refuses), so it lives in canary X5, never here. ----
+    ("verified with evidence_exit_basis rc1",
+     rec("claim", verified_p(evidence={"command": "grep zebra f.txt",
+                                       "output_hash": "sha256:" + "0" * 64,
+                                       "returncode": 1,
+                                       "screened": True},
+                             evidence_exit_basis="diff-style probe: exit 1 "
+                                                 "is the demonstration")),
+     True),
+    ("claim empty evidence_exit_basis",
+     rec("claim", claim_p(evidence_exit_basis="")), False),
     # MEDIUM-1: --duplicate-ok override trace
     ("claim with overridden_duplicates",
      rec("claim", claim_p(overridden_duplicates=["tr-00000001",
@@ -2295,9 +2309,10 @@ class TestCrossSurfaceVersions(unittest.TestCase):
     # $id to the shape and no test could see it. This pins the shape: any
     # edit to the schema (minus its own $id) breaks the fingerprint, forcing
     # a conscious "is this a shape change? then bump $id" review.
-    EXPECTED_SCHEMA_ID = "truth-ledger-record.v0.11"
+    # v0.12: ADR-035 adds the evidence_exit_basis field (a shape change).
+    EXPECTED_SCHEMA_ID = "truth-ledger-record.v0.12"
     PINNED_SHAPE_SHA256 = \
-        "edd25306ac120a4f89892e5a51ada7c9650dbe230f58e216814fb44afc51f0dc"
+        "86f3cb9a4ef3f31fe94ef7f13832fe9eb9f9078c8145701df4fd9f00e552d2b5"
 
     def _schema(self):
         import json as _json
@@ -2485,6 +2500,40 @@ class TestAdvisoryAssembler(unittest.TestCase):
                          tm.stats_report(ev, now, folded=folded))
         self.assertEqual(tm.override_report(ev, now),
                          tm.override_report(ev, now, folded=folded))
+
+class TestExitGate(unittest.TestCase):
+    """ADR-035: the positive-claim exit gate's pure decision, and the
+    X6 lexicon subset tripwire (one-directional: catches removals from
+    NEGATION_TOKENS, not additions to ADR-007's set)."""
+
+    def test_positive_text_failing_exit_refused(self):
+        err = tm.evidence_exit_error("f.txt holds a zebra", 1, None)
+        self.assertIn("ADR-035", err)
+        self.assertIn("exited 1", err)
+
+    def test_negation_token_keeps_warning_path(self):
+        for text in ("f.txt lacks a zebra", "no zebra appears in f.txt",
+                     "the file is missing a zebra", "zero zebra hits"):
+            self.assertIsNone(tm.evidence_exit_error(text, 1, None))
+
+    def test_basis_excuses_failure_but_not_success(self):
+        self.assertIsNone(
+            tm.evidence_exit_error("a and b differ", 1, "diff exits 1"))
+        err = tm.evidence_exit_error("f.txt holds data", 0, "spurious")
+        self.assertIn("nothing to excuse", err)
+
+    def test_zero_and_legacy_none_exit_pass(self):
+        self.assertIsNone(tm.evidence_exit_error("f.txt holds data", 0, None))
+        self.assertIsNone(tm.evidence_exit_error("f.txt holds data", None,
+                                                 None))
+
+    def test_x6_negation_superset_of_quantifier_negatives(self):
+        five = {"no", "none", "never", "nowhere", "zero"}
+        self.assertTrue(five <= tm.NEGATION_TOKENS)
+        self.assertTrue(five <= tm.QUANTIFIER_TOKENS)
+        # copies, not a shared reference: widening one must not widen
+        # the other (ADR-035)
+        self.assertIsNot(tm.NEGATION_TOKENS, tm.QUANTIFIER_TOKENS)
 
 class TestCommitGateBanner(unittest.TestCase):
     """R2: loud fail-open -- an unwired ADR-025 commit gate is announced

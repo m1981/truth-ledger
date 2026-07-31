@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""truth v0.9.20 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.21 -- append-only claims ledger with a native work kernel.
 
 Facts are appended as JSONL records to .truth/claims.jsonl (INV-A:
 append-only, commit-gated by scripts/check-truth.sh); every status is
@@ -108,6 +108,17 @@ QUANTIFIER_TOKENS = frozenset(("only", "no", "none", "never", "nowhere",
                                "all", "every", "any", "entire",
                                "whole", "zero"))
 QUANTIFIER_PHRASES = ("repo-wide", "the repo", "the codebase", "the project")
+# ADR-035: negation lexicon for the positive-claim exit gate. COPIES of
+# the five negation-shaped quantifier tokens, deliberately not a shared
+# reference -- widening one lexicon must never silently widen the other
+# gate (core test X6 pins the subset relation, one-directional: it
+# catches removals here, not additions there). Changed only together
+# with the X-canary faults.
+NEGATION_TOKENS = frozenset(("not", "neither", "nor", "without", "absent",
+                             "lacks", "lacking", "missing", "unused",
+                             "unreferenced",
+                             # the quantifier lexicon's negation-shaped five:
+                             "no", "none", "never", "nowhere", "zero"))
 # ADR-007: option tokens that narrow an evidence command's domain
 # (-t/--type is ripgrep's type filter -- a scope narrower that carries no
 # slash, so it evaded the positional check, F3/v0.6.2).
@@ -575,9 +586,12 @@ def determinism_error(run1, run2):
 def evidence_exit_warning(evidence_class, returncode):
     """field-notes-batch-m item 2 remedy: `claim --class VERIFIED` files
     on *determinism* (the G6 double-run hash-matches), not on exit 0, so
-    a stably-failing probe files clean and "rechecks" forever by stable
-    failure -- a hollow VERIFIED, an INV-M dead tripwire one level up
-    (two real instances caught by a verifier, never by filing).
+    a stably-failing probe used to file clean and "recheck" forever by
+    stable failure -- a hollow VERIFIED, an INV-M dead tripwire one
+    level up (two real instances caught by a verifier, never by
+    filing). Since ADR-035 the positive-sentence slice is REFUSED at
+    intake (evidence_exit_error); this advisory voices the remaining
+    absence-proof/legacy population.
     Non-blocking by design: a non-zero-but-stable probe can be a
     legitimate fact to record, so this returns a warning line (or None)
     for the shell to print on stderr AFTER the successful append --
@@ -645,9 +659,42 @@ def intake_advisories(events, tier, ttl_days_arg, scope_ok, evidence_class,
     # field-notes-batch-m item 2 remedy: the filing already succeeded and
     # its exit code stands; the captured intake returncode (first run --
     # already in the evidence capsule, never re-run) just gets a voice.
-    msgs.append(evidence_exit_warning(
-        evidence_class, (payload.get("evidence") or {}).get("returncode")))
+    # ADR-035: a stored --evidence-exit-ok basis IS the acknowledgment,
+    # so the warning stays silent for it (the override row counts it).
+    if not payload.get("evidence_exit_basis"):
+        msgs.append(evidence_exit_warning(
+            evidence_class, (payload.get("evidence") or {}).get("returncode")))
     return [m for m in msgs if m]
+
+def evidence_exit_error(text, returncode, exit_basis):
+    """ADR-035: the positive-claim exit gate. A VERIFIED filing whose
+    sentence carries no NEGATION_TOKENS token asserts presence -- a
+    failing evidence command demonstrates nothing it says (the pilot's
+    QB-011 hollow shape; simulated over 244 real filings: 5 refusals,
+    all genuine, zero false). Absence proofs -- a negation token in the
+    text -- keep the v0.9.11 warning path: grep proving absence exits 1,
+    and that exit IS the demonstration. The token test proxies the
+    SENTENCE's polarity, not the recipe's: an inverted recipe (! grep)
+    exits 0 and passes silently; a differential proof (diff exiting 1)
+    pays a --evidence-exit-ok basis, counted in override_report. Pure;
+    the recorded first-run returncode is passed in. Returns a refusal
+    string or None."""
+    if not returncode:
+        if exit_basis:
+            return ("truth: --evidence-exit-ok with a passing command -- "
+                    "the evidence exited 0, so there is nothing to excuse "
+                    "(ADR-035: a basis with nothing to excuse is schema "
+                    "noise; drop the flag)")
+        return None
+    if tokens(text) & NEGATION_TOKENS:
+        return None
+    if exit_basis:
+        return None
+    return (f"truth: a positive claim's evidence exited {returncode} -- "
+            "the command demonstrates nothing the sentence asserts (a "
+            "hollow VERIFIED, ADR-035). Fix the recipe, or state why a "
+            "failing command proves this sentence: "
+            "--evidence-exit-ok \"<basis>\".")
 
 def commit_gate_banner(verb, gate_wired):
     """R2 (roadmap-v3): ADR-025 made the commit gate decidable, but only
@@ -1116,9 +1163,17 @@ def override_report(events, now, folded=None):
     del now  # signature parity; the report reads records, not the clock
     claims, _ = folded if folded is not None else fold(events)
     scope_filings = overridden_dupes = screened_false = 0
+    exit_overrides = hollow_warned = 0
     max_scope_ttl = None
     for e in claims.values():
         p = e["claim"]["payload"]
+        # ADR-035: exit-override count (CC-2 single home) plus the
+        # warned-population denominator -- a recorded non-zero exit with
+        # no stated basis is the negation-path/pre-R1 warned class.
+        if p.get("evidence_exit_basis"):
+            exit_overrides += 1
+        elif (p.get("evidence") or {}).get("returncode"):
+            hollow_warned += 1
         if p.get("scope_basis"):
             scope_filings += 1
             t = p.get("ttl_days")
@@ -1160,6 +1215,8 @@ def override_report(events, now, folded=None):
             "decay_expiries": decay_expiries,
             "overridden_duplicates": overridden_dupes,
             "screened_false_filings": screened_false,
+            "evidence_exit_filings": exit_overrides,
+            "hollow_warned": hollow_warned,
             "max_scope_ttl_days": max_scope_ttl,
             "repeats": repeats}
 
@@ -1625,6 +1682,19 @@ def validate_events(events):
             if "scope_basis" in p and not p["scope_basis"]:
                 errors.append(f"line {n}: empty scope_basis (ADR-007: the "
                               "override carries a sentence, not a boolean)")
+            # ADR-035: only a failing command has anything to excuse. A
+            # basis beside a recorded exit of 0 is schema noise (X5); a
+            # legacy capsule lacking returncode is tolerated (recheck
+            # already tolerates it via .get).
+            if "evidence_exit_basis" in p:
+                if not p["evidence_exit_basis"]:
+                    errors.append(f"line {n}: empty evidence_exit_basis "
+                                  "(ADR-035: the override carries a "
+                                  "sentence, not a boolean)")
+                elif p.get("evidence", {}).get("returncode") == 0:
+                    errors.append(f"line {n}: evidence_exit_basis beside a "
+                                  "recorded exit of 0 -- a basis with "
+                                  "nothing to excuse (ADR-035, X5)")
             # ADR-032: ttl_default marks a --scope-ok override that took the
             # default 30-day expiry. Optional; a boolean when present. Two
             # INDEPENDENT contract surfaces (this mirror + the schema), held
@@ -2092,6 +2162,20 @@ def _gate_class_precheck(ctx):
         return inferred_intake_error(ctx["basis"])
     return None
 
+def _gate_evidence_exit(ctx):
+    # ADR-035 (post-execution): reads the captured FIRST-run returncode
+    # from the payload capsule -- never re-runs. Decay for the stored
+    # basis is DECLINED with reason (ADR-032 exclusions form): a
+    # legitimately-failing proof's non-zero exit is a permanent property
+    # of the recipe, and re-verification re-runs the command anyway.
+    rc = ctx["payload"]["evidence"].get("returncode")
+    err = evidence_exit_error(ctx["text"], rc, ctx["evidence_exit_basis"])
+    if err:
+        return err
+    if ctx["evidence_exit_basis"] and rc:
+        ctx["payload"]["evidence_exit_basis"] = ctx["evidence_exit_basis"]
+    return None
+
 INTAKE_GATES = (
     ("pre-execution", "text-nonempty", _gate_text_nonempty),
     ("pre-execution", "near-duplicate-g8", _gate_duplicate),
@@ -2099,7 +2183,8 @@ INTAKE_GATES = (
     ("pre-execution", "scope-decay-adr032", _gate_scope_decay),
     ("pre-execution", "paths-inv-m", _gate_inv_m),
     ("pre-execution", "class-precheck", _gate_class_precheck),
-    # post-execution rows land from ADR-035 on (exit gate, lints, blast)
+    ("post-execution", "evidence-exit-adr035", _gate_evidence_exit),
+    # further post-execution rows land with the linter and blast ADRs
 )
 
 def run_intake_stage(stage, ctx):
@@ -2115,7 +2200,8 @@ def run_intake_stage(stage, ctx):
 
 def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
                         ttl_days, basis, single_run, duplicate_ok, claims,
-                        scope_basis=None, unsafe_ok=False):
+                        scope_basis=None, unsafe_ok=False,
+                        evidence_exit_basis=None):
     """Full claim intake, driven by the ADR-034 staged gate table --
     WITHOUT appending. Shared by `claim` and `done --claim` so
     claim-at-death goes through the identical intake, and so `done` can
@@ -2126,6 +2212,7 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
            "tier": tier, "ttl_days": ttl_days, "basis": basis,
            "claims": claims, "duplicate_ok": duplicate_ok,
            "scope_basis": scope_basis,
+           "evidence_exit_basis": evidence_exit_basis,
            "head": head_commit() if evidence_class == "VERIFIED" else None,
            "overridden_duplicates": [], "ttl_default": False}
     run_intake_stage("pre-execution", ctx)
@@ -2179,7 +2266,8 @@ def cmd_claim(a):
     payload = build_claim_payload(a.text, a.evidence_class, a.evidence_cmd,
                                   a.paths, a.tier, a.ttl_days, a.basis,
                                   a.single_run, a.duplicate_ok, claims,
-                                  a.scope_ok, a.evidence_unsafe_ok)
+                                  a.scope_ok, a.evidence_unsafe_ok,
+                                  a.evidence_exit_ok)
     if a.concern:
         # stored sorted+deduplicated: canonical form keeps the record's
         # canonical serialization (ADR-016 fold key) order-independent of
@@ -2626,7 +2714,8 @@ def cmd_done(a):
                                             a.ttl_days, a.claim_basis,
                                             a.single_run, a.duplicate_ok,
                                             claims, a.scope_ok,
-                                            a.evidence_unsafe_ok)
+                                            a.evidence_unsafe_ok,
+                                            a.evidence_exit_ok)
     # ADR-014: the acceptance oracle gates a plain close -- it runs after
     # the cheap intake checks and before ANY append (both-or-neither
     # extends to the oracle). --cancel/--reopen skip it: killing or
@@ -2963,8 +3052,13 @@ def cmd_stats(a):
     print(f"overrides: scope-ok={o['scope_basis_filings']} "
           f"decay-expiries={o['decay_expiries']} "
           f"dup-overrides={o['overridden_duplicates']} "
-          f"unscreened={o['screened_false_filings']}"
+          f"unscreened={o['screened_false_filings']} "
+          f"exit-ok={o['evidence_exit_filings']}"
           + (f", max scope ttl {mx}d" if mx is not None else ""))
+    # ADR-035: warned population beside the single-homed override count
+    # (the refused class leaves no record, so it has no counter).
+    print(f"hollow: warned={o['hollow_warned']} "
+          f"(overridden -> overrides exit-ok)")
     for r in o["repeats"]:
         print(f"  advisory: {r['claim']} re-files the scope justification of "
               f"{r['prior']} (now {r['prior_status']}) verbatim -- same scope "
@@ -3258,6 +3352,12 @@ def main():
                    help="file despite a failed evidence-command safety "
                         "screen (ADR-009); recheck will refuse to execute "
                         "the command, so verification becomes manual")
+    c.add_argument("--evidence-exit-ok", metavar="SENTENCE",
+                   help="one sentence: why a FAILING evidence command "
+                        "proves this positive sentence (ADR-035; stored "
+                        "as evidence_exit_basis, attackable by verifiers; "
+                        "refused when the evidence exits 0 -- nothing to "
+                        "excuse)")
     c.add_argument("--json", action="store_true")
     c.set_defaults(fn=cmd_claim)
 
@@ -3377,6 +3477,8 @@ def main():
                     help="see `truth claim --scope-ok` (ADR-007)")
     dn.add_argument("--evidence-unsafe-ok", action="store_true",
                     help="see `truth claim --evidence-unsafe-ok` (ADR-009)")
+    dn.add_argument("--evidence-exit-ok", metavar="SENTENCE",
+                    help="see `truth claim --evidence-exit-ok` (ADR-035)")
     dn.add_argument("--accept-unsafe-ok", dest="accept_unsafe_ok",
                     action="store_true",
                     help="close WITHOUT executing an acceptance oracle that "

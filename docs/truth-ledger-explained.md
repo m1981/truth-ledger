@@ -4,7 +4,7 @@
 every layer, gate, hook, and deliberate loophole in a system built to
 keep AI coding agents' claims honest.
 
-**Scope** CLI v0.9.20 · paper v3 (2026-07-20) · ADR-001–034 ·
+**Scope** CLI v0.9.21 · paper v3 (2026-07-20) · ADR-001–035 ·
 **Sources** paper §N = `docs/truth-ledger-paper-v3.md`; ADR-NNN =
 `template/docs/adr/truth/NNN-*.md`
 
@@ -497,7 +497,9 @@ flowchart TD
     G5 -->|passes| G6{"determinism double-run:<br/>two runs hash identically?"}
     G6 -->|no| R6["REFUSED - unless --single-run"]
     G6 -->|yes| WARN{"evidence exit code non-zero?"}
-    WARN -->|yes| W1["FILED + loud stderr warning -<br/>the 'hollow VERIFIED' residual: a stably<br/>FAILING command still files"]
+    WARN -->|yes| NEG{"sentence carries a negation<br/>token? (NEGATION_TOKENS, ADR-035)"}
+    NEG -->|"no - positive sentence"| R7["REFUSED (v0.9.21): a failing command<br/>demonstrates nothing the sentence asserts -<br/>unless --evidence-exit-ok stores its basis"]
+    NEG -->|"yes - absence proof"| W1["FILED + advisory - grep proving<br/>absence exits 1, and that exit IS<br/>the demonstration"]
     WARN -->|no| OK["APPENDED - born unverified,<br/>evidence hashed at the anchor commit"]
     W1 --> OK
 ```
@@ -691,7 +693,7 @@ flowchart LR
 
     subgraph advisory["ADVISORY - noise, never a refusal"]
         BAN["unwired-gate banner: every write verb warns<br/>loudly when no commit gate exists"]
-        EXW["non-zero evidence-exit warning at filing"]
+        EXW["non-zero evidence-exit advisory at filing<br/>(absence proofs only since v0.9.21 -<br/>positive sentences are REFUSED, ADR-035)"]
         SOK["scope-ok default-expiry notice - reaffirm<br/>summaries - verbatim-repeat advisory"]
     end
 
@@ -988,11 +990,16 @@ Standing residuals:
 - **The tracked-symlink watch.** A watched path pointing at a tracked
   symlink passes intake but can never fire — git diffs show the target,
   never the immutable link. Guidance ("watch real paths"), not a gate.
-- **The hollow VERIFIED.** A stably *failing* command files VERIFIED
-  and rechecks green forever, because both intake and recheck compare
-  hash and exit code for stability, not success. Narrowed to a loud
-  warning, never refused — a legitimately failing probe (proving
-  absence) exists.
+- **The hollow VERIFIED — closed for the decidable slice (v0.9.21,
+  ADR-035).** A stably *failing* command used to file VERIFIED and
+  recheck green forever (intake and recheck compare hash and exit
+  code for stability, not success). Since v0.9.21 a POSITIVE sentence
+  (no negation token) with a non-zero recorded exit is refused at
+  intake; absence proofs — the legitimately failing probes — keep the
+  advisory path, and `--evidence-exit-ok` stores the stated exception.
+  Residual: the token test reads the sentence, not the recipe — an
+  inverted recipe (`! grep`) exits 0 and passes; mixed sentences ride
+  the advisory path.
 - **A lone future-dated issue record still commits** — inert and
   visibly so, because `validate` is clock-free by design.
 - **A resolved ceremony in this repo:** the P0 canary claim's evidence
@@ -1394,10 +1401,12 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
 - **near-duplicate gate** — refuses a claim with Jaccard token overlap
   ≥ 0.6 against any live/unverified claim unless `--duplicate-ok`;
   corrections of *dead* claims always pass (ADR-018).
-- **hollow VERIFIED** — the residual where a stably *failing* command
-  files VERIFIED and rechecks green forever, because intake and recheck
-  compare hash and exit for *stability*, not success. Narrowed to a loud
-  warning, never refused (legitimate absence-proving probes exist).
+- **hollow VERIFIED** — the class where a stably *failing* command
+  files VERIFIED and rechecks green forever (intake and recheck compare
+  hash and exit for *stability*, not success). Since v0.9.21 (ADR-035)
+  the decidable slice — a positive sentence with a failing command — is
+  refused at intake; absence-proving probes keep the advisory path, and
+  `--evidence-exit-ok` stores the stated exception.
 - **sentinel / pin-the-output** — the paper's §9 recipe for evidence
   whose *raw* output drifts though the fact still holds (embedded counts,
   timestamps): end the command with a stable marker (`… && echo CLEAN`)
@@ -1546,7 +1555,7 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
 ### Acronyms & standards
 
 - **ADR** — Architecture Decision Record.
-- **CLI** — command-line interface; here the `truth` script (v0.9.20).
+- **CLI** — command-line interface; here the `truth` script (v0.9.21).
 - **CI** — continuous integration; the clone-proof backstop for the
   commit gate when local hooks are absent (ADR-025).
 - **JSONL** — JSON Lines: one JSON object per line, the ledger's format.

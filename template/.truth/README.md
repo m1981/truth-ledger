@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.9.20)
+# .truth — append-only claims ledger (v0.9.21)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -421,11 +421,14 @@ flag existed folds, lists, and validates unchanged.
   (recheck then never executes the command; verification is manual).
 - **Run the evidence yourself before filing.** The intake double-run
   proves the command is DETERMINISTIC, not that it succeeds — a command
-  that stably fails (never-matching grep, empty output, rc≠0) files as
+  that stably fails (never-matching grep, empty output, rc≠0) used to file as
   VERIFIED and "rechecks clean" by stable failure, demonstrating
-  nothing. The v0.9.11 non-zero-exit warning is loud but non-blocking
-  (a legitimately-failing probe exists), so the discipline stays yours:
-  run it, see the success marker, then file.
+  nothing. Since v0.9.21 (ADR-035) a POSITIVE sentence with a failing
+  command is refused at intake; an absence proof files with an
+  advisory (its exit 1 IS the demonstration), and `--evidence-exit-ok`
+  stores a stated exception. The discipline still stays yours for the
+  paths the gate cannot see (inverted recipes exit 0; mixed sentences
+  ride the advisory): run it, see the success marker, then file.
 - **Grep invariant markers, never volatile strings.** Anchor evidence
   to function/test names, canary FAULT labels, ADR-id strings — not
   version numbers or dates (the next release bump mechanically breaks
@@ -456,6 +459,21 @@ and path gates run first, the ADR-009 evidence screen and the G6
 double-run form the execution boundary (ADR-029 — the screen is a gate
 on execution, not a peer refusal), and post-execution gates read the
 captured evidence; canary FAULT GS pins the sequence.
+
+The first post-execution gate is the **positive-claim exit gate**
+(ADR-035, v0.9.21): a VERIFIED filing whose sentence carries no
+negation token (`NEGATION_TOKENS`: not/neither/nor/without/absent/
+lacks/lacking/missing/unused/unreferenced plus no/none/never/nowhere/
+zero) and whose recorded evidence exit is non-zero is **refused** —
+the command demonstrates nothing the sentence asserts (the hollow
+VERIFIED class). Absence proofs keep the advisory path: `grep`
+proving absence exits 1, and that exit IS the demonstration. A
+legitimately-failing positive proof (a differential `diff`, exit 1
+by design) files with `--evidence-exit-ok "<sentence>"` — stored as
+`evidence_exit_basis` (schema v0.12), silences the advisory, counted
+in the override report; the basis is refused beside an exit of 0
+(nothing to excuse), at intake and by `validate`. Canary FAULT X
+(8 arms) gates the behavior.
 
 ## Daily operation
 
