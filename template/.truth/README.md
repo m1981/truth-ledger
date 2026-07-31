@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.9.19)
+# .truth — append-only claims ledger (v0.9.20)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -437,6 +437,25 @@ flag existed folds, lists, and validates unchanged.
 - **Commit first, then `done --claim`.** A completion claim filed before
   its shipping commit trips its own path tripwire (also noted under
   Feature specs).
+
+## Intake advisories (ADR-034, v0.9.20)
+
+A successful filing may carry advice — the FS-1 half-life note, the
+ADR-032 default-expiry notice, the hollow-VERIFIED exit warning. Since
+v0.9.20 these render as **one contiguous stderr block after the
+append**, every line prefixed `truth: advisory:` (stable, greppable —
+never capture-and-truncate stderr and assume you saw them). Under
+`--json` the echoed record additionally carries an `advisories` array
+(the echo only — the ledger line never stores advisories), so a
+harness that parses stdout cannot lose them to swallowed stderr. A
+clean filing prints no advisory line. The one exempt stderr surface is
+the commit-gate banner: it must fire at dispatch even on refused
+filings (fail-open-with-noise), so it deliberately stays outside the
+block. Intake gate ORDER is data (`INTAKE_GATES`): pre-execution text
+and path gates run first, the ADR-009 evidence screen and the G6
+double-run form the execution boundary (ADR-029 — the screen is a gate
+on execution, not a peer refusal), and post-execution gates read the
+captured evidence; canary FAULT GS pins the sequence.
 
 ## Daily operation
 

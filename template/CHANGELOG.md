@@ -8,6 +8,41 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.20 (ADR-034: the gate system -- staged intake table + CC-1
+  advisory block; R0 of the 2026-07 gates adoption,
+  docs/reviews/gates-2026-07/):
+  * Intake gate ORDER becomes data: INTAKE_GATES rows
+    (stage, name, gate_fn) drive build_claim_payload; the ADR-009
+    evidence screen and the G6 double-run are stage boundaries, not
+    rows (ADR-029 preserved; FAULT SD untouched). Refusal semantics
+    are byte-identical to v0.9.19; canary FAULT GS1/GS2 pin the
+    staged order, a core test pins the row sequence.
+  * Post-append notices fold into ONE contiguous stderr block, every
+    line prefixed `truth: advisory:` (the QB-011 swallowed-warning
+    class): the v0.9.11 exit warning, the ADR-032 decay notice, and
+    the FS-1 half-life note (moved post-append). Silence on clean;
+    the commit-gate banner stays exempt (must fire on refused
+    filings). `--json` mirrors the messages as an `advisories` array
+    on the echoed record -- the ledger line never stores them.
+    FAULT GS3-GS5 + TestAdvisoryAssembler gate it. Control bytes in
+    advisory text render escaped (SI-3, terminal-escape injection).
+  * `truth stats` folds ONCE and shares the result across
+    stats_report/override_report (each used to re-fold and re-sort);
+    _glob_rx gains lru_cache (pure; also speeds the invalidate-scan
+    and impact paths). Parity pinned by a core test.
+  * copier.yml: `.truth/accept-allow` joins _skip_if_exists -- it is
+    consumer policy like evidence-allow and was clobber-exposed from
+    v0.7.0 (tr-f49a00ee; the pilot carries local entries today).
+  * evidence_exit_warning/override_decay now return bare messages
+    (the renderer owns the prefix) -- any consumer grepping
+    `truth: warning: evidence command exited` must switch to the
+    `truth: advisory:` prefix.
+  * One deliberate behavior ADDITION: `done --claim ... --ttl-days N`
+    now prints the FS-1 half-life note (it never did) -- the shared
+    intake_advisories means claim-at-death earns the identical
+    advisory set as `claim`, which the cmd_done comment always
+    promised in spirit.
+
 v0.9.19 (the authoring loop -- docs-only release, zero scripts/ or
   .truth/ contract changes):
   * docs/truth-ledger-machinery.md sec 2 gains "The authoring loop":

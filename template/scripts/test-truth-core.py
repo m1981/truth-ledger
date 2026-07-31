@@ -2370,7 +2370,9 @@ class TestAppendSingleWrite(unittest.TestCase):
 # git sandboxes (temp dirs only, no network -- TestAppendSingleWrite's
 # spirit).
 
-R1_WARN = "truth: warning: evidence command exited"
+# ADR-034: the warning message is bare; the CC-1 assembler renders it
+# into the one advisory block with the stable prefix below.
+R1_WARN = "truth: advisory: evidence command exited"
 R2_BANNER = "truth: WARNING -- no commit gate is wired"
 
 def _git(d, *args):
@@ -2406,7 +2408,8 @@ class TestEvidenceExitWarning(unittest.TestCase):
 
     def test_warning_fires_only_on_verified_nonzero(self):
         w = tm.evidence_exit_warning("VERIFIED", 2)
-        self.assertTrue(w.startswith("truth: warning:"))
+        # ADR-034: bare message -- the prefix is the renderer's job
+        self.assertTrue(w.startswith("evidence command exited"))
         self.assertIn("evidence command exited 2", w)
         self.assertIn("verifies nothing", w)
         self.assertIsNone(tm.evidence_exit_warning("VERIFIED", 0))
@@ -2440,6 +2443,48 @@ class TestEvidenceExitWarning(unittest.TestCase):
                        "--evidence-cmd", "cat f.txt", "--paths", "f.txt")
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertNotIn(R1_WARN, r.stderr)
+
+class TestAdvisoryAssembler(unittest.TestCase):
+    """ADR-034: the CC-1 advisory renderer, the staged gate table's
+    pinned order, and the shared-fold parity of the stats consumers."""
+
+    def test_escape_ctrl_neutralizes_esc_and_keeps_newline(self):
+        # SI-3: ESC survives intake (INV-M refuses only whitespace), so
+        # the renderer must neutralize it before it reaches a terminal.
+        s = tm._escape_ctrl("a\x1b[31mred\nplain")
+        self.assertNotIn("\x1b", s)
+        self.assertIn("\\x1b", s)
+        self.assertIn("\n", s)
+
+    def test_render_block_prefixes_every_line_silence_on_empty(self):
+        block = tm.render_advisory_block(["one", None, "two\nthree"])
+        lines = block.splitlines()
+        self.assertEqual(len(lines), 3)
+        for ln in lines:
+            self.assertTrue(ln.startswith(tm.ADVISORY_PREFIX))
+        self.assertIsNone(tm.render_advisory_block([None, ""]))
+
+    def test_gate_table_pre_execution_order_is_pinned(self):
+        # Order is data (ADR-034); this pin is the unit half of GS1/GS2.
+        names = [n for st, n, _ in tm.INTAKE_GATES if st == "pre-execution"]
+        self.assertEqual(names, ["text-nonempty", "near-duplicate-g8",
+                                 "quantifier-scope-adr007",
+                                 "scope-decay-adr032", "paths-inv-m",
+                                 "class-precheck"])
+
+    def test_stats_consumers_folded_parity(self):
+        ev = [(1, {"id": "tr-aaaaaaaa", "kind": "claim",
+                   "ts": "2026-01-01T00:00:00.000000+00:00",
+                   "actor": "t", "session": "s",
+                   "payload": {"text": "x", "evidence_class": "UNVERIFIED",
+                               "cost_tier": "P2", "ttl_days": None,
+                               "evidence_paths": []}})]
+        now = datetime(2026, 1, 2, tzinfo=timezone.utc)
+        folded = tm.fold(ev)
+        self.assertEqual(tm.stats_report(ev, now),
+                         tm.stats_report(ev, now, folded=folded))
+        self.assertEqual(tm.override_report(ev, now),
+                         tm.override_report(ev, now, folded=folded))
 
 class TestCommitGateBanner(unittest.TestCase):
     """R2: loud fail-open -- an unwired ADR-025 commit gate is announced

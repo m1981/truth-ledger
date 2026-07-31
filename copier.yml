@@ -48,6 +48,12 @@ _skip_if_exists:
   # may re-run inside verifier sessions); an update must never revert a
   # consumer's conscious additions or removals.
   - .truth/evidence-allow
+  # ADR-014/ADR-034 (SI-4): the acceptance-oracle allowlist is consumer
+  # POLICY exactly like evidence-allow (the pilot carries local entries
+  # in it today); it was missing from this list from v0.7.0 to v0.9.19 --
+  # a template-side edit would have merged over consumer policy
+  # (tr-f49a00ee). Fixed with the gate-system release.
+  - .truth/accept-allow
   # ADR-022: NOTE the deliberate asymmetry -- .truth/evidence-deny is the
   # opposite: TEMPLATE-owned. It is intentionally NOT skipped here, so a
   # `copier update` keeps the shell/executor deny baseline current for
