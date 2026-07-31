@@ -4,7 +4,7 @@
 every layer, gate, hook, and deliberate loophole in a system built to
 keep AI coding agents' claims honest.
 
-**Scope** CLI v0.9.23 · paper v3 (2026-07-20) · ADR-001–037 ·
+**Scope** CLI v0.9.24 · paper v3 (2026-07-20) · ADR-001–038 ·
 **Sources** paper §N = `docs/truth-ledger-paper-v3.md`; ADR-NNN =
 `template/docs/adr/truth/NNN-*.md`
 
@@ -694,6 +694,7 @@ flowchart LR
     subgraph advisory["ADVISORY - noise, never a refusal"]
         BAN["unwired-gate banner: every write verb warns<br/>loudly when no commit gate exists"]
         EXW["non-zero evidence-exit advisory at filing<br/>(absence proofs only since v0.9.21 -<br/>positive sentences are REFUSED, ADR-035)"]
+        DWN["dirty-watch advisory (ADR-038, v0.9.24):<br/>a watched path with uncommitted changes -<br/>modified, untracked-under-glob, mid-rename,<br/>or merge-conflict - voices restale-at-birth;<br/>advisory only, never a refusal"]
         SOK["scope-ok default-expiry notice - reaffirm<br/>summaries - verbatim-repeat advisory"]
     end
 
@@ -1342,7 +1343,7 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
   loop (liveness only as strong as hook wiring). Distinct from findings —
   these are open directions, not fixed bugs.
 - **`INV-*`** — invariants (above); the properties the suite defends.
-- **`ADR-NNN`** — Architecture Decision Records (001–037); each closes
+- **`ADR-NNN`** — Architecture Decision Records (001–038); each closes
   one loophole or adds one capability.
 - **canary `FAULT <code>`** — seeded faults the weekly `truth-canary.sh`
   injects; the letter families (e.g. `D` TTL, `H` human-gate, `V`
@@ -1567,7 +1568,7 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
 ### Acronyms & standards
 
 - **ADR** — Architecture Decision Record.
-- **CLI** — command-line interface; here the `truth` script (v0.9.23).
+- **CLI** — command-line interface; here the `truth` script (v0.9.24).
 - **CI** — continuous integration; the clone-proof backstop for the
   commit gate when local hooks are absent (ADR-025).
 - **JSONL** — JSON Lines: one JSON object per line, the ledger's format.

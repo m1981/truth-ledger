@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.9.23)
+# .truth — append-only claims ledger (v0.9.24)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -509,6 +509,16 @@ v0.14), is counted, and decays like `--scope-ok` (ADR-032) so the
 judgment is re-asked. The template ships the list EMPTY (= conscious
 "nothing is generated", silent); deleting it leaves the check dark
 with one advisory line saying so. Canary FAULT RC (10 arms).
+
+**The dirty-watch advisory** (ADR-038, v0.9.24): filing a claim whose
+watched path is dirty in the working tree -- modified or staged, an
+untracked file under a glob watch, an uncommitted rename (either
+side), or a merge-conflict state (UU et al.) -- voices one
+`dirty watch: <path> ...` line in the advisory block: the claim would
+stale on the very commit that lands its content (restale-at-birth;
+commit first, then file). Advisory only, never a refusal (a gate here
+would teach `git stash` as its bypass), machine-visible via --json
+advisories. Canary FAULT DW (7 arms).
 
 ## Daily operation
 

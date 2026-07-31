@@ -8,6 +8,25 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.24 (ADR-038: the dirty-watch advisory -- R4 of the 2026-07
+  gates adoption; no schema change, per ADR-026 the $id stays v0.14):
+  * Filing a claim with evidence_paths runs one
+    `git status --porcelain=v1 -z --untracked-files=all` at the repo
+    root (SI-2: NUL/unquoted -- quotepath cannot hide a non-ASCII
+    dirty file; -uall expands untracked dirs so the exact file under
+    a glob watch is named). Dirtiness is STRUCTURAL: any XY beyond
+    clean/ignored, covering the UU merge-conflict state (the pilot's
+    QB-011 scenario) that a letter whitelist would miss; untracked
+    entries count (INV-M refuses untracked literals but exempts
+    globs -- exactly the restale-at-birth vector); renames match on
+    either NUL field.
+  * One advisory line per dirty watched path in the CC-1 block --
+    never a refusal (a gate would teach `git stash` as its bypass);
+    mirrored in --json advisories. Measured demand at adoption:
+    29/895 meta and 37/390 pilot invalidations landed within 30
+    minutes of their claim's own birth (tr-5c2bd165).
+  * Canary FAULT DW (7 arms); core TestDirtyWatch.
+
 v0.9.23 (ADR-037: recipe lints + generated-paths -- R3 of the 2026-07
   gates adoption):
   * Recipe lints on the screen's OWN shlex token stream (a second

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor + ADR-028 FAULT IF future-dated-issue transition coherence + ADR-009/M4 FAULT SD screen-gates-execution ordering + v0.9.12 R3/ADR-030 FAULT RA reaffirm-mismatch-never-auto-filed + v0.9.13 R6/ADR-031 unified duplicate-id rule: B1/B3-B5 expect the one message, FAULT K2 later-ts distinct duplicate flips to refused + v0.9.14 R12/ADR-032 FAULT SD-decay --scope-ok default-expiry (4 arms incl. negative control) + R13/ADR-033 FAULT OV override-velocity verbatim-repeat advisory (2 arms incl. negative control) + v0.9.20/ADR-034 FAULT GS staged gate table + CC-1 advisory block (5 arms incl. negative control) + v0.9.21/ADR-035 FAULT X positive-claim exit gate (8 arms incl. negative control + validate mirror) + v0.9.22/ADR-036 FAULT TG tombstone citation gate (11 arms incl. scope policy, fail-closed, preflight, unicode quotepath) + v0.9.23/ADR-037 FAULT RC recipe lints + generated-paths (10 arms incl. per-segment, carve-outs, decay, quote-split, dropped-override)).
+# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor + ADR-028 FAULT IF future-dated-issue transition coherence + ADR-009/M4 FAULT SD screen-gates-execution ordering + v0.9.12 R3/ADR-030 FAULT RA reaffirm-mismatch-never-auto-filed + v0.9.13 R6/ADR-031 unified duplicate-id rule: B1/B3-B5 expect the one message, FAULT K2 later-ts distinct duplicate flips to refused + v0.9.14 R12/ADR-032 FAULT SD-decay --scope-ok default-expiry (4 arms incl. negative control) + R13/ADR-033 FAULT OV override-velocity verbatim-repeat advisory (2 arms incl. negative control) + v0.9.20/ADR-034 FAULT GS staged gate table + CC-1 advisory block (5 arms incl. negative control) + v0.9.21/ADR-035 FAULT X positive-claim exit gate (8 arms incl. negative control + validate mirror) + v0.9.22/ADR-036 FAULT TG tombstone citation gate (11 arms incl. scope policy, fail-closed, preflight, unicode quotepath) + v0.9.23/ADR-037 FAULT RC recipe lints + generated-paths (10 arms incl. per-segment, carve-outs, decay, quote-split, dropped-override) + v0.9.24/ADR-038 FAULT DW dirty-watch advisory (7 arms incl. untracked-under-glob, rename, unicode, UU-conflict)).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -2279,6 +2279,93 @@ else
 fi
 cd "$RC_PREV"
 rm -rf "$RC"
+
+# ---- FAULT DW (ADR-038, v0.9.24): the dirty-watch advisory --------------
+say "FAULT DW (ADR-038): a claim watching uncommitted content must hear about restale-at-birth"
+DW="$(mktemp -d)"; DW_PREV="$PWD"
+mkrepo "$DW"
+mkdir -p ns
+echo "data" > f.txt
+echo "keep" > other.txt
+git add -A && git commit -qm "dw: init" --no-verify -q
+echo "pending" >> f.txt
+DW1=$($T claim "f.txt carries data plus a pending line" --class VERIFIED \
+      --evidence-cmd "grep data f.txt" --paths f.txt 2>&1 >/dev/null)
+if printf '%s\n' "$DW1" | grep -q "dirty watch: f.txt"; then
+  ok "DW1: a modified watched path earns the restale-at-birth advisory"
+else
+  miss "DW1: dirty watched path stayed silent"
+fi
+git checkout -q f.txt
+DW2=$($T claim "f.txt carries just the committed data line" --class VERIFIED \
+      --evidence-cmd "grep data f.txt" --paths f.txt --duplicate-ok \
+      2>&1 >/dev/null)
+DW2N=$(tail -1 .truth/claims.jsonl | grep -c '"kind": "claim"')
+if ! printf '%s\n' "$DW2" | grep -q "dirty watch" && [ "$DW2N" -eq 1 ]; then
+  ok "DW2: a clean tree files silently (negative control, appended)"
+else
+  miss "DW2: clean filing printed a dirty-watch line or never appended"
+fi
+echo "x" > unrelated.txt
+DW3=$($T claim "f.txt data survives beside an unrelated dirty file" \
+      --class VERIFIED --evidence-cmd "grep data f.txt" --paths f.txt \
+      --duplicate-ok 2>&1 >/dev/null)
+if printf '%s\n' "$DW3" | grep -q "dirty watch"; then
+  miss "DW3: an unwatched dirty file false-fired the advisory"
+else
+  ok "DW3: dirtiness outside the watch stays silent (fatigue budget)"
+fi
+rm -f unrelated.txt
+echo "seed" > ns/new-thing.txt
+DW4=$($T claim "the ns namespace is filling with seeded content" \
+      --class VERIFIED --evidence-cmd "grep data f.txt" --paths "ns/**" \
+      2>&1 >/dev/null)
+if printf '%s\n' "$DW4" | grep -q "dirty watch: ns/new-thing.txt"; then
+  ok "DW4: an UNTRACKED file under a glob watch fires (the INV-M glob-exemption vector)"
+else
+  miss "DW4: untracked-under-glob stayed dark"
+fi
+rm -f ns/new-thing.txt
+git mv other.txt moved.txt
+# The OLD name leaves the index on git mv, so a literal watch on it is
+# INV-M-dead (correctly refused); the arm watches the NEW name and the
+# rename entry must fire via either of its two NUL fields.
+DW6=$($T claim "the rename keeps its keep marker under the new watch" \
+      --class VERIFIED --evidence-cmd "grep keep moved.txt" \
+      --paths f.txt,moved.txt --duplicate-ok 2>&1 >/dev/null) || true
+if printf '%s\n' "$DW6" | grep -q "dirty watch: moved.txt"; then
+  ok "DW6: an uncommitted git mv fires on the rename entry (two-field parse)"
+else
+  miss "DW6: rename entry invisible to the watch"
+fi
+git commit -qm "dw: land rename" --no-verify -q
+printf 'plain ascii\n' > "spät-ü.txt"
+git add "spät-ü.txt" && git commit -qm "dw: unicode" --no-verify -q
+echo "dirt" >> "spät-ü.txt"
+DW7=$($T claim "the unicode-named file carries pending dirt" \
+      --class VERIFIED --evidence-cmd "grep data f.txt" \
+      --paths "sp*.txt" 2>&1 >/dev/null)
+if printf '%s\n' "$DW7" | grep -q "dirty watch: sp"; then
+  ok "DW7: a NON-ASCII-named dirty watch still fires (-z, SI-2 -- quotepath cannot hide it)"
+else
+  miss "DW7: unicode-named dirty file invisible (quotepath fail-open)"
+fi
+git checkout -q -- "spät-ü.txt"
+git checkout -q -b dw-side
+printf 'side\n' > f.txt && git add f.txt && git commit -qm side --no-verify -q
+git checkout -q main
+printf 'main\n' > f.txt && git add f.txt && git commit -qm mainline --no-verify -q
+git merge -q dw-side >/dev/null 2>&1 || true
+DW8=$($T claim "f.txt sits mid-conflict while this files" --class VERIFIED \
+      --evidence-cmd "cat .truth/evidence-allow" --paths f.txt \
+      --duplicate-ok 2>&1 >/dev/null)
+if printf '%s\n' "$DW8" | grep -q "dirty watch: f.txt"; then
+  ok "DW8: the UU both-modified conflict state fires (structural dirtiness -- the QB-011 scenario)"
+else
+  miss "DW8: mid-merge conflict invisible to the advisory"
+fi
+cd "$DW_PREV"
+rm -rf "$DW"
 
 say ""
 say "canary result: $PASS caught, $FAIL missed"

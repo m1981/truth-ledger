@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""truth v0.9.23 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.24 -- append-only claims ledger with a native work kernel.
 
 Facts are appended as JSONL records to .truth/claims.jsonl (INV-A:
 append-only, commit-gated by scripts/check-truth.sh); every status is
@@ -651,6 +651,47 @@ def render_advisory_block(messages):
             lines.append(f"{ADVISORY_PREFIX} {ln}")
     return "\n".join(lines) if lines else None
 
+# --- ADR-038: the dirty-watch advisory ------------------------------------
+def parse_porcelain_z(out):
+    """Pure: `git status --porcelain=v1 -z` fields -> [(xy, paths)].
+    NUL-separated, UNQUOTED (SI-2: default quotepath would octal-quote
+    non-ASCII names into match_paths-invisibility); a rename/copy entry
+    (X or Y in RC) is followed by ONE extra NUL field, the source path
+    -- both paths belong to the entry."""
+    fields = [f for f in out.split("\x00")]
+    entries, i = [], 0
+    while i < len(fields):
+        f = fields[i]
+        i += 1
+        if len(f) < 4 or f[2] != " ":
+            continue
+        xy, path = f[:2], f[3:]
+        paths = [path]
+        if ("R" in xy or "C" in xy) and i < len(fields) and fields[i]:
+            paths.append(fields[i])
+            i += 1
+        entries.append((xy, paths))
+    return entries
+
+def dirty_watch(entries, watch_patterns):
+    """Pure (ADR-038): the watched paths that are dirty in the working
+    tree. Dirtiness is STRUCTURAL -- any XY other than clean ('  ') or
+    ignored ('!!') counts, which covers the unmerged states (UU et al.:
+    dirty precisely during conflict resolution, the pilot's QB-011
+    scenario) that a letter whitelist would miss. Untracked entries
+    ('??') count too: INV-M refuses untracked LITERAL watches, but a
+    glob legitimately watches an empty-for-now namespace, and an
+    untracked file under it is exactly the restale-at-birth vector.
+    Renames match on either side. Returns sorted unique paths."""
+    hits = set()
+    for xy, paths in entries:
+        if xy in ("  ", "!!"):
+            continue
+        for p in paths:
+            if match_paths(p, watch_patterns):
+                hits.add(p)
+    return sorted(hits)
+
 def intake_advisories(events, tier, ttl_days_arg, scope_ok, evidence_class,
                       payload, generated_ok=None):
     """The post-append advisory set shared by `claim` and `done --claim`
@@ -691,6 +732,21 @@ def intake_advisories(events, tier, ttl_days_arg, scope_ok, evidence_class,
                     "check is dark; commit the list (empty is a conscious "
                     "'nothing is generated') to arm or silence this "
                     "(ADR-037)")
+    # ADR-038: the dirty-watch advisory -- a claim filed before its
+    # watched content lands restales at birth (the two-commit dance's
+    # hazard, made visible at the only cheap moment). Advisory only:
+    # filing ahead of the content commit is legitimate when the author
+    # intends an immediate re-verify, and a refusal here would teach
+    # `git stash` as its bypass.
+    if payload.get("evidence_paths"):
+        status = working_tree_status()
+        if status:
+            for p in dirty_watch(parse_porcelain_z(status),
+                                 payload["evidence_paths"]):
+                msgs.append(f"dirty watch: {p} has uncommitted changes -- "
+                            "this claim stales on the commit that lands "
+                            "them (restale-at-birth, ADR-038). Commit the "
+                            "content first, then file.")
     # field-notes-batch-m item 2 remedy: the filing already succeeded and
     # its exit code stands; the captured intake returncode (first run --
     # already in the evidence capsule, never re-run) just gets a voice.
@@ -2507,6 +2563,25 @@ def cmd_claim(a):
     block = render_advisory_block(advisories)
     if block:
         print(block, file=sys.stderr)
+
+# --- ADR-038: the dirty-watch shell probe (SHELL -- subprocess) -----------
+def working_tree_status():
+    """SI-2: NUL-separated unquoted status at the repo root. Returns
+    raw text or None when git cannot answer -- incl. an undecodable
+    byte in some unrelated untracked filename (text=True decodes
+    strictly; UnicodeDecodeError is a ValueError -- the R4 adversarial
+    review's catch: the advisory stays silent, it never gates and never
+    tracebacks past a successful append)."""
+    try:
+        # -uall: expand untracked DIRECTORIES into their files (default
+        # porcelain collapses them to 'ns/', hiding which file under a
+        # glob watch is the restale-at-birth vector)
+        r = subprocess.run(["git", "status", "--porcelain=v1", "-z",
+                            "--untracked-files=all"],
+                           capture_output=True, text=True, cwd=repo_root())
+    except (OSError, ValueError):
+        return None
+    return r.stdout if r.returncode == 0 else None
 
 # --- ADR-036: tombstone citation gate -------------------------------------
 def load_citation_scope():

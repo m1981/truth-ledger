@@ -2594,6 +2594,29 @@ class TestRecipeLints(unittest.TestCase):
         self.assertTrue(any("v9.8.7" in m for m in
                             tm.recipe_lints("grep 'v9.8''.7' f.txt")))
 
+class TestDirtyWatch(unittest.TestCase):
+    """ADR-038: pure porcelain-z parsing and structural dirtiness."""
+
+    def test_parse_rename_two_fields(self):
+        out = "R  new.txt\x00old.txt\x00 M plain.txt\x00?? fresh.txt\x00"
+        self.assertEqual(tm.parse_porcelain_z(out),
+                         [("R ", ["new.txt", "old.txt"]),
+                          (" M", ["plain.txt"]),
+                          ("??", ["fresh.txt"])])
+
+    def test_structural_dirtiness_covers_uu_and_skips_clean(self):
+        entries = [("UU", ["conflict.txt"]), ("!!", ["ignored.txt"]),
+                   (" M", ["mod.txt"]), ("??", ["ns/x.txt"])]
+        self.assertEqual(
+            tm.dirty_watch(entries, ["conflict.txt", "mod.txt", "ns/**"]),
+            ["conflict.txt", "mod.txt", "ns/x.txt"])
+        self.assertEqual(tm.dirty_watch(entries, ["ignored.txt"]), [])
+
+    def test_rename_matches_either_side(self):
+        entries = [("R ", ["new.txt", "old.txt"])]
+        self.assertEqual(tm.dirty_watch(entries, ["old.txt"]), ["old.txt"])
+        self.assertEqual(tm.dirty_watch(entries, ["new.txt"]), ["new.txt"])
+
 class TestCommitGateBanner(unittest.TestCase):
     """R2: loud fail-open -- an unwired ADR-025 commit gate is announced
     on every write verb, refused on none."""
