@@ -1569,7 +1569,7 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
 ### Acronyms & standards
 
 - **ADR** — Architecture Decision Record.
-- **CLI** — command-line interface; here the `truth` script (v0.9.25).
+- **CLI** — command-line interface; here the `truth` script (v0.9.26).
 - **CI** — continuous integration; the clone-proof backstop for the
   commit gate when local hooks are absent (ADR-025).
 - **JSONL** — JSON Lines: one JSON object per line, the ledger's format.
