@@ -36,7 +36,7 @@ certainly don't need all of it, in order, today.
 - **Auditing the trust model?** §11 (what's *enforced* vs. merely
   *hoped*) → §12 (the accepted holes) → §13. One-line threat model:
   drift, not adversaries.
-- **Just need a term?** §14 is a 176-entry glossary — every term is
+- **Just need a term?** §14 is the glossary — every term is
   defined at first use above and restated there.
 
 ---
@@ -505,9 +505,10 @@ flowchart TD
 ```
 
 **Fig. 3** — the full intake battery for `truth claim`. Every red box
-is a hard refusal; four carry an explicit, visible flag
-(`--duplicate-ok`, `--scope-ok`, `--evidence-unsafe-ok`,
-`--single-run`) and every use is stamped into the record. Empty text
+is a hard refusal; the ones that can be overridden carry an explicit,
+visible flag (`--duplicate-ok`, `--scope-ok`, `--evidence-unsafe-ok`,
+`--evidence-exit-ok`, `--single-run`) and every use is stamped into the
+record. Empty text
 and dead tripwires have no override at all.
 
 **The safety screen decides whether a command runs at all** (ADR-029) —
