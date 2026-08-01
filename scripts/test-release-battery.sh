@@ -43,9 +43,10 @@ else
 fi
 
 echo "ARM 4: a missing jsonschema is an ENVIRONMENT block (exit 2), not a pass"
-set +e
+# NB: this script runs under `set -u` only. Do NOT `set -e` here -- arms 4
+# and 5 deliberately run a battery that exits non-zero, and errexit would
+# kill the suite mid-arm (it silently did, until 2026-08-01).
 OUT=$(env -u TRUTH_ALLOW_NO_JSONSCHEMA TRUTH_BATTERY_SCOPE="docs/x.md" bash "$B" 2>&1); RC=$?
-set -e 2>/dev/null || true
 if python3 -c "import jsonschema" >/dev/null 2>&1; then
   echo "  (skipped: jsonschema is installed here, so the arm cannot be exercised)"
 elif [ "$RC" = "2" ] && printf '%s' "$OUT" | grep -q "ENV   jsonschema"; then
@@ -54,12 +55,24 @@ else
   miss "missing jsonschema did not block as an environment problem (rc=$RC)"
 fi
 
-echo "ARM 5: the battery must never report success while reporting a failed arm"
-OUT=$(TRUTH_ALLOW_NO_JSONSCHEMA=1 TRUTH_BATTERY_SCOPE="docs/x.md" bash "$B" 2>&1)
-if printf '%s' "$OUT" | grep -q "FAIL" && printf '%s' "$OUT" | grep -q "all arms green"; then
+echo "ARM 5: a battery with ANY failing arm must not report green, and must exit 1"
+# This arm was VACUOUS as first written (2026-08-01): it asked whether a
+# healthy battery printed both FAIL and green, which a healthy battery
+# never does, so it could only ever pass. The mutation run that "proved"
+# the suite reddened arms 1-4 and never arm 5 — the evidence was in the
+# output and went unread. It now MANUFACTURES a failing arm, which is the
+# only way to test the exclusion it claims to test.
+MUT="scripts/.arm5-forced-fail.sh"
+sed 's|^say "release-battery: content checks at the push boundary"|&\nbad "synthetic" "deliberately failing arm injected by ARM 5"|' \
+    "$B" > "$MUT"
+OUT=$(TRUTH_ALLOW_NO_JSONSCHEMA=1 TRUTH_BATTERY_SCOPE="docs/x.md" bash "$MUT" 2>&1); RC=$?
+rm -f "$MUT"
+if printf '%s' "$OUT" | grep -q "all arms green"; then
   miss "battery printed 'all arms green' while an arm reported FAIL"
+elif [ "$RC" != "1" ]; then
+  miss "battery exited $RC with a failing arm -- a governance failure must exit 1"
 else
-  ok "no arm reported FAIL alongside a green verdict"
+  ok "a failing arm suppresses the green verdict and exits 1"
 fi
 
 echo "ARM 6: the pre-push hook keeps its tag-check arm ahead of the battery"

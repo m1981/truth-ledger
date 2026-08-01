@@ -52,12 +52,16 @@ Meta-repo conventions, on top of the standard layer:
   caught by reading or not at all — the v0.9.15 release proved both
   halves (a missed unpinned Scope header, found only by an independent
   reviewer). This is the review the design assumes; do it unprompted.
-- The P0 canary claim's evidence command (`bash …truth-canary.sh`) is
-  deliberately NOT allowlisted (ADR-009's test-runner rule), so
-  `verdict --recheck` refuses to execute it: verifiers run the suite
-  manually and judge the ALL-CAUGHT sentinel by hand. Accepted
-  ceremony, decided 2026-07-13 — do not "fix" it by allowlisting
-  `bash`, which would gut the evidence screen.
+- `bash …truth-canary.sh` is deliberately NOT on the evidence allowlist
+  (ADR-009's test-runner rule), so `verdict --recheck` will refuse to
+  execute any claim carrying it: run the suite yourself and judge the
+  ALL-CAUGHT sentinel by hand. Accepted ceremony, decided 2026-07-13 —
+  do not "fix" it by allowlisting `bash`, which would gut the screen.
+  (This paragraph used to describe "the P0 canary claim" in the present
+  tense; that claim was retracted 2026-07-20 and re-homed as an ADR-014
+  acceptance oracle. It cited no id, so fact-health — the tripwire built
+  for exactly this — could not see it go stale. A restated fact, in the
+  file that mandates cite-don't-restate.)
 - `scripts/truth` is a SYMLINK to `template/scripts/truth`: watch the
   real path in evidence_paths (a watch on the symlink can never fire —
   git only sees the link itself, which never changes).
