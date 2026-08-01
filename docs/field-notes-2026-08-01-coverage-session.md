@@ -104,7 +104,7 @@ queue enforce it.
 | 7 | `wk-71dcd73c` | advisories earn loudness: response counters + demotion |
 | 8 | `wk-71694410` | mutation discipline: no arm credited until seen red |
 | 9 | `wk-36066db9` | refusal messages must not teach their own bypass |
-| 10 | `wk-0691c742` | verifier quality — **see the finding above; rescope first** |
+| 10 | `wk-9b0aa224` | make verifier separation **evidenced** rather than declared — supersedes `wk-0691c742`, which was scoped to sampling and missed the sharp edge. Promote this above item 1: it is the one finding no artifact check can see. `wk-0691c742` stays open until a human cancels it (G12) |
 | 11 | `wk-d8a1d61c` | the sentence-altitude genus, closed procedurally |
 | 12 | `wk-24ae8ff4` | fleet state gets a trigger instead of a timer |
 
@@ -152,6 +152,14 @@ Not hypotheticals — each of these cost real time here.
 - `tr-f788e062` is **self-diverged**: its sentence claimed six arms proven
   red when only four were. Fixed in the script; the claim needs a
   successor.
+- `wk-0691c742` is superseded by `wk-9b0aa224` but still OPEN, so both
+  appear in `truth ready`. Retiring it is a G12 human tombstone the CLI
+  correctly refused to let an agent perform:
+  `TRUTH_HUMAN=1 scripts/truth done wk-0691c742 --cancel --basis "superseded by wk-9b0aa224"`
+  (or `TRUTH_HUMAN_ACK=wk-0691c742` headless). Note also that ADR-006
+  makes issues first-wins and mints ids from `(payload, ts, actor)`, so
+  there is no update-by-refile: rescoping ALWAYS means a new id plus a
+  human retirement of the old one.
 - `docs/roadmap-v3.md` declares "Status: living document" but reads as
   finished history. Either it returns to the sweep (~19 citation fixes) or
   its header should say what it is. Fixing the header is the cheaper truth.
