@@ -392,6 +392,30 @@ watcher:
   | `template/.truth/README.md` — the tracker-seam contract | `tr-ef37611b` (+ `tr-f4c6ec38`, `tr-c52e3e84`, `tr-fcdd4af2`) |
   | kuchnie's wired spec-coverage pairs, one per slug in its `docs/specs/sc-slugs.txt` — today `catalog/docs/specs/configurator-api.md` and `catalog/docs/specs/worktop-uu-seeding.md`, each with its sibling `.sc.txt` manifest | cfgapi `kuchnie:tr-fcca2d96` + `kuchnie:tr-40a5beb5`, wtuu `kuchnie:tr-22772c10` + `kuchnie:tr-a2acd399` in the **kuchnie ledger** (per pair: the spec↔manifest and tests↔manifest sentinels; sentinel recipe = the slug-scoped `SC-<slug>-[0-9]{3}` grep-and-diff). Consumer-side claims — the per-file `impact` loop below sees only this repo's ledger, so these pairs' DARK check runs in kuchnie |
 
+**GUARDED CONTROL SURFACES — the machinery's own levers (2026-08-01).**
+  A coverage audit found the enforcement layer outside the guarded set:
+  zero claims watched `.truth/evidence-allow`, `evidence-deny`,
+  `accept-allow`, `scripts/truth-whisper.deny`, `scripts/fact-health.sh`,
+  `.claude/settings.json` or `.githooks/pre-commit`. Re-admitting a shell
+  to the allowlist, or deleting the hook block that arms the whisper,
+  staled nothing and tripped no gate — the security boundary was quieter
+  than a typo in a doc. Each now carries a `sha256sum` sentinel claim
+  (`tr-11701d6f`, `tr-6a3c9fef`, `tr-96351a43`, `tr-48fc1f89`,
+  `tr-45312cff`, `tr-df856f43`, `tr-d3b14d8f`, `tr-bcd40e31`,
+  `tr-165faff1`). The pin works because the evidence is a DIGEST: an edit
+  stales the claim AND changes the hash, so `reaffirm`'s match arm cannot
+  clear it and the ADR-030 mismatch path forces a dispatched judgment.
+  That is the intended ceremony for a boundary edit.
+
+  Two of those files did not exist before that audit, and their absence
+  was the finding: `.truth/citation-scope` was never committed, so the
+  ADR-036 tombstone gate fell back to `docs/specs/**` — a directory this
+  repo does not have — and reported "clean" for every id, including ids
+  cited in this guide. `.truth/generated-paths` was likewise absent,
+  leaving the ADR-037 check dark. Both are now committed, the second
+  deliberately empty (an empty policy is a statement; an absent one is a
+  gate that looks armed and checks nothing).
+
   The meta stub `docs/beads-integration-guide.md` is a pointer, not a
   contract ("one home per fact"); its only integrity property — the
   link resolves — is already guarded by `doc-health.sh` (§2), so it

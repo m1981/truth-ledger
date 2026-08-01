@@ -21,6 +21,21 @@ Meta-repo conventions, on top of the standard layer:
 - Accepted ADRs are immutable in body; corrections land as
   `Amended by:` lines in the status block (see ADR-002, ADR-004).
 - `docs/archive/` is frozen verbatim; never update it.
+- The machinery's own control surfaces carry sentinel claims (2026-08-01):
+  `.truth/evidence-allow`, `evidence-deny`, `accept-allow`, `citation-scope`,
+  `generated-paths`, plus `scripts/truth-whisper.deny`, `scripts/fact-health.sh`,
+  `.claude/settings.json` and `.githooks/pre-commit` are each pinned by a
+  `sha256sum` claim. Editing one stales its claim, and because the DIGEST
+  changed, `reaffirm` cannot auto-clear it — a human verdict is forced. That
+  is the point: these files decide what the screen admits and what the hooks
+  refuse, and until this pin the ledger watched every doc in the repo and
+  none of them.
+- A fact about a DEPLOYMENT (the pilot, the SDK repo) takes `--ttl-days`, not
+  `--paths` — no git event here can observe another repository. Treat that TTL
+  as a timer, not a detector: a claim pinning the pilot's template version sat
+  wrong for weeks (twenty releases of drift) inside its 60-day window, because
+  nothing could notice and nobody re-read it. Re-verify deployment facts at
+  release time; do not let the clock stand in for a check.
 - Machine-local operational notes live in `.local/` (gitignored, never
   commit its contents): the deployment-site disk mapping (machine
   paths stay out of git; the paper's own text anonymizes the pilot,
