@@ -87,6 +87,10 @@ Meta-repo conventions, on top of the standard layer:
   harness-independently at pre-commit (`.githooks/pre-commit`). The
   consumer hook has its own regression gate (it is untemplated, so it
   has no home in the template canary): `bash scripts/test-whisper-hook.sh`
-  — deny voice, main-tree and worktree whisper, injection-verified.
+  — deny voice, main-tree and worktree whisper, injection-verified. The
+  pre-push RELEASE BATTERY (`scripts/release-battery.sh`) has the same
+  shape and the same reason: `bash scripts/test-release-battery.sh`, six
+  arms, each one verified red against a mutated copy of the battery
+  before being committed. Do not add an arm you have not seen fail.
 
 See `template/.truth/README.md` for the layer's full documentation.

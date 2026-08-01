@@ -32,4 +32,31 @@ if ! git show "refs/tags/v$V:template/scripts/truth" 2>/dev/null \
   echo "  is pushed) or tag the corrected release as a new version." >&2
   exit 1
 fi
-exit 0
+
+# --- release battery (2026-08-01) ---------------------------------------
+# The content-judging checks used to be manual, and a coverage audit found
+# the core suite failing at HEAD with nobody aware. They run here because
+# push is where staleness starts shipping: copier resolves consumer
+# versions from tags, so an unpushed defect is private and a pushed one
+# is the fleet's problem.
+#
+# Git feeds this hook "<local ref> <local sha> <remote ref> <remote sha>"
+# on stdin. We derive the pushed file set so the 45s canary runs only when
+# the CLI or the suite moved. Any range we cannot resolve — a new branch,
+# a missing remote object — yields ALL, because unknown scope must mean
+# MORE checking, never less.
+ZERO=0000000000000000000000000000000000000000
+SCOPE=""
+while read -r _lref lsha _rref rsha; do
+  [ -z "${lsha:-}" ] && continue
+  [ "$lsha" = "$ZERO" ] && continue              # deleting a remote ref
+  if [ "${rsha:-$ZERO}" = "$ZERO" ] || ! git cat-file -e "$rsha" 2>/dev/null; then
+    SCOPE="ALL"; break                            # new branch / unknown base
+  fi
+  CHANGED=$(git diff --name-only "$rsha" "$lsha" 2>/dev/null) || { SCOPE="ALL"; break; }
+  SCOPE="$SCOPE
+$CHANGED"
+done
+[ -z "$(printf '%s' "$SCOPE" | tr -d '[:space:]')" ] && SCOPE="ALL"
+
+TRUTH_BATTERY_SCOPE="$SCOPE" exec bash scripts/release-battery.sh
