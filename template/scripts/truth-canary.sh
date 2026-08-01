@@ -215,6 +215,15 @@ else
 fi
 
 say "FAULT G (G6): nondeterministic evidence command must be refused"
+# ADR-040 removed `date` from the shipped allowlist (it sets the clock via
+# GNU -s/--set and a bare BSD positional). Put it back HERE, in sandbox 1
+# only: this arm and FAULT R7 must reach the DETERMINISM gate, and an
+# unlisted program would refuse one step earlier -- the arm would still
+# say CAUGHT while testing nothing. The entry persists for the rest of the
+# sandbox and now earns a doctor grey-zone WARN, so FAULT AL (the only
+# later arm that runs doctor here) deliberately re-installs a pristine
+# shipped allowlist before asserting on that warning.
+echo "date" >> .truth/evidence-allow
 if $T claim "the clock ticks" --class VERIFIED \
      --evidence-cmd "date +%s%N" --paths "watched.txt" --tier P2 2>/dev/null; then
   miss "intake accepted nondeterministic evidence"
@@ -371,6 +380,50 @@ else
   ok "allowlisted shell refused by the template-owned deny baseline (ADR-022 deny-wins)"
 fi
 grep -v '^bash$' .truth/evidence-allow > .truth/evidence-allow.tmp && mv .truth/evidence-allow.tmp .truth/evidence-allow
+
+# ---- FAULT AL (ADR-040): the audited allowlist default ------------------
+# The shipped default was cut to the programs a per-program audit found
+# read-only. Removal alone protects only NEW consumers -- the allowlist is
+# consumer-owned and copier never clobbers it -- so the propagating half is
+# the doctor grey-zone warning, which is code-owned. Both halves are pinned
+# here: the default carries no grey-zone program, and a consumer who keeps
+# one is warned rather than silently trusted.
+say "FAULT AL (ADR-040): the shipped allowlist default is grey-zone free, and a consumer keeping a removed program is warned"
+AL_TMP=$(mktemp -d)
+cp "$HERE/../.truth/evidence-allow" "$AL_TMP/shipped"
+cp .truth/evidence-allow "$AL_TMP/mine.bak"
+if grep -qxE 'rg|file|date' "$AL_TMP/shipped"; then
+  miss "AL1: the shipped allowlist default still carries rg/file/date (ADR-040 removal reverted)"
+else
+  ok "AL1: shipped allowlist default carries no ADR-040-removed program"
+fi
+# The sandbox list has drifted by now (FAULT G appended `date`, FAULT E5
+# `sort`), so AL runs against a PRISTINE copy of the shipped default. Both
+# arms below must assert on the WARN line specifically: doctor prints an
+# 'OK ... grey-zone -- no code-executing programs listed' line when the
+# list is clean, so a bare grep for 'grey-zone' matches whether the
+# advisory fired or not -- an arm that can never MISS.
+cp "$AL_TMP/shipped" .truth/evidence-allow
+if $T doctor 2>&1 | grep -qE '^WARN.*grey-zone'; then
+  miss "AL2a: doctor warned grey-zone on the SHIPPED default -- the default carries a code-executing program"
+else
+  ok "AL2a: no grey-zone warning on the shipped default (negative control)"
+fi
+# AL2b: the propagating half -- a consumer whose own list keeps a removed
+# program is warned (WARN, never a failure: policy stays theirs, ADR-022).
+echo "rg" >> .truth/evidence-allow
+if $T doctor 2>&1 | grep -qE '^WARN.*grey-zone.*rg'; then
+  ok "AL2b: doctor warns a consumer whose allowlist keeps a removed program (rg)"
+else
+  miss "AL2b: doctor stayed silent on an allowlisted rg -- the propagating half of ADR-040 is dead"
+fi
+if $T doctor >/dev/null 2>&1; then
+  ok "AL3: the grey-zone finding is an advisory, not a failure (doctor still exits 0)"
+else
+  miss "AL3: a grey-zone allowlist entry FAILED doctor -- ADR-022 says warn, never block"
+fi
+cp "$AL_TMP/mine.bak" .truth/evidence-allow
+rm -rf "$AL_TMP"
 
 say "FAULT T (INV-M): a dead evidence-path tripwire must be refused at intake"
 if $T claim "a and watched are fine" --class VERIFIED \

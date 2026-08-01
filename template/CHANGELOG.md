@@ -8,6 +8,42 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.26 (ADR-040: an audited evidence-allowlist default; no schema
+  change, no gate semantics change):
+  * The shipped `.truth/evidence-allow` loses rg, file and date. A
+    per-program audit of all 28 entries -- flags AND positionals, GNU
+    and BSD, every channel demonstrated rather than inferred -- found
+    `rg --pre PROG` / `--hostname-bin PROG` execute arbitrary programs,
+    `file -C -m PATH` writes a compiled magic file anywhere, and `date`
+    sets the clock from GNU -s/--set or a bare BSD POSITIONAL. The
+    other 25 entries were confirmed read-only in both implementations;
+    that negative coverage is what justifies the new default.
+  * Empirical cost zero: of the 116 distinct commands this ledger has
+    ever carried (114 evidence + 2 acceptance oracles), the programs
+    used are grep, echo, test, ls, head and the deliberately-unlisted
+    bash of the P0 canary claim. The three removed appear zero times.
+  * DOCTOR_GREY_ZONE gains the same three -- the PROPAGATING half.
+    Removal alone protects only new consumers, because the allowlist is
+    consumer-owned and copier never reverts it; the grey zone is
+    code-owned, so it warns every existing deployment still carrying
+    them. Advisory, never a failure (ADR-022 part 2, unchanged).
+    They are NOT added to the deny baseline: that file is for programs
+    whose sole job is running other programs, where refusal costs
+    nothing, and all three have ordinary read-only uses.
+  * Canary FAULT AL (3 arms incl. negative control); core test
+    test_grey_zone_covers_adr040_removals. FAULT G and R7 re-add `date`
+    to their sandbox list on purpose -- they test the DETERMINISM gate,
+    which an unlisted program would never reach.
+  * ADR-040 records R1-R4, all still OPEN and measured: sort's denied
+    long options are bypassable by getopt abbreviation (`--out=`,
+    `--com=`) and by glued/clustered short forms (`-oFILE`,
+    `-nroFILE`); `uniq IN OUT` reaches an output positional no flag
+    table can see; and three SHELL-level channels -- `uniq *` (a glob
+    is one word to shlex and N to /bin/sh), `cat <>f` (read-write
+    open), `>1` (a digit target is a file, not an fd) -- which no
+    allowlist can close. ADR-041 (PROPOSED, shell-free evidence
+    execution) is drafted as their closure. Fold untouched.
+
 v0.9.25 (ADR-039: blast forecast + churn report -- R5, the FINAL
   release of the 2026-07 gates adoption; schema $id v0.15):
   * A path filing stamps blast_forecast: distinct commits touching

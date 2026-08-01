@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""truth v0.9.25 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.26 -- append-only claims ledger with a native work kernel.
 
 Facts are appended as JSONL records to .truth/claims.jsonl (INV-A:
 append-only, commit-gated by scripts/check-truth.sh); every status is
@@ -191,10 +191,19 @@ EVIDENCE_DENY_REL = ".truth/evidence-deny"
 # files but have plausible read-only uses, so they are surfaced (WARN),
 # not blocked. Blocking these would fight legitimate workflows; ignoring
 # them let H4's git-in-the-allowlist slip in unnoticed.
+# ADR-040 adds rg/file/date, found by auditing every entry of the shipped
+# allowlist rather than waiting for an incident: `rg --pre PROG` and
+# `--hostname-bin PROG` execute arbitrary programs, `file -C -m PATH`
+# writes a compiled magic file to an arbitrary path, and `date` sets the
+# system clock (GNU -s/--set, or a bare BSD positional -- the uniq-shaped
+# channel a flag table cannot see). They left the shipped default in the
+# same change; this set is what reaches a consumer whose OWN allowlist,
+# which the template never clobbers, still carries them.
 DOCTOR_GREY_ZONE = frozenset((
     "git", "python", "python3", "python2", "perl", "ruby", "node", "make",
     "pytest", "tox", "awk", "gawk", "sed", "curl", "wget", "ssh", "scp",
-    "rsync", "docker", "npm", "npx", "pip", "pip3", "cargo", "go"))
+    "rsync", "docker", "npm", "npx", "pip", "pip3", "cargo", "go",
+    "rg", "file", "date"))
 # ADR-014: acceptance oracles execute repository code at `done` time --
 # their own allowlist, never the read-only evidence one.
 ACCEPT_ALLOW_REL = ".truth/accept-allow"

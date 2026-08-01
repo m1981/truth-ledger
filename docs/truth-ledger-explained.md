@@ -4,7 +4,7 @@
 every layer, gate, hook, and deliberate loophole in a system built to
 keep AI coding agents' claims honest.
 
-**Scope** CLI v0.9.25 · paper v3 (2026-07-20) · ADR-001–039 ·
+**Scope** CLI v0.9.26 · paper v3 (2026-07-20) · ADR-001–041 ·
 **Sources** paper §N = `docs/truth-ledger-paper-v3.md`; ADR-NNN =
 `template/docs/adr/truth/NNN-*.md`
 

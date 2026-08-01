@@ -7,6 +7,15 @@ allowlisting a dangerous program by accident. Amends ADR-009/ADR-021.
 Implemented in CLI v0.9.7. Canary FAULT ED; core tests
 test_denylist_wins_over_allowlist, test_deny_baseline_not_applied_to_oracles,
 test_doctor_grey_zone_advisory.
+Amended by: ADR-040 (2026-08-01) — the grey-zone advisory set gains rg,
+file and date after a per-program audit found exec/write channels on them
+(`rg --pre`, `file -C`, `date -s` and its BSD positional). They were NOT
+added to the deny baseline: this ADR reserves that file for programs whose
+sole job is running other programs, where refusal costs nothing, and all
+three have ordinary read-only uses. ADR-040 also records the first
+measured limit of the grey-zone/deny split — neither layer can see a write
+channel that lives in the SHELL rather than in the program (`uniq *`,
+`cat <>f`).
 Date: 2026-07-19
 Supersedes: — (adds a layer beneath ADR-021's allowlist boundary; the
 boundary is unchanged)

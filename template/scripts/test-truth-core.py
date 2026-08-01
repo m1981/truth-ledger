@@ -612,6 +612,13 @@ class TestEvidenceScreen(unittest.TestCase):
         self.assertTrue(tm.DOCTOR_GREY_ZONE.isdisjoint(
             {"grep", "cat", "wc", "find", "sort", "test"}))
 
+    def test_grey_zone_covers_adr040_removals(self):
+        """ADR-040: rg/file/date left the shipped allowlist, but that only
+        protects NEW consumers -- the allowlist is consumer-owned and a
+        `copier update` never reverts it. The grey zone is code-owned, so
+        it is what actually reaches a deployment still carrying them."""
+        self.assertLessEqual({"rg", "file", "date"}, tm.DOCTOR_GREY_ZONE)
+
 class TestAcceptScreen(unittest.TestCase):
     """ADR-014: same structural screen, its own allowlist -- the refusal
     messages must name .truth/accept-allow and the accept escape hatch,

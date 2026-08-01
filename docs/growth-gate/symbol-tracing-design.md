@@ -28,8 +28,15 @@ BOM pins (2 claims, kuchnie, 2026-07-22).
   the staling is the review trigger (the tr-ebac6513 pattern at symbol
   scale).
 
-## Tested recipes (verbatim — all pass the ADR-009 screen; rg is
-## allowlisted in both this repo and kuchnie)
+## Tested recipes (verbatim — they passed the ADR-009 screen when written,
+## while `rg` was allowlisted in this repo and kuchnie)
+
+> Stale precondition (2026-08-01, ADR-040): `rg` was REMOVED from this
+> repo's allowlist and from the shipped default — `rg --pre PROG` and
+> `--hostname-bin PROG` execute arbitrary programs in a verifier session.
+> These recipes are therefore REFUSED here as written. Building this
+> growth-gate design would first have to re-express them with `grep`, or
+> re-admit `rg` as a conscious decision (doctor now warns on it).
 
 ```
 # top-level function pin (async- and decorator-aware; handles

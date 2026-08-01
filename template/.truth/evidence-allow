@@ -22,12 +22,23 @@
 # checkout-index / bisect run / submodule foreach / `-c <k>=!cmd` aliases
 # are further exec-or-write channels. PROGRAM_ARG_DENY blunts a handful of
 # top-level git flags but CANNOT make git safe -- do not rely on it. find
-# and sort ARE shipped and read-only in normal use; their known write/exec
-# flags (find -exec/-fprintf, sort -o/--compress-program) are refused by
-# that same table, which for these bounded tools is complete as far as is
-# known -- but the table is a blocklist, so prefer minimal allowlists.
+# is shipped and its known write/exec flags (-exec/-execdir/-ok/-okdir/
+# -delete/-fprint*/-fls) are refused by that same table. sort is shipped
+# but its table entry is NOT complete: the 2026-08-01 audit (ADR-040)
+# confirmed `sort --out=FILE` and `--com=PROG` -- getopt accepts any
+# unambiguous long-option abbreviation, while the table lists one
+# spelling. Treat the table as a blunting layer, never a boundary, and
+# prefer minimal allowlists.
+#
+# rg / file / date were REMOVED from this default on 2026-08-01 (ADR-040)
+# after a per-program audit of every entry: `rg --pre PROG` and
+# `--hostname-bin PROG` execute arbitrary programs, `file -C -m PATH`
+# writes a compiled magic file to an arbitrary path, and `date` sets the
+# system clock from a flag (GNU -s/--set) or a bare POSITIONAL (BSD).
+# All three are now in DOCTOR_GREY_ZONE, so `truth doctor` warns any
+# consumer whose own allowlist still carries them. Re-add only as a
+# conscious, committed decision.
 grep
-rg
 ls
 cat
 head
@@ -44,12 +55,10 @@ echo
 printf
 test
 [
-date
 basename
 dirname
 realpath
 stat
-file
 sha256sum
 shasum
 md5sum

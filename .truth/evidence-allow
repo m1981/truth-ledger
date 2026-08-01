@@ -19,8 +19,15 @@
 # filter-branch --tree-filter <cmd> is arbitrary code execution) is
 # unbounded by the PROGRAM_ARG_DENY blocklist, and no evidence command
 # here used it. Do not re-add it.
+#
+# rg / file / date REMOVED 2026-08-01 (ADR-040), same reasoning, found by
+# a per-program audit of every entry on this list: `rg --pre PROG` and
+# `--hostname-bin PROG` execute arbitrary programs (demonstrated), `file
+# -C -m PATH` writes a compiled magic file anywhere (demonstrated), and
+# `date` sets the clock from GNU -s/--set or a bare BSD positional. None
+# of the 116 distinct commands this ledger has ever carried (114 evidence
+# + 2 acceptance oracles) used any of the three. Do not re-add them.
 grep
-rg
 ls
 cat
 head
@@ -37,12 +44,10 @@ echo
 printf
 test
 [
-date
 basename
 dirname
 realpath
 stat
-file
 sha256sum
 shasum
 md5sum
