@@ -43,12 +43,23 @@ try:
 
     lines = []
     q = run(["python3", cli, "queue", "--json"], root)
-    queue = json.loads(q.stdout) if q.returncode == 0 and q.stdout else []
+    if q.returncode != 0:
+        # R11: a failing CLI degrades to an empty digest, but VISIBLY --
+        # one stderr line, per this file's own docstring. A dead queue
+        # verb means the fold itself failed, so the list call would only
+        # repeat the same scream; say it once and stay silent.
+        print("truth session digest unavailable: `truth queue --json` "
+              f"exited {q.returncode}", file=sys.stderr)
+        sys.exit(0)
+    queue = json.loads(q.stdout) if q.stdout else []
     for row in queue[:MAX_CLAIMS]:
         lines.append(f"  ATTENTION {row['id']} ({row['tier']}, "
                      f"{row['status']}): {row['reason']}")
 
     l = run(["python3", cli, "list", "--live", "--json"], root)
+    if l.returncode != 0:
+        print("truth session digest unavailable: `truth list --live "
+              f"--json` exited {l.returncode}", file=sys.stderr)
     live = json.loads(l.stdout) if l.returncode == 0 and l.stdout else []
     top = [r_ for r_ in live if r_.get("tier") in ("P0", "P1")][:MAX_CLAIMS]
     for row in top:

@@ -7,6 +7,8 @@
 #
 # FAIL (exit 1) — survival holes:
 #   * uncommitted changes (nothing survives a dirty tree)
+#   * the truth CLI failing (a sensor that cannot run must scream, never
+#     read as zero counts — the F1 rule)
 #   * truth work items still claimed (finish with `done --claim`, or
 #     hand back with `start --release`)
 #   * spec-health / doc-health failures (when those gates are present)
@@ -22,13 +24,23 @@
 #
 # Usage: bash scripts/session-close.sh
 set -u
-cd "$(git rev-parse --show-toplevel)"
+cd "$(git rev-parse --show-toplevel)" || exit 2
 
 fails=0
 warns=0
 fail() { printf '  FAIL  %s\n' "$*"; fails=$((fails + 1)); }
 warn() { printf '  WARN  %s\n' "$*"; warns=$((warns + 1)); }
 ok()   { printf '  ok    %s\n' "$*"; }
+# A truth CLI that cannot run must scream, never degrade to zero counts:
+# `2>/dev/null | grep -c || true` read a corrupt ledger as "0 claimed,
+# safe to close" (the F1 rule, applied to this gate's own sensors).
+cli_fail() {
+    fail "truth CLI unavailable — nothing below was checked"
+    echo
+    echo "session-close: $fails failure(s), $warns warning(s)"
+    echo "NOT SAFE to end the session — the items above will not survive."
+    exit 1
+}
 
 echo "session-close checklist"
 
@@ -42,16 +54,21 @@ else
 fi
 
 # 2 — claimed work items
-claimed=$(scripts/truth issues 2>/dev/null | grep -cE '\bclaimed\b' || true)
+# count the STATUS column, never free text: an issue TITLED "audit claimed
+# sessions" (or a claim sentence containing "unverified" below) used to
+# false-match a bare grep over the whole row
+issues_out=$(scripts/truth issues 2>/dev/null) || cli_fail
+claimed=$(printf '%s\n' "$issues_out" | awk '$2 == "claimed"' | grep -c '^wk-')
 if [ "${claimed:-0}" -gt 0 ]; then
     fail "$claimed work item(s) still claimed — 'truth done --claim' or 'truth start --release'"
-    scripts/truth issues 2>/dev/null | grep -E '\bclaimed\b' | head -5 | sed 's/^/          /'
+    printf '%s\n' "$issues_out" | awk '$2 == "claimed"' | head -5 | sed 's/^/          /'
 else
     ok "no claimed work items"
 fi
 
 # 3 — unverified claims (warn: dispatch verifiers, don't let them pile up)
-unver=$(scripts/truth list 2>/dev/null | grep -c 'unverified' || true)
+list_out=$(scripts/truth list --unverified 2>/dev/null) || cli_fail
+unver=$(printf '%s\n' "$list_out" | grep -c '^tr-')
 if [ "${unver:-0}" -gt 0 ]; then
     warn "$unver claim(s) unverified — dispatch verifiers or expect ready-gate warnings"
 else
@@ -61,7 +78,8 @@ fi
 # 4 — verdict queue (warn + count)
 # count queue ROWS (tr- prefixed), not output lines: an empty queue
 # prints a one-line "queue empty" message that wc -l misread as debt
-queue=$(scripts/truth queue 2>/dev/null | grep -c '^tr-' || true)
+queue_out=$(scripts/truth queue 2>/dev/null) || cli_fail
+queue=$(printf '%s\n' "$queue_out" | grep -c '^tr-')
 if [ "${queue:-0}" -gt 0 ]; then
     warn "verdict queue holds $queue claim(s) — re-verify what your session staled"
 else

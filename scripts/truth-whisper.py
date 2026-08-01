@@ -59,11 +59,23 @@ if rel.startswith(".."):
 deny_file = os.path.join(root, "scripts", "truth-whisper.deny")
 if os.path.exists(deny_file):
     with open(deny_file, encoding="utf-8") as f:
-        for pat in f:
+        for n, pat in enumerate(f, 1):
             pat = pat.strip()
             if not pat or pat.startswith("#"):
                 continue
-            if re.match(pat, rel):
+            try:
+                hit = re.match(pat, rel)
+            except re.error:
+                # One typo'd line must not disarm the WHOLE deny list via
+                # a traceback the harness reads as allow (R9): this stage
+                # fails CLOSED, so a pattern that cannot compile denies.
+                # The reason names the defect, never a way around it.
+                emit("deny", permissionDecisionReason=(
+                    f"malformed deny pattern line {n} -- failing closed; "
+                    "fix scripts/truth-whisper.deny. The deny list could "
+                    "not be evaluated, so edits it may cover are blocked "
+                    "until the pattern is repaired."))
+            if hit:
                 emit("deny", permissionDecisionReason=(
                     f"{rel} is deny-listed ({pat}): frozen, or "
                     "append-only through the truth CLI, by policy (see "

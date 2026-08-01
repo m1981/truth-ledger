@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor + ADR-028 FAULT IF future-dated-issue transition coherence + ADR-009/M4 FAULT SD screen-gates-execution ordering + v0.9.12 R3/ADR-030 FAULT RA reaffirm-mismatch-never-auto-filed + v0.9.13 R6/ADR-031 unified duplicate-id rule: B1/B3-B5 expect the one message, FAULT K2 later-ts distinct duplicate flips to refused + v0.9.14 R12/ADR-032 FAULT SD-decay --scope-ok default-expiry (4 arms incl. negative control) + R13/ADR-033 FAULT OV override-velocity verbatim-repeat advisory (2 arms incl. negative control) + v0.9.20/ADR-034 FAULT GS staged gate table + CC-1 advisory block (5 arms incl. negative control) + v0.9.21/ADR-035 FAULT X positive-claim exit gate (8 arms incl. negative control + validate mirror) + v0.9.22/ADR-036 FAULT TG tombstone citation gate (11 arms incl. scope policy, fail-closed, preflight, unicode quotepath) + v0.9.23/ADR-037 FAULT RC recipe lints + generated-paths (10 arms incl. per-segment, carve-outs, decay, quote-split, dropped-override) + v0.9.24/ADR-038 FAULT DW dirty-watch advisory (7 arms incl. untracked-under-glob, rename, unicode, UU-conflict) + v0.9.25/ADR-039 FAULT BF blast forecast + churn report (7 arms incl. window boundary, shallow, unborn-HEAD) + ADR-010 FAULT SEP separation instrument (3 arms incl. negative control)).
+# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor + ADR-028 FAULT IF future-dated-issue transition coherence + ADR-009/M4 FAULT SD screen-gates-execution ordering + v0.9.12 R3/ADR-030 FAULT RA reaffirm-mismatch-never-auto-filed + v0.9.13 R6/ADR-031 unified duplicate-id rule: B1/B3-B5 expect the one message, FAULT K2 later-ts distinct duplicate flips to refused + v0.9.14 R12/ADR-032 FAULT SD-decay --scope-ok default-expiry (4 arms incl. negative control) + R13/ADR-033 FAULT OV override-velocity verbatim-repeat advisory (2 arms incl. negative control) + v0.9.20/ADR-034 FAULT GS staged gate table + CC-1 advisory block (5 arms incl. negative control) + v0.9.21/ADR-035 FAULT X positive-claim exit gate (8 arms incl. negative control + validate mirror) + v0.9.22/ADR-036 FAULT TG tombstone citation gate (11 arms incl. scope policy, fail-closed, preflight, unicode quotepath) + v0.9.23/ADR-037 FAULT RC recipe lints + generated-paths (10 arms incl. per-segment, carve-outs, decay, quote-split, dropped-override) + v0.9.24/ADR-038 FAULT DW dirty-watch advisory (7 arms incl. untracked-under-glob, rename, unicode, UU-conflict) + v0.9.25/ADR-039 FAULT BF blast forecast + churn report (7 arms incl. window boundary, shallow, unborn-HEAD) + ADR-010 FAULT SEP separation instrument (3 arms incl. negative control) + P1 review R1 FAULT S2D disputed-citer spec fails + R3 SC dead-sensor scream and claimed-count false-match immunity + L3-F7 FAULT GE check-truth environment lane (2 arms incl. negative control)).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -1256,6 +1256,25 @@ else
   rm -f docs/specs/bad.md
 fi
 
+say "FAULT S2D (R1): spec citing a DISPUTED side must fail -- contradicts promises specs citing either side fail"
+CID_DS1=$($T claim "ds-fixture parser accepts unicode identifiers" --class UNVERIFIED --tier P1)
+CID_DS2=$($T claim "ds-fixture serializer emits ascii output only" --class UNVERIFIED --tier P1)
+TRUTH_SESSION=s-canary-verifier $T verdict "$CID_DS1" agree --basis "canary: ds" >/dev/null
+TRUTH_SESSION=s-canary-verifier $T verdict "$CID_DS2" agree --basis "canary: ds" >/dev/null
+$T contradicts "$CID_DS1" "$CID_DS2" --basis "canary: unicode in cannot leave ascii-only out" >/dev/null
+if ! $T list --disputed | grep -q "$CID_DS1"; then
+  miss "fault injection failed: $CID_DS1 never derived DISPUTED, S2D cannot run armed"
+else
+  printf '# Spec: canary disputed\nstands on %s\n' "$CID_DS1" > docs/specs/disputed.md
+  S2D_OUT=$(bash scripts/spec-health.sh 2>&1) && S2D_RC=0 || S2D_RC=$?
+  if [ "$S2D_RC" -ne 0 ] && echo "$S2D_OUT" | grep -q "FAIL  $CID_DS1  disputed"; then
+    ok "spec on disputed $CID_DS1 failed with exit $S2D_RC"
+  else
+    miss "spec-health passed a spec citing disputed $CID_DS1 (rc=$S2D_RC): $(echo "$S2D_OUT" | grep "$CID_DS1" || true)"
+  fi
+  rm -f docs/specs/disputed.md
+fi
+
 say "FAULT S3 (spec-health): zero-id spec must WARN but not fail"
 printf '# Spec: canary unwired\nprose with no ids\n' > docs/specs/unwired.md
 S3_OUT=$(bash scripts/spec-health.sh 2>&1) && S3_RC=0 || S3_RC=$?
@@ -1371,6 +1390,41 @@ else
   ok "check-truth.sh blocked the tampered ledger"
 fi
 git checkout -q -- .truth/claims.jsonl
+
+say "FAULT GE (L3-F7): unreadable staged ledger must route to the environment lane (exit 2), never a false green"
+# Own sandbox (the FAULT DG pattern): FAULT N/A above restore the ledger
+# from the INDEX, so the main sandbox's ledger is still tampered here and
+# an honest append could never pass its gate. No subshell -- ok/miss
+# mutate the counters; cwd restored below.
+GE="$(mktemp -d)"; TDIRS+=("$GE")
+mkrepo "$GE"
+git add -A && git commit -qm "ge: init" --no-verify
+$T claim "ge environment lane probe fact" --class UNVERIFIED --tier P2 >/dev/null 2>&1
+git add .truth/claims.jsonl
+GESHIM="$(mktemp -d)"; TDIRS+=("$GESHIM")
+GEREAL="$(command -v git)"
+printf '#!/usr/bin/env bash\n[ "${1:-}" = "show" ] && { echo "git: simulated show failure" >&2; exit 128; }\nexec "%s" "$@"\n' "$GEREAL" > "$GESHIM/git"
+chmod +x "$GESHIM/git"
+if PATH="$GESHIM:$PATH" git show ":.truth/claims.jsonl" >/dev/null 2>&1; then
+  miss "fault injection failed: the git shim still serves show"
+else
+  PATH="$GESHIM:$PATH" bash scripts/check-truth.sh >/dev/null 2>&1; GE_RC=$?
+  if [ "$GE_RC" -eq 2 ]; then
+    ok "dead git show exited 2 (environment, not governance)"
+  else
+    miss "check-truth with a dead git show exited $GE_RC instead of 2 (empty-pipe false green?)"
+  fi
+  # negative control: the shim was the only fault -- the same staged
+  # honest append passes with a working git
+  bash scripts/check-truth.sh >/dev/null 2>&1; GE2_RC=$?
+  if [ "$GE2_RC" -eq 0 ]; then
+    ok "same staged append passes with a working git (exit 0)"
+  else
+    miss "negative control failed: healthy gate exited $GE2_RC on an honest append"
+  fi
+fi
+cd "$TMP1"
+rm -rf "$GE" "$GESHIM"
 
 # ======================================================= sandbox 2 (G1)
 say "FAULT F (G1): VERIFIED claim in a zero-commit repo must be refused"
@@ -1699,6 +1753,31 @@ if [ "$SC_RC" -eq 0 ] && printf '%s' "$SC_OUT" | grep -q "WARN.*unverified"; the
 else
   miss "unverified-claim debt handling wrong (rc=$SC_RC)"
 fi
+# R3: the claimed probe must count the STATUS column, never free text --
+# an issue whose TITLE contains "claimed" used to false-FAIL the gate
+WK_SCT=$($T issue "audit claimed counter probe" 2>/dev/null)
+git add .truth/claims.jsonl && git commit -qm "canary: sc titled probe" --no-verify
+SCT_OUT=$(bash scripts/session-close.sh 2>/dev/null); SCT_RC=$?
+if ! $T issues | grep -q "audit claimed counter probe"; then
+  miss "fault injection failed: the titled probe issue was never filed"
+elif printf '%s' "$SCT_OUT" | grep -q "still claimed"; then
+  miss "the word 'claimed' in an OPEN issue's title false-matched the claimed count (rc=$SCT_RC)"
+else
+  ok "open issue titled 'claimed' did not trip the claimed count (rc=$SCT_RC)"
+fi
+# R3/F1: a dead CLI must scream, never degrade to zero counts and
+# "Safe to close" -- the gate's own sensor may not die silently
+cp .truth/claims.jsonl claims.sc.bak
+echo 'sc corrupt probe: not json' >> .truth/claims.jsonl
+SCD_OUT=$(bash scripts/session-close.sh 2>/dev/null); SCD_RC=$?
+if ! grep -q 'sc corrupt probe' .truth/claims.jsonl; then
+  miss "fault injection failed: the ledger was never corrupted"
+elif [ "$SCD_RC" -ne 0 ] && printf '%s' "$SCD_OUT" | grep -q "nothing below was checked"; then
+  ok "corrupt ledger screamed 'nothing below was checked' at exit $SCD_RC"
+else
+  miss "dead CLI degraded silently (rc=$SCD_RC): $(printf '%s' "$SCD_OUT" | tail -2)"
+fi
+mv claims.sc.bak .truth/claims.jsonl
 mkdir -p scripts/session-gates.d
 printf '#!/usr/bin/env bash\nexit 1\n' > scripts/session-gates.d/always-fail.sh
 git add -A && git commit -qm "canary: sc failing gate" --no-verify

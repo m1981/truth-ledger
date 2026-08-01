@@ -73,5 +73,29 @@ else
   bad "could not create a worktree to test (git worktree add failed)"
 fi
 
+say "CASE 4 (deny stage, R9): a malformed deny pattern must fail CLOSED, never traceback to allow"
+# The hook reads the deny file from the repo root, so the bad line is
+# appended to the REAL file -- backup first, restore trap-guarded, and
+# verify the restore was byte-identical before judging the case.
+DENY="$ROOT/scripts/truth-whisper.deny"
+cp "$DENY" "$DENY.bak.$$"
+restore_deny() { [ -f "$DENY.bak.$$" ] && mv -f "$DENY.bak.$$" "$DENY"; }
+trap restore_deny EXIT
+printf 'docs/(\n' >> "$DENY"
+BADLINE=$(grep -c '' "$DENY")   # the malformed pattern's 1-based line number
+OUT=$(printf '{"session_id":"s-deny-%s","tool_input":{"file_path":"%s/%s"}}' "$NONCE" "$ROOT" "$WATCHED" \
+      | python3 "$HOOK" 2>"$ROOT/deny.err"); RC=$?
+restore_deny
+trap - EXIT
+if [ "$RC" -eq 0 ] \
+   && printf '%s' "$OUT" | grep -q '"permissionDecision": "deny"' \
+   && printf '%s' "$OUT" | grep -q "malformed deny pattern line $BADLINE" \
+   && printf '%s' "$OUT" | grep -q 'truth-whisper.deny'; then
+  ok "malformed pattern denied (failing closed), naming file and line $BADLINE"
+else
+  bad "malformed deny pattern did not fail closed (rc=$RC): $(printf '%s' "$OUT" | head -c 200) err=$(head -c 120 "$ROOT/deny.err")"
+fi
+rm -f "$ROOT/deny.err"
+
 printf '\nwhisper-hook gate: %d caught, %d missed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] && echo "ALL WHISPER CASES CAUGHT." || exit 1

@@ -4,8 +4,8 @@
 # as an id; this script is the tripwire that makes that rule pay rent.
 #
 # Judges cited claims by the ADR-001 matrix: live ok; unverified warns;
-# cannot_verify fails P0 / warns otherwise; stale/diverged/retracted/missing
-# fail. Cited issues: cancelled/missing fail. Every id cited ANYWHERE in a
+# cannot_verify fails P0 / warns otherwise; stale/diverged/retracted/
+# disputed/missing fail. Cited issues: cancelled/missing fail. Every id cited ANYWHERE in a
 # spec is tripwired (non-goals included) — refer by title to opt out.
 # Zero-id specs WARN only (pre-convention legacy prose, wire when next touched).
 #
@@ -32,7 +32,7 @@ import json, os, re, sys
 claims = {r["id"]: r for r in json.loads(os.environ["CLAIMS_JSON"])}
 issues = {r["id"]: r for r in json.loads(os.environ["ISSUES_JSON"])}
 
-CLAIM_BAD = {"stale", "diverged", "retracted"}
+CLAIM_BAD = {"stale", "diverged", "retracted", "disputed"}
 ID_RE = re.compile(r"\b(?:tr|wk)-[0-9a-f]{8}\b")
 
 failures = warnings = 0

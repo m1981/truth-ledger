@@ -2466,6 +2466,136 @@ class TestAppendSingleWrite(unittest.TestCase):
             self.assertEqual(json.loads(lines[0])["kind"], "claim")
 
 
+class TestAppendRecords(unittest.TestCase):
+    # R2: multi-record transactions land in ONE write(2) call -- "both
+    # records or neither" (ADR-002/ADR-014) is literal, not aspirational.
+    # append_record delegates here with n=1, so there is exactly one
+    # writer path; cmd_done's claim+event pair rides one buffer.
+
+    def _counting(self, path):
+        """Monkeypatch ledger_path + os.write; returns (calls, restore)."""
+        orig_lp, orig_write = tm.ledger_path, tm.os.write
+        calls = []
+
+        def counting_write(fd, data):
+            calls.append(bytes(data))
+            return orig_write(fd, data)
+
+        tm.ledger_path = lambda: path
+        tm.os.write = counting_write
+
+        def restore():
+            tm.os.write = orig_write
+            tm.ledger_path = orig_lp
+        return calls, restore
+
+    def test_two_record_batch_is_one_write_parseable_and_ordered(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, ".truth", "claims.jsonl")
+            calls, restore = self._counting(path)
+            try:
+                recs = tm.append_records(
+                    [("claim", claim_p(), "tr-"),
+                     ("issue_event", {"issue": "wk-00000001",
+                                      "event": "closed", "basis": "b"},
+                      "tr-")])
+            finally:
+                restore()
+            self.assertEqual(len(calls), 1,
+                             "a 2-record append must issue exactly one "
+                             "write(2) -- two calls reopen the torn-write "
+                             "window R2 closed")
+            with open(path, encoding="utf-8") as f:
+                parsed = [json.loads(ln) for ln in f.read().splitlines()]
+            self.assertEqual([p["kind"] for p in parsed],
+                             ["claim", "issue_event"])
+            self.assertEqual(tm.validate_events(list(enumerate(parsed, 1))),
+                             [])
+            self.assertGreater(parsed[1]["ts"], parsed[0]["ts"],
+                               "file order must equal ts order within a "
+                               "batch (ADR-015)")
+            self.assertEqual([r["id"] for r in recs],
+                             [p["id"] for p in parsed])
+
+    def test_single_record_append_unchanged(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, ".truth", "claims.jsonl")
+            calls, restore = self._counting(path)
+            try:
+                rec = tm.append_record("issue", {"title": "x", "text": "",
+                                                 "deps": [], "premises": []},
+                                       prefix="wk-")
+            finally:
+                restore()
+            self.assertEqual(len(calls), 1)
+            with open(path, encoding="utf-8") as f:
+                lines = f.read().splitlines()
+            self.assertEqual(len(lines), 1)
+            self.assertEqual(json.loads(lines[0])["id"], rec["id"])
+            self.assertTrue(rec["id"].startswith("wk-"))
+
+    def test_done_claim_pair_lands_in_one_write(self):
+        # Drives cmd_done itself (in-process, throwaway git sandbox) so a
+        # revert to two append_record calls -- each a valid single write --
+        # is caught here, not just at the append_records unit level.
+        import argparse, contextlib, io, tempfile
+        with tempfile.TemporaryDirectory() as d:
+            d = os.path.realpath(d)
+            _mk_sandbox(d)
+            cwd, orig_write = os.getcwd(), tm.os.write
+            env_before = {k: os.environ.get(k)
+                          for k in ("TRUTH_ACTOR", "TRUTH_SESSION",
+                                    "TRUTH_NOW")}
+            os.environ["TRUTH_ACTOR"] = "t"
+            os.environ["TRUTH_SESSION"] = "s-core-test"
+            os.environ.pop("TRUTH_NOW", None)
+            record_writes = []
+
+            def counting_write(fd, data):
+                if b'"kind"' in bytes(data):  # ledger lines only, not
+                    record_writes.append(bytes(data))  # subprocess plumbing
+                return orig_write(fd, data)
+
+            try:
+                os.chdir(d)
+                wid = tm.append_record("issue",
+                                       {"title": "w", "text": "",
+                                        "deps": [], "premises": []},
+                                       prefix="wk-")["id"]
+                tm.os.write = counting_write
+                ns = argparse.Namespace(
+                    issue_id=wid, cancel=False, reopen=False, basis="done",
+                    orphan_ok=None, claim_text="the work made f.txt true",
+                    evidence_class="UNVERIFIED", evidence_cmd=None,
+                    paths=None, tier="P2", ttl_days=None, claim_basis=None,
+                    single_run=False, duplicate_ok=False, scope_ok=None,
+                    evidence_unsafe_ok=False, evidence_exit_ok=None,
+                    generated_ok=None, accept_unsafe_ok=False)
+                out, err = io.StringIO(), io.StringIO()
+                with contextlib.redirect_stdout(out), \
+                        contextlib.redirect_stderr(err):
+                    tm.cmd_done(ns)
+            finally:
+                tm.os.write = orig_write
+                os.chdir(cwd)
+                for k, v in env_before.items():
+                    if v is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = v
+            self.assertEqual(len(record_writes), 1,
+                             "done --claim must land claim+event in ONE "
+                             "write(2): both records or neither (ADR-002)")
+            recs = [json.loads(ln) for ln in
+                    record_writes[0].decode("utf-8").splitlines()]
+            self.assertEqual([r["kind"] for r in recs],
+                             ["claim", "issue_event"])
+            self.assertGreater(recs[1]["ts"], recs[0]["ts"])
+            self.assertIn("filed tr-", out.getvalue())
+
+
 # ---------------------- batch-1 hardening (roadmap-v3 R1/R2)
 #
 # R1 (field-notes-batch-m item 2): a VERIFIED claim whose evidence command

@@ -20,7 +20,6 @@ the ADR-026 lockstep test parses and pins all other surfaces to.
 Stdlib only. Python 3.9+. POSIX (G5: documented limit).
 """
 import argparse
-import fnmatch
 import functools
 import hashlib
 import io
@@ -2414,7 +2413,17 @@ def _last_ledger_ts():
                 continue
     return last
 
-def append_record(kind, payload, prefix="tr-"):
+def append_records(kinds_payloads):
+    """Append a batch of records in ONE write(2) call -- all or nothing.
+
+    Items are (kind, payload, prefix) triples. Every record is built
+    BEFORE any byte lands, then the batch is serialized into one buffer
+    and written with a single os.write on an O_APPEND fd: the
+    concurrent-append safety statement (paper sec 1) assumes
+    single-write-call O_APPEND atomicity, and that same assumption now
+    carries multi-record transactions -- cmd_done's claim+event pair is
+    "both records or neither" literally, not aspirationally (R2).
+    The sole writer path: append_record delegates here with n=1."""
     ts = now_iso()
     # ADR-015 clock-push (the HLC 'physical clock catch-up' half, and
     # nothing more): a real-clock record must not sort before the ledger
@@ -2432,20 +2441,31 @@ def append_record(kind, payload, prefix="tr-"):
             if (last_dt - now_dt()).total_seconds() <= SKEW_TOLERANCE_SECONDS:
                 ts = (last_dt + timedelta(microseconds=1)) \
                     .isoformat(timespec="microseconds")
-    rec = make_record(kind, payload, actor(), session(), ts, prefix)
+    recs = []
+    for kind, payload, prefix in kinds_payloads:
+        recs.append(make_record(kind, payload, actor(), session(), ts, prefix))
+        # The same clock-push idiom, applied WITHIN the batch: each later
+        # record sorts strictly after the one before it, so file order =
+        # ts order (ADR-015's total order never leans on the id tiebreak
+        # for records born in one transaction).
+        ts = (parse_ts(ts) + timedelta(microseconds=1)) \
+            .isoformat(timespec="microseconds")
     path = ledger_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    # One write(2) call for the whole line: the concurrent-append safety
-    # statement (paper sec 1) assumes single-write-call O_APPEND atomicity,
-    # and the buffered text layer can split a record longer than the stdio
-    # buffer across several write(2) calls.
-    line = (json.dumps(rec, sort_keys=True) + "\n").encode("utf-8")
+    # One write(2) call for the whole buffer: the buffered text layer can
+    # split anything longer than the stdio buffer across several write(2)
+    # calls, so the fd is written raw.
+    buf = b"".join((json.dumps(r, sort_keys=True) + "\n").encode("utf-8")
+                   for r in recs)
     fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
     try:
-        os.write(fd, line)
+        os.write(fd, buf)
     finally:
         os.close(fd)
-    return rec
+    return recs
+
+def append_record(kind, payload, prefix="tr-"):
+    return append_records([(kind, payload, prefix)])[0]
 
 def load_events(stream=None):
     events = []
@@ -3464,14 +3484,18 @@ def cmd_done(a):
             accept_note = {"command": accept["command"],
                            "kind": accept.get("kind", "verification"),
                            "executed": True, "returncode": 0}
-    claim_rec = (append_record("claim", claim_payload)
-                 if claim_payload else None)
     event_payload = {"issue": a.issue_id, "event": event, "basis": a.basis}
     if event == "cancelled" and a.orphan_ok:
         event_payload["orphan_basis"] = a.orphan_ok  # ADR-036, CC-2
     if accept_note:
         event_payload["accept"] = accept_note
-    append_record("issue_event", event_payload)
+    # "Both records or neither" (ADR-002/ADR-014) is LITERAL: the claim
+    # and the close event land in one write(2) via append_records, so no
+    # crash window can orphan a completion claim against an open issue.
+    batch = ([("claim", claim_payload, "tr-")] if claim_payload else []) \
+        + [("issue_event", event_payload, "tr-")]
+    recs = append_records(batch)
+    claim_rec = recs[0] if claim_payload else None
     out = f"{a.issue_id} -> {event}"
     if accept_note:
         out += (" (acceptance passed)" if accept_note["executed"]

@@ -10,8 +10,8 @@
 # judgment matrix, applied to the whole prose corpus instead of specs.
 #
 # ok: live | WARN: unverified, cannot_verify | FAIL: stale, diverged,
-# retracted, missing. Zero-citation docs pass silently: prose is not
-# obliged to cite, only forbidden to stand on dead citations.
+# retracted, disputed, missing. Zero-citation docs pass silently: prose is
+# not obliged to cite, only forbidden to stand on dead citations.
 #
 # --- SCOPE, recalibrated 2026-08-01 -------------------------------------
 # The sweep judges only what it can act on. Before this, 108 of 108
@@ -69,7 +69,7 @@ python3 - <<'PY'
 import json, os, re, sys
 
 claims = {r["id"]: r for r in json.loads(os.environ["CLAIMS_JSON"])}
-BAD = {"stale", "diverged", "retracted"}
+BAD = {"stale", "diverged", "retracted", "disputed"}
 # Known deployments. An ALLOWLIST, not a free prefix: the first cut let
 # any word before a colon mean "foreign", so `successor:tr-...` or a
 # typo'd `kuchnia:` silently escaped judgment, and a local dead id in a
@@ -107,7 +107,12 @@ for path in os.environ["FILES"].splitlines():
     hits = sorted({(m.group("repo"), m.group("id"))
                    for m in ID_RE.finditer("".join(prose))},
                   key=lambda t: (t[0] or "", t[1]))
-    if not hits:
+    # Near-misses gathered BEFORE the skip: a doc whose ONLY citation is
+    # a malformed id used to fall through `if not hits: continue` and the
+    # near-miss vanished from the sweep -- the precise disappearance this
+    # class exists to catch (found by test-fact-health.sh CASE 5).
+    near = sorted({m.group(0) for m in NEARMISS_RE.finditer("".join(prose))})
+    if not hits and not near:
         continue
     print(path)
     for repo, rid in hits:
@@ -135,7 +140,7 @@ for path in os.environ["FILES"].splitlines():
             warnings += 1
         else:
             print(f"  ok    {rid}  {rec['status']}")
-    for m in sorted({m.group(0) for m in NEARMISS_RE.finditer("".join(prose))}):
+    for m in near:
         print(f"  FAIL  {m}  malformed id -- a citation is tr- plus exactly 8 "
               "lowercase hex; this one would otherwise vanish from the sweep")
         failures += 1

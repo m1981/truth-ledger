@@ -21,16 +21,34 @@ if ! git diff --cached --name-only -- "$LEDGER" | grep -q .; then
   exit 0
 fi
 
+# Capture each ledger snapshot ONCE, rc checked: an unchecked `git show`
+# in a pipeline fed the checks an EMPTY stream on failure -- head -n of
+# nothing compared equal and `validate --stdin` blessed 0 records, a
+# false green in the exact lane this gate exists to close (L3-F7). A
+# git that cannot serve the content is an environment problem (exit 2),
+# never a pass.
+STAGED="$(mktemp)" || exit 2
+trap 'rm -f "$STAGED" "${COMMITTED:-}"' EXIT
+if ! git show ":$LEDGER" > "$STAGED"; then
+  echo "check-truth: cannot read staged ledger from git (exit 2: environment, not governance)" >&2
+  exit 2
+fi
+
 if git cat-file -e "HEAD:$LEDGER" 2>/dev/null; then
-  OLD_N=$(git show "HEAD:$LEDGER" | wc -l)
-  if ! cmp -s <(git show "HEAD:$LEDGER") <(git show ":$LEDGER" | head -n "$OLD_N"); then
+  COMMITTED="$(mktemp)" || exit 2
+  if ! git show "HEAD:$LEDGER" > "$COMMITTED"; then
+    echo "check-truth: cannot read committed ledger from git (exit 2: environment, not governance)" >&2
+    exit 2
+  fi
+  OLD_N=$(wc -l < "$COMMITTED")
+  if ! cmp -s "$COMMITTED" <(head -n "$OLD_N" "$STAGED"); then
     echo "check-truth: INV-A violation -- $LEDGER is append-only." >&2
     echo "  The staged ledger does not extend the committed ledger:" >&2
     echo "  a record was modified, deleted, or inserted mid-file. To" >&2
     echo "  change a claim's status, append a verdict or invalidation." >&2
     exit 1
   fi
-  NEW_N=$(git show ":$LEDGER" | wc -l)
+  NEW_N=$(wc -l < "$STAGED")
   if [ "$NEW_N" -lt "$OLD_N" ]; then
     echo "check-truth: INV-A violation -- staged ledger is shorter than HEAD's." >&2
     exit 1
@@ -41,7 +59,7 @@ if [ ! -x "$TRUTH" ] && [ ! -f "$TRUTH" ]; then
   echo "check-truth: cannot find $TRUTH (exit 2: environment, not governance)" >&2
   exit 2
 fi
-if ! git show ":$LEDGER" | python3 "$TRUTH" validate --stdin; then
+if ! python3 "$TRUTH" validate --stdin < "$STAGED"; then
   echo "check-truth: INV-B violation -- staged ledger fails schema validation." >&2
   exit 1
 fi
