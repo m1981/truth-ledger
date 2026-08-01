@@ -1,0 +1,19 @@
+# ADR-037 generated-artifact watch refusal — CONSUMER POLICY.
+#
+# A claim watching a generated artifact is a tripwire on an output: it
+# stales whenever the generator runs, and its evidence describes something
+# nobody edits. Paths listed here are refused as watches (overridable with
+# --generated-ok "<basis>", which then decays on the ADR-032 clock).
+#
+# THIS FILE IS DELIBERATELY EMPTY, and empty is a statement, not an
+# omission: nothing in this repository is generated. Every tracked file is
+# hand-authored except .truth/claims.jsonl, which the CLI already excludes
+# structurally. An ABSENT file leaves the check dark and voices an advisory
+# on every filing; an empty one arms it and says so out loud.
+#
+# Committed 2026-08-01 alongside .truth/citation-scope, for the same
+# reason: a coverage audit found two ADR-shipped gates reporting nothing
+# because their policy file had never been written. A gate that looks armed
+# and checks nothing is worse than no gate.
+#
+# Add a path here the day this repo generates one.
