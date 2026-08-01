@@ -70,12 +70,12 @@ missing middle 29119-4 never standardized.
 ## through the deployed ADR-009 screen, run on macOS BSD grep)
 
 ```
-# spec<->manifest sentinel (claim tr-fcca2d96 in kuchnie):
+# spec<->manifest sentinel (claim kuchnie:tr-fcca2d96 in kuchnie):
 test -s catalog/docs/specs/configurator-api.sc.txt && grep -howE 'SC-cfgapi-[0-9]{3}' catalog/docs/specs/configurator-api.md | sort | diff - catalog/docs/specs/configurator-api.sc.txt
 # NOTE: plain `sort`, NOT `sort -u`, on the spec side -- `-u` would
 # collapse a duplicated marker and auto-agree it (red-team 5.1).
 
-# tests<->manifest sentinel (claim tr-40a5beb5 in kuchnie):
+# tests<->manifest sentinel (claim kuchnie:tr-40a5beb5 in kuchnie):
 test -s catalog/docs/specs/configurator-api.sc.txt && grep -rhowE 'SC-cfgapi-[0-9]{3}' --include='test_*.py' catalog/tests | sort -u | diff - catalog/docs/specs/configurator-api.sc.txt
 # `-u` IS correct here: multiple tests citing one id is legitimate.
 ```
@@ -163,7 +163,7 @@ commit. Manifest + slug registry + 8 docstring citations in
 `catalog/tests/test_configurator.py` (005/006 cited twice by design).
 Negative controls run four ways, all loud. 21 tests green, governance
 clean, 0 stale. Content commit 505e02c, ledger commit 2738e0b; sentinels
-tr-fcca2d96 / tr-40a5beb5 verified agree by independent session
+kuchnie:tr-fcca2d96 / kuchnie:tr-40a5beb5 verified agree by independent session
 verifier-r-0726. Cost: ~45 minutes end to end, +2 claims (+1.4% of the
 kuchnie ledger).
 

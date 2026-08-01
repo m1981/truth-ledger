@@ -369,7 +369,7 @@ records up: that manufactures churn and a false air of intentionality.
   It **will** stale on every new ADR and on any Status-header edit; that
   staling is its whole job — a new ADR should re-assert the series'
   shape once, in a fresh verifier session, not silently extend it. Note
-  the 17 ADRs lit *today* are lit by **literal per-file** paths that the
+  the ADRs lit *today* are lit by **literal per-file** paths that the
   living behaviour-claims cite as their doc surface (e.g. `tr-3ddc6f97`
   lists `…/029-…md`), not by a directory glob — so a new ADR does not
   stale them, it simply arrives dark until the series claim or a
@@ -387,7 +387,7 @@ watcher:
   | Living contract | Watching claim |
   |---|---|
   | `template/prompts/truth-verifier.md` — the verifier protocol | `tr-1820b1aa` (four-step shape + the `agree\|diverge\|cannot_verify` verdict form) |
-  | `docs/truth-ledger-explained.md` — the explainer | `tr-6ebfedce` (version-synced to the CLI; currently **diverged** — an independent verifier found the doc's schema `$id` section four versions stale, tracked as `wk-1d4a112b`. This row has now gone stale twice by citing a rolled-over predecessor; the chain itself lives in the ledger, which is its one home) |
+  | `docs/truth-ledger-explained.md` — the explainer | `tr-6ebfedce` (version-synced to the CLI. This row has gone stale twice by citing a rolled-over predecessor; the chain itself lives in the ledger, which is its one home, so no predecessor is named here. Check the claim's live status rather than trusting this cell) |
   | `template/docs/beads-integration-guide.md` — the ready/adapter seam | `tr-301931eb` (`bd ready --json` default + adapter seam) |
   | `template/.truth/README.md` — the tracker-seam contract | `tr-ef37611b` (+ `tr-f4c6ec38`, `tr-c52e3e84`, `tr-fcdd4af2`) |
   | kuchnie's wired spec-coverage pairs, one per slug in its `docs/specs/sc-slugs.txt` — today `catalog/docs/specs/configurator-api.md` and `catalog/docs/specs/worktop-uu-seeding.md`, each with its sibling `.sc.txt` manifest | cfgapi `kuchnie:tr-fcca2d96` + `kuchnie:tr-40a5beb5`, wtuu `kuchnie:tr-22772c10` + `kuchnie:tr-a2acd399` in the **kuchnie ledger** (per pair: the spec↔manifest and tests↔manifest sentinels; sentinel recipe = the slug-scoped `SC-<slug>-[0-9]{3}` grep-and-diff). Consumer-side claims — the per-file `impact` loop below sees only this repo's ledger, so these pairs' DARK check runs in kuchnie |

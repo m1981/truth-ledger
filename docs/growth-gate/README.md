@@ -49,7 +49,7 @@ docstring citations + two sentinel diff claims per spec; assertion-dark
 grades r0–r3. Designed and twice-falsified 2026-07-26 (slug-scoped
 recipes, the `test -s` guard, `sort` without `-u` on the spec side).
 **Status: PILOT LIVE** — kuchnie configurator-api, sentinels
-tr-fcca2d96/tr-40a5beb5.
+kuchnie:tr-fcca2d96/kuchnie:tr-40a5beb5.
 **Trigger for the second wave: the operator wiring the next spec.**
 
 ## 5. V&V archetype pairings — testing design per spec archetype

@@ -85,7 +85,7 @@ Nine terms, used freely from here on.
 - **tier** — a claim's cost-of-being-wrong label: P0 (catastrophic) /
   P1 / P2
 - **ADR** — Architecture Decision Record — a short, numbered, immutable
-  note (context → decision → consequences). 33 exist; each closes one
+  note (context → decision → consequences); each closes one
   loophole or adds one capability
 
 The full glossary of every term, acronym, and identifier is §14.
@@ -958,7 +958,7 @@ history of why is the whole lesson in miniature:
 
 Norm → harness property → git property, each layer added when the
 previous one demonstrably failed. That escalation pattern is how most
-of this system's 33 ADRs came to exist.
+of this system's ADRs came to exist.
 
 ## 12 · Accepted gaps, in plain words
 
@@ -1155,6 +1155,11 @@ verdict), the definition carries it too.
   legitimate (ADR-037, schema v0.14). This one decays on the ADR-032
   clock alongside `scope_basis`; `evidence_exit_basis` and
   `orphan_basis` do not.
+- **`blast_forecast`** — stamped at filing on a path claim: distinct
+  commits that touched the watch in the trailing 30 days, an UPPER bound
+  on how often it will stale. Advisory at or above a self-calibrating
+  floor; shallow or unborn history stores nothing and says so (ADR-039).
+  This is the field that defines schema v0.15.
 - **`reaffirm_cleared`** — a field on a reaffirm auto-`agree` recording
   that a watched-but-unread file changed yet the output still matched;
   auditability, not judgment (ADR-030).
@@ -1355,7 +1360,9 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
   loop (liveness only as strong as hook wiring). Distinct from findings —
   these are open directions, not fixed bugs.
 - **`INV-*`** — invariants (above); the properties the suite defends.
-- **`ADR-NNN`** — Architecture Decision Records (001–039); each closes
+- **`ADR-NNN`** — Architecture Decision Records, numbered 001 upward
+  (the series' current extent is a ledger fact, not a number restated
+  here — see the density claim in the operations guide); each closes
   one loophole or adds one capability.
 - **canary `FAULT <code>`** — seeded faults the weekly `truth-canary.sh`
   injects; the letter families (e.g. `D` TTL, `H` human-gate, `V`
@@ -1463,7 +1470,7 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
   guarantee false; every ADR names one (`Falsifier:` …), and the paper's
   findings and the canary's seeded faults are falsifiers made to fire.
   Falsifiable-by-design: a mechanism you cannot name a breaker for is not
-  yet trusted (all 33 ADRs, paper §4).
+  yet trusted (every ADR, paper §4).
 - **blast radius** — how much knowledge a given edit would demote; the
   reason to keep watches no broader than needed, and what `truth impact`
   reports (paper §8).
@@ -1616,7 +1623,7 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
 ---
 
 *Compiled by an independent read of AGENTS.md, the v3 paper, the
-operations guide, the loophole map, all 33 ADRs, the four git hooks,
+operations guide, the loophole map, every ADR, the four git hooks,
 and the CLI source; converted from the original HTML explainer
 verbatim. Diagrams are illustrative summaries of cited sections, not a
 replacement for them — treat ADR text as authoritative on conflict.

@@ -65,9 +65,16 @@ import json, os, re, sys
 
 claims = {r["id"]: r for r in json.loads(os.environ["CLAIMS_JSON"])}
 BAD = {"stale", "diverged", "retracted"}
-# A citation is `tr-xxxxxxxx` (ours) or `<repo>:tr-xxxxxxxx` (foreign).
-# The optional prefix is what keeps another repo's ids out of our verdict.
-ID_RE = re.compile(r"\b(?:(?P<repo>[A-Za-z][\w.-]*):)?(?P<id>tr-[0-9a-f]{8})\b")
+# Known deployments. An ALLOWLIST, not a free prefix: the first cut let
+# any word before a colon mean "foreign", so `successor:tr-...` or a
+# typo'd `kuchnia:` silently escaped judgment, and a local dead id in a
+# table cell could be spoofed foreign by whatever word preceded it.
+DEPLOYMENTS = {"kuchnie", "sdk"}
+ID_RE = re.compile(r"(?:(?P<repo>[A-Za-z][\w.-]*):)?\b(?P<id>tr-[0-9a-f]{8})\b")
+# A near-miss looks like a citation but cannot be one: wrong length, or
+# uppercase hex. Silently unmatched before -- a dropped character made a
+# citation VANISH from the sweep rather than fail it.
+NEARMISS_RE = re.compile(r"\btr-(?![0-9a-f]{8}\b)[0-9a-fA-F]{4,12}\b")
 
 failures = warnings = cited = foreign = 0
 for path in os.environ["FILES"].splitlines():
@@ -81,6 +88,14 @@ for path in os.environ["FILES"].splitlines():
                 continue
             if not fenced:
                 prose.append(line)
+    if fenced:
+        # An odd fence count leaves the toggle stuck open and every
+        # citation below it silently skipped. Never fail quietly on a
+        # sensor that has stopped sensing (the F1 audit rule).
+        print(f"{path}\n  FAIL  unbalanced ``` fence -- the scan ended inside "
+              "a block, so citations after it were NOT swept")
+        failures += 1
+        continue
     # key= is load-bearing: `repo` is None for our own ids, and a bare
     # tuple sort compares None against a str the moment one foreign
     # citation exists.
@@ -91,9 +106,15 @@ for path in os.environ["FILES"].splitlines():
         continue
     print(path)
     for repo, rid in hits:
-        if repo:
+        if repo in DEPLOYMENTS:
             foreign += 1
             print(f"  INFO  {repo}:{rid}  foreign ledger -- not judged here")
+            continue
+        if repo:
+            print(f"  FAIL  {repo}:{rid}  unknown prefix {repo!r} -- a foreign "
+                  f"citation must name a known deployment ({', '.join(sorted(DEPLOYMENTS))}); "
+                  "an unrecognized prefix would silently escape judgment")
+            failures += 1
             continue
         cited += 1
         rec = claims.get(rid)
@@ -109,6 +130,10 @@ for path in os.environ["FILES"].splitlines():
             warnings += 1
         else:
             print(f"  ok    {rid}  {rec['status']}")
+    for m in sorted({m.group(0) for m in NEARMISS_RE.finditer("".join(prose))}):
+        print(f"  FAIL  {m}  malformed id -- a citation is tr- plus exactly 8 "
+              "lowercase hex; this one would otherwise vanish from the sweep")
+        failures += 1
 
 print(f"\nfact-health: {failures} failure(s), {warnings} warning(s), "
       f"{cited} citation(s), {foreign} foreign (not judged)")
