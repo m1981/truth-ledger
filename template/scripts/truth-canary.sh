@@ -425,6 +425,48 @@ fi
 cp "$AL_TMP/mine.bak" .truth/evidence-allow
 rm -rf "$AL_TMP"
 
+# ---- FAULT SEP (ADR-010 separation instrument) --------------------------
+# The author-not-verifier gate compares two session STRINGS, and
+# `session()` returns whatever TRUTH_SESSION says -- so the gate can see
+# the name and never the separation. Measured on the meta-repo's own
+# ledger 2026-08-01: 133 first-agree pairs, ZERO same-session agrees (the
+# gate has never fired), and 14 agrees landed inside one second of the
+# claim being filed -- less than the cost of the CLI calls a verification
+# makes. These arms pin the instrument that reports that, not a gate:
+# refusing on elapsed time is defeated by `sleep` and would teach the
+# bypass (the ADR-011 shape).
+say "FAULT SEP (ADR-010): a first agree landing inside the floor must be reported as unevidenced, and a slow one must not"
+CID_SEP=$($T claim "the widget probe is separation-instrumented" --class VERIFIED \
+     --evidence-cmd "cat watched.txt" --paths "watched.txt" \
+     --tier P2 --duplicate-ok 2>/dev/null)
+TRUTH_SESSION=s-canary-verifier $T verdict "$CID_SEP" agree --basis "canary: immediate agree, no reading possible" >/dev/null 2>&1
+if $T stats 2>/dev/null | grep -q "inside the 1.0s floor"; then
+  ok "SEP1: an agree filed inside the floor is reported as unevidenced separation"
+else
+  miss "SEP1: a sub-second agree was not reported -- the instrument is dark"
+fi
+# Assert on the JSON field, never on a grep of the whole stats text: the
+# blast section also prints claim ids, so a text grep matches for reasons
+# that have nothing to do with separation. The first cut of SEP3 did
+# exactly that and went flaky -- the release battery caught it.
+if $T stats --json 2>/dev/null | python3 -c "import json,sys; print('\n'.join(json.load(sys.stdin)['separation']['live_unevidenced']))" | grep -q "$CID_SEP"; then
+  ok "SEP2: the unevidenced claim is NAMED while it is live, not merely counted"
+else
+  miss "SEP2: the live unevidenced claim was not named -- the operator cannot act on a count"
+fi
+# negative control: a claim whose agree lands after the floor must NOT be
+# named. Costs one second of wall clock, deliberately.
+CID_SEPOK=$($T claim "the widget probe is separation-clean" --class VERIFIED \
+     --evidence-cmd "cat watched.txt" --paths "watched.txt" \
+     --tier P2 --duplicate-ok 2>/dev/null)
+sleep 1.1
+TRUTH_SESSION=s-canary-verifier $T verdict "$CID_SEPOK" agree --basis "canary: agree filed after the floor" >/dev/null 2>&1
+if $T stats --json 2>/dev/null | python3 -c "import json,sys; print('\n'.join(json.load(sys.stdin)['separation']['live_unevidenced']))" | grep -q "$CID_SEPOK"; then
+  miss "SEP3: a claim agreed AFTER the floor was flagged -- false positive on an honest verification"
+else
+  ok "SEP3: an agree after the floor is not flagged (negative control)"
+fi
+
 say "FAULT T (INV-M): a dead evidence-path tripwire must be refused at intake"
 if $T claim "a and watched are fine" --class VERIFIED \
      --evidence-cmd "cat watched.txt" --paths "watched.txt fabricated.txt" \

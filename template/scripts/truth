@@ -1427,6 +1427,78 @@ def stats_report(events, now, folded=None):
 # statuses the fold produces below live/unverified.
 DEAD_CLAIM_STATUSES = frozenset(("stale", "diverged", "retracted"))
 
+# ADR-010 separation instrument (2026-08-01). Derived by MEASUREMENT, not
+# chosen: one CLI invocation costs ~0.11-0.15s on the reference machine, so
+# `dispatch` + `verdict` is ~0.26s of pure process cost before a verifier
+# has read a dispatch packet or re-run any evidence. A first `agree`
+# landing inside this floor therefore leaves no room for the work a
+# verification IS -- the ledger records a different session STRING and
+# nothing more. Advisory only, and deliberately never a refusal: a gate
+# keyed on elapsed time is defeated by `sleep` and would TEACH that
+# bypass, which is the ADR-011 confused-deputy shape.
+SEPARATION_FLOOR_SECONDS = 1.0
+
+def separation_report(events, now, folded=None):
+    """The evidence-of-separation instrument for ADR-010. Pure consumer of
+    the fold, beside override_report/blast_report; NO schema change -- every
+    figure below is derivable from records already written.
+
+    ADR-010 refuses a SAME-SESSION agree, so the gate compares two session
+    strings. `session()` returns whatever TRUTH_SESSION says, which means
+    the gate can only ever see the name, never the separation. This report
+    is what the records CAN prove: how long a claim existed before its
+    first agree. Returns a dict:
+      * pairs -- claims whose first agree exists;
+      * same_session -- agrees whose session equals the author's (the gate
+        should keep this at 0; a non-zero value is a gate regression);
+      * unevidenced -- first agrees inside SEPARATION_FLOOR_SECONDS;
+      * live_unevidenced -- ids of those whose claim is LIVE today, i.e.
+        currently-trusted state resting on a verdict that cannot have
+        involved reading;
+      * fastest -- (seconds, claim id) or None;
+      * median_seconds -- the corpus middle, for context.
+    Pure: no clock read (`now` unused -- every timestamp is read from the
+    records, never recomputed; kept for signature parity)."""
+    del now  # signature parity; the report reads records, not the clock
+    claims, _ = folded if folded is not None else fold(events)
+    authored = {}
+    for cid, e in claims.items():
+        c = e["claim"]
+        authored[cid] = (c.get("ts"), c.get("session"))
+    firsts = {}
+    for _n, ev in sorted(events, key=fold_key):
+        if ev.get("kind") != "verdict":
+            continue
+        p = ev.get("payload") or {}
+        cid = p.get("claim")
+        if p.get("verdict") != "agree" or cid not in authored or cid in firsts:
+            continue
+        firsts[cid] = ev
+    lat, same, unevidenced, live_un = [], 0, [], []
+    for cid, v in firsts.items():
+        cts, csess = authored[cid]
+        try:
+            d = (parse_ts(v.get("ts")) - parse_ts(cts)).total_seconds()
+        except Exception:
+            continue
+        lat.append((d, cid))
+        if v.get("session") and v.get("session") == csess:
+            same += 1
+        if d < SEPARATION_FLOOR_SECONDS:
+            unevidenced.append(cid)
+            if claims[cid]["status"] == "live":
+                live_un.append(cid)
+    lat.sort()
+    return {
+        "pairs": len(lat),
+        "same_session": same,
+        "floor_seconds": SEPARATION_FLOOR_SECONDS,
+        "unevidenced": len(unevidenced),
+        "live_unevidenced": sorted(live_un),
+        "fastest": ([round(lat[0][0], 3), lat[0][1]] if lat else None),
+        "median_seconds": (round(lat[len(lat) // 2][0], 1) if lat else None),
+    }
+
 def override_report(events, now, folded=None):
     """ADR-033: the override-velocity instrument that supplies ADR-007's
     adoption gate its data. A pure fold consumer beside stats_report,
@@ -3653,9 +3725,11 @@ def cmd_stats(a):
     # threshold, no gate -- a non-blocking advisory only.
     overrides = override_report(events, now_dt(), folded=folded)
     blast = blast_report(events, folded=folded)
+    separation = separation_report(events, now_dt(), folded=folded)
     if a.json:
         report["overrides"] = overrides
         report["blast"] = blast
+        report["separation"] = separation
         print(json.dumps(report, indent=2))
         return
     print("claims by status: " + (", ".join(
@@ -3704,6 +3778,24 @@ def cmd_stats(a):
           + ("; top stalers: " + ", ".join(
               f"{s['path']}={s['invalidations']}"
               for s in b["staler_ranking"]) if b["staler_ranking"] else ""))
+    sp = separation
+    if sp["pairs"]:
+        print(f"separation: {sp['pairs']} first-agree pair(s), median "
+              f"{sp['median_seconds']}s; {sp['unevidenced']} inside the "
+              f"{sp['floor_seconds']}s floor"
+              + (f" (fastest {sp['fastest'][0]}s, {sp['fastest'][1]})"
+                 if sp["fastest"] else ""))
+        if sp["same_session"]:
+            print(f"  advisory: {sp['same_session']} agree(s) share the "
+                  "author's session -- ADR-010 should have refused these; "
+                  "the gate has regressed")
+        if sp["live_unevidenced"]:
+            print("  advisory: currently-LIVE claims whose first agree "
+                  "landed inside the floor, so the ledger holds no evidence "
+                  "a separate session ever read them: "
+                  + ", ".join(sp["live_unevidenced"])
+                  + " -- re-dispatch to earn the verification, or accept "
+                  "that 'live' here means 'named a verifier' (ADR-010)")
     for r in o["repeats"]:
         print(f"  advisory: {r['claim']} re-files the scope justification of "
               f"{r['prior']} (now {r['prior_status']}) verbatim -- same scope "
@@ -3959,6 +4051,27 @@ def cmd_doctor(a):
              f"{QUEUE_AGE_WARN_DAYS}d -- attention debt accruing")
     else:
         ok("queue aging")
+
+    # ADR-010 separation: report what the records prove about independence.
+    # Advisory only -- a refusal keyed on elapsed time is defeated by sleep
+    # and would TEACH that bypass (the ADR-011 shape).
+    sep = separation_report(load_events(), now_dt())
+    if sep["same_session"]:
+        fail("verifier separation",
+             f"{sep['same_session']} agree(s) share the author's session -- "
+             "ADR-010 must refuse those; the gate has regressed")
+    elif sep["live_unevidenced"]:
+        warn("verifier separation",
+             f"{len(sep['live_unevidenced'])} LIVE claim(s) were first agreed "
+             f"inside {sep['floor_seconds']}s of being filed "
+             f"({', '.join(sep['live_unevidenced'])}) -- less than the cost of "
+             "the CLI calls a verification makes, so the ledger records a "
+             "verifier NAME, not evidence a separate session read anything. "
+             "Re-dispatch them, or accept that 'live' means named-a-verifier")
+    elif sep["pairs"]:
+        ok("verifier separation",
+           f"{sep['pairs']} first-agree pair(s), none inside the "
+           f"{sep['floor_seconds']}s floor")
 
     print(f"\ndoctor: {len(fails)} failure(s), {len(warns)} warning(s)")
     sys.exit(1 if fails else 0)

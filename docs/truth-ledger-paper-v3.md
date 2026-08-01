@@ -726,6 +726,25 @@ question*.
    defect in §4 is self-reported by the person who built the thing
    measured. Independent replication is the real check; it has not
    happened.
+
+   **1a. Verifier separation is declared, not evidenced — and the
+   records show it.** ADR-010 refuses an `agree` whose session equals the
+   author's, but `session()` returns whatever `TRUTH_SESSION` says, so
+   the gate compares two strings one process can choose. Measured on
+   this repository's own ledger (2026-08-01): across 133 first-agree
+   pairs the gate has **never fired** — zero same-session agrees exist —
+   while **14 first agrees landed inside one second of the claim being
+   filed**, the fastest at 0.282s, which is less than the cost of the
+   CLI invocations a verification makes before it reads anything. Two of
+   those claims are live at the time of writing. So `live` should be
+   read as *a differently-named session filed an agree*, and only where
+   the elapsed time affords it as *a separate session did the work*.
+   `stats` and `doctor` now report this distinction from
+   existing records (no schema change); it is an instrument, not a gate —
+   a refusal keyed on elapsed time is defeated by `sleep` and would
+   teach that bypass. Making separation genuinely evidenced would need
+   provenance the CLI cannot forge, which a single operator on a single
+   machine cannot supply; this is disclosed rather than solved.
 2. **Efficacy is unmeasured — and the cost side is now measured,
    unfavorably.** The largest open *question*, conditional on item 1.
    §2.2 quantifies the friction denominator any trial must divide by:

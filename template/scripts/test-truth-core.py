@@ -1698,6 +1698,56 @@ class TestOverrideDecay(unittest.TestCase):
             d, "ttl_default must not change expiry behavior (ADR-019)")
 
 
+class TestSeparationReport(unittest.TestCase):
+    """ADR-010 separation instrument: what the records can prove about
+    verifier independence, as a pure fold over fabricated streams. The
+    gate compares two session STRINGS, so the only mechanical evidence of
+    separation is that the claim existed long enough for a separate
+    session to have done the work."""
+
+    def _pair(self, cid, vid, c_ts, v_ts, c_sess="author", v_sess="verifier"):
+        c = rec("claim", claim_p(), rid=cid, ts=c_ts); c["session"] = c_sess
+        v = rec("verdict", {"claim": cid, "verdict": "agree", "basis": "b"},
+                rid=vid, ts=v_ts); v["session"] = v_sess
+        return [(1, c), (2, v)]
+
+    def test_sub_floor_agree_is_unevidenced(self):
+        ev = self._pair("tr-aaaaaaa1", "tr-bbbbbbb1",
+                        "2026-08-01T00:00:00.000000+00:00",
+                        "2026-08-01T00:00:00.300000+00:00")
+        r = tm.separation_report(ev, None)
+        self.assertEqual(r["unevidenced"], 1)
+        self.assertEqual(r["fastest"][1], "tr-aaaaaaa1")
+        self.assertEqual(r["live_unevidenced"], ["tr-aaaaaaa1"])
+
+    def test_above_floor_agree_is_evidenced(self):
+        ev = self._pair("tr-aaaaaaa2", "tr-bbbbbbb2",
+                        "2026-08-01T00:00:00.000000+00:00",
+                        "2026-08-01T00:05:00.000000+00:00")
+        r = tm.separation_report(ev, None)
+        self.assertEqual(r["unevidenced"], 0)
+        self.assertEqual(r["live_unevidenced"], [])
+
+    def test_same_session_agree_is_counted(self):
+        """ADR-010 should refuse these at the CLI, so a non-zero count here
+        is a gate regression, not a style question."""
+        ev = self._pair("tr-aaaaaaa3", "tr-bbbbbbb3",
+                        "2026-08-01T00:00:00.000000+00:00",
+                        "2026-08-01T01:00:00.000000+00:00",
+                        c_sess="same", v_sess="same")
+        self.assertEqual(tm.separation_report(ev, None)["same_session"], 1)
+
+    def test_report_is_pure_of_the_clock(self):
+        """Every figure is read from record timestamps; `now` is signature
+        parity only. Two wildly different clocks must agree."""
+        ev = self._pair("tr-aaaaaaa4", "tr-bbbbbbb4",
+                        "2026-08-01T00:00:00.000000+00:00",
+                        "2026-08-01T00:00:00.100000+00:00")
+        import datetime as _dt
+        a = tm.separation_report(ev, _dt.datetime(2020, 1, 1))
+        b = tm.separation_report(ev, _dt.datetime(2099, 1, 1))
+        self.assertEqual(a, b)
+
 class TestOverrideReport(unittest.TestCase):
     """R13 / ADR-033: override_report counts + verbatim-repeat detection,
     all as pure folds over fabricated event streams (no elapsed time)."""
