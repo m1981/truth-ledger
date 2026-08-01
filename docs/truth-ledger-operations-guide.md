@@ -19,7 +19,7 @@ The table below is the full trigger surface — some rows human/agent-initiated,
 | Pre-edit intent (where wired) | `truth impact` via a PreToolUse whisper hook (ADR-005; deny stage for frozen paths, whisper stage injects the prediction) | **the agent harness, automatically, at edit intent** | ✅ Fully — but consumer-side: the verb ships in the template (v0.5.7, FAULTS W1–W4), the hook and deny list deliberately do not (ADR-003 rule 2) |
 | Session birth (where wired) | `truth-session-digest.py` via a SessionStart hook (FS-4, v0.6): one bounded block — queue, top live P0/P1 claims, the check-facts line — so read-only sessions discover the ledger without loading instruction files | **the agent harness, automatically, at session start** | ✅ Fully — same consumer-side placement as the whisper (ADR-003 rule 2); empty ledger or queue injects nothing |
 | Spec & doc hygiene | `spec-health.sh` (cited ids judged by the ADR-001 matrix) + `doc-health.sh` (forbidden names, broken links) — v0.5.1/v0.5.2 satellites | Consuming repo's pre-commit on staged specs/markdown; weekly sweep | ✅ Fully |
-| Spec-coverage drift (wired specs) | the ordinary scan stales the wired spec's two sentinel-recipe claims — the spec↔manifest sentinel and the tests↔manifest sentinel — when a commit touches a path that sentinel watches (spec and manifest for the first; manifest, spec and the test tree for the second); `reaffirm` auto-agrees while the three stay consistent (empty diff, hash-match), and a non-empty diff lists the drifted `SC-` ids and routes to `dispatch` (live in kuchnie on two wired specs — sentinels per slug in kuchnie's `docs/specs/sc-slugs.txt`: cfgapi `tr-fcca2d96`/`tr-40a5beb5`, wtuu `tr-22772c10`/`tr-a2acd399`; docs/growth-gate/spec-coverage-manifests.md) | **git, automatically** (the scan); reaffirm/dispatch per §3 rung 3 | ✅ surfacing and grading; the review judgment stays a dispatch |
+| Spec-coverage drift (wired specs) | the ordinary scan stales the wired spec's two sentinel-recipe claims — the spec↔manifest sentinel and the tests↔manifest sentinel — when a commit touches a path that sentinel watches (spec and manifest for the first; manifest, spec and the test tree for the second); `reaffirm` auto-agrees while the three stay consistent (empty diff, hash-match), and a non-empty diff lists the drifted `SC-` ids and routes to `dispatch` (live in kuchnie on two wired specs — sentinels per slug in kuchnie's `docs/specs/sc-slugs.txt`: cfgapi `kuchnie:tr-fcca2d96`/`kuchnie:tr-40a5beb5`, wtuu `kuchnie:tr-22772c10`/`kuchnie:tr-a2acd399`; docs/growth-gate/spec-coverage-manifests.md) | **git, automatically** (the scan); reaffirm/dispatch per §3 rung 3 | ✅ surfacing and grading; the review judgment stays a dispatch |
 | Verification | `dispatch` → fresh session → `verdict --recheck` → judgment | Human or script routes the context | ⚠️ Partially (see §3, rung 3) |
 | Mechanical re-confirmation | `truth reaffirm [--dry-run] [--json]` — walks every stale claim, one pure triage per claim (ADR-030, v0.9.12); a write verb, run it in a fresh verifier session | Human or script, daily or after a scan stales claims | ✅ The *mechanical* half only: hash-match auto-agrees (fixed basis `"reaffirm: hash-match, no judgment re-run"`); every judgment case is surfaced, never decided (see §3, rung 3) |
 | Triage | `truth queue` | Human, daily | ✅ The *surfacing*; not the deciding |
@@ -360,15 +360,17 @@ freshness claim. Do **not** file per-record content claims to light
 records up: that manufactures churn and a false air of intentionality.
 
   *One deliberate exception, at the set level.* The ADR **series**
-  carries a single RECORD-integrity claim — `tr-ebac6513`, watching
+  carries a single RECORD-integrity claim — `tr-14394281`, watching
   `template/docs/adr/truth/*.md` (docs/adr/truth/ since v0.9.18) —
-  asserting the series is dense (001-033,
-  contiguous, endpoints present) and every ADR carries a `Status:` line.
+  asserting the series is dense (001-041,
+  contiguous, endpoints present). Its predecessors also asserted that
+  every ADR carries a `Status:` line; that half was dropped somewhere
+  along the successor chain and is watched by nothing today.
   It **will** stale on every new ADR and on any Status-header edit; that
   staling is its whole job — a new ADR should re-assert the series'
   shape once, in a fresh verifier session, not silently extend it. Note
   the 17 ADRs lit *today* are lit by **literal per-file** paths that the
-  living behaviour-claims cite as their doc surface (e.g. `tr-58077018`
+  living behaviour-claims cite as their doc surface (e.g. `tr-3ddc6f97`
   lists `…/029-…md`), not by a directory glob — so a new ADR does not
   stale them, it simply arrives dark until the series claim or a
   behaviour claim names it. That is correct; the earlier worry about
@@ -385,10 +387,10 @@ watcher:
   | Living contract | Watching claim |
   |---|---|
   | `template/prompts/truth-verifier.md` — the verifier protocol | `tr-1820b1aa` (four-step shape + the `agree\|diverge\|cannot_verify` verdict form) |
-  | `docs/truth-ledger-explained.md` — the explainer | `tr-56682235` (version-synced to the CLI; the chain rolled through retracted predecessors incl. `tr-11beb903` — the stale citation here was itself caught by the 2026-07 gates adoption review, `docs/reviews/gates-2026-07/08-citation-measurement.md`) |
+  | `docs/truth-ledger-explained.md` — the explainer | `tr-6ebfedce` (version-synced to the CLI; currently **diverged** — an independent verifier found the doc's schema `$id` section four versions stale, tracked as `wk-1d4a112b`. This row has now gone stale twice by citing a rolled-over predecessor; the chain itself lives in the ledger, which is its one home) |
   | `template/docs/beads-integration-guide.md` — the ready/adapter seam | `tr-301931eb` (`bd ready --json` default + adapter seam) |
-  | `template/.truth/README.md` — the tracker-seam contract | `tr-ef37611b` (+ `tr-7b5a5e72`, `tr-d570e6c2`, `tr-fcdd4af2`) |
-  | kuchnie's wired spec-coverage pairs, one per slug in its `docs/specs/sc-slugs.txt` — today `catalog/docs/specs/configurator-api.md` and `catalog/docs/specs/worktop-uu-seeding.md`, each with its sibling `.sc.txt` manifest | cfgapi `tr-fcca2d96` + `tr-40a5beb5`, wtuu `tr-22772c10` + `tr-a2acd399` in the **kuchnie ledger** (per pair: the spec↔manifest and tests↔manifest sentinels; sentinel recipe = the slug-scoped `SC-<slug>-[0-9]{3}` grep-and-diff). Consumer-side claims — the per-file `impact` loop below sees only this repo's ledger, so these pairs' DARK check runs in kuchnie |
+  | `template/.truth/README.md` — the tracker-seam contract | `tr-ef37611b` (+ `tr-f4c6ec38`, `tr-c52e3e84`, `tr-fcdd4af2`) |
+  | kuchnie's wired spec-coverage pairs, one per slug in its `docs/specs/sc-slugs.txt` — today `catalog/docs/specs/configurator-api.md` and `catalog/docs/specs/worktop-uu-seeding.md`, each with its sibling `.sc.txt` manifest | cfgapi `kuchnie:tr-fcca2d96` + `kuchnie:tr-40a5beb5`, wtuu `kuchnie:tr-22772c10` + `kuchnie:tr-a2acd399` in the **kuchnie ledger** (per pair: the spec↔manifest and tests↔manifest sentinels; sentinel recipe = the slug-scoped `SC-<slug>-[0-9]{3}` grep-and-diff). Consumer-side claims — the per-file `impact` loop below sees only this repo's ledger, so these pairs' DARK check runs in kuchnie |
 
   The meta stub `docs/beads-integration-guide.md` is a pointer, not a
   contract ("one home per fact"); its only integrity property — the

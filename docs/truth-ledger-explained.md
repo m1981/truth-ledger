@@ -226,7 +226,7 @@ absorbing same-machine clock jitter.
 *The seven shapes a ledger line can take — the record vocabulary. Read this before you parse or hand-write JSONL.*
 
 Every line satisfies `claims.schema.json`
-(`$id: truth-ledger-record.v0.11`). Six envelope fields are always
+(`$id: truth-ledger-record.v0.15`). Six envelope fields are always
 required: `id`, `kind`, `actor`, `session`, `ts`, `payload`.
 
 1. **claim** — an assertion with evidence class, tier, and (for
@@ -759,9 +759,9 @@ r0 (an ADR-014 acceptance oracle actually running the suite at `done`)
 proves execution — and r0 stopped being hypothetical on 2026-07-27:
 two ADR-014 oracles executed green at close in the consumer
 (`wk-e7a2992d`, `wk-25d33212`). Live in kuchnie on two specs:
-`catalog/docs/specs/configurator-api.md` (sentinels `tr-fcca2d96` /
-`tr-40a5beb5`) and `catalog/docs/specs/worktop-uu-seeding.md`
-(`tr-22772c10` / `tr-a2acd399`). One namespace note: `SC-` ids are spec-local assertion
+`catalog/docs/specs/configurator-api.md` (sentinels `kuchnie:tr-fcca2d96` /
+`kuchnie:tr-40a5beb5`) and `catalog/docs/specs/worktop-uu-seeding.md`
+(`kuchnie:tr-22772c10` / `kuchnie:tr-a2acd399`). One namespace note: `SC-` ids are spec-local assertion
 names, **not** ledger ids — spec-health's ADR-001 matrix never judges
 them.
 
@@ -1091,7 +1091,7 @@ verdict), the definition carries it too.
 
 - **envelope** — the six always-required fields on every line: `id`,
   `kind`, `actor`, `session`, `ts`, `payload` (schema
-  `$id: truth-ledger-record.v0.11`).
+  `$id: truth-ledger-record.v0.15`).
 - **`claim`** — an assertion carrying evidence class (VERIFIED /
   INFERRED / UNVERIFIED), tier, and (for VERIFIED) the evidence capsule.
 - **`verdict`** — a second opinion: `agree` / `diverge` /
@@ -1144,6 +1144,17 @@ verdict), the definition carries it too.
   refuse to execute it forever after (ADR-009/029).
 - **`scope_basis`** — the stored, attackable one-sentence justification a
   `--scope-ok` override records for a quantifier/scope mismatch (ADR-007).
+- **`evidence_exit_basis`** — the same shape for `--evidence-exit-ok`:
+  why a positive sentence may stand over evidence that exited non-zero
+  (ADR-035, schema v0.12).
+- **`orphan_basis`** — the same shape for `--orphan-ok`: why a retraction
+  or cancellation may proceed while scope-covered prose still cites the
+  id (ADR-036, schema v0.13).
+- **`generated_ok_basis`** — the same shape for `--generated-ok`: why a
+  watch on a path the consumer listed as a generated artifact is
+  legitimate (ADR-037, schema v0.14). This one decays on the ADR-032
+  clock alongside `scope_basis`; `evidence_exit_basis` and
+  `orphan_basis` do not.
 - **`reaffirm_cleared`** — a field on a reaffirm auto-`agree` recording
   that a watched-but-unread file changed yet the output still matched;
   auditability, not judgment (ADR-030).
@@ -1481,8 +1492,8 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
   spec↔manifest and tests↔manifest sentinels) that ride the normal
   stale→reaffirm→dispatch loop — a review trigger, never a gate
   (docs/growth-gate/spec-coverage-manifests.md; live in kuchnie on two
-  specs — cfgapi `tr-fcca2d96`/`tr-40a5beb5`, wtuu
-  `tr-22772c10`/`tr-a2acd399`).
+  specs — cfgapi `kuchnie:tr-fcca2d96`/`kuchnie:tr-40a5beb5`, wtuu
+  `kuchnie:tr-22772c10`/`kuchnie:tr-a2acd399`).
 - **assertion-dark (grades r0–r3)** — the spec-coverage grading of a
   *spec assertion's* attachment to tests: r0 proven executed (ADR-014
   accept-cmd at `done`), r1 cited by ≥1 test file (a report, not a
