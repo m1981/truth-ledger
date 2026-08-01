@@ -360,7 +360,7 @@ freshness claim. Do **not** file per-record content claims to light
 records up: that manufactures churn and a false air of intentionality.
 
   *One deliberate exception, at the set level.* The ADR **series**
-  carries a single RECORD-integrity claim — `tr-14394281`, watching
+  carries a single RECORD-integrity claim — `tr-9381684d`, watching
   `template/docs/adr/truth/*.md` (docs/adr/truth/ since v0.9.18) —
   asserting the series is dense (001-041,
   contiguous, endpoints present). Its predecessors also asserted that
