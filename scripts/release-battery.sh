@@ -60,8 +60,10 @@ say "release-battery: content checks at the push boundary"
 # this script manufacturing exactly the dark arm it exists to prevent.
 if ! python3 -c "import jsonschema" >/dev/null 2>&1 \
    && [ -z "${TRUTH_ALLOW_NO_JSONSCHEMA:-}" ]; then
-  envr "jsonschema" "not installed, so the schema half of the record contract is UNCHECKED.
-        Fix once:  python3 -m pip install jsonschema
+  envr "jsonschema" "not importable, so the schema half of the record contract is UNCHECKED.
+        This machine may already have a pip-less wheel lib -- check .local/machine.md
+        before reaching for the waiver; a PYTHONPATH export is the usual answer here.
+        Otherwise:  python3 -m pip install jsonschema
         Or waive deliberately:  export TRUTH_ALLOW_NO_JSONSCHEMA=1"
 fi
 
