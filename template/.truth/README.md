@@ -535,6 +535,24 @@ returns only as its own ADR once a field window of forecast-vs-
 observed data and the reaffirm-trial read exist. Canary FAULT BF
 (7 arms).
 
+**The separation instrument** (ADR-010): `stats` and `doctor` report
+what the records can prove about verifier independence. ADR-010 refuses
+an `agree` whose session equals the author's, but `session()` returns
+whatever `TRUTH_SESSION` says -- the gate compares two strings one
+process can choose, so the name is all it ever sees. What the records
+DO show is how long a claim existed before its first agree: an agree
+landing inside `SEPARATION_FLOOR_SECONDS` (1.0s, derived by measuring
+that a CLI invocation costs ~0.1s, so `dispatch` + `verdict` is ~0.2s of
+process cost before anything is read) leaves no room for the work a
+verification is. `stats` prints the pair count, the median, and names
+any such claim that is still LIVE; `doctor` warns on those and FAILS if
+a same-session agree ever lands, which would be a gate regression.
+Advisory by design, never a refusal: a gate keyed on elapsed time is
+defeated by `sleep` and would teach that bypass (the ADR-011 shape).
+Latency is measured on FIRST agrees only -- later ones are dominated by
+hash-match reaffirms, which are legitimately fast. Canary FAULT SEP
+(3 arms incl. a negative control); no schema change.
+
 ## Daily operation
 
 Daily (~2 min): `scripts/truth queue` — empty means carry on.

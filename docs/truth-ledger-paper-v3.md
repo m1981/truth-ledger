@@ -732,13 +732,17 @@ question*.
    author's, but `session()` returns whatever `TRUTH_SESSION` says, so
    the gate compares two strings one process can choose. Measured on
    this repository's own ledger (2026-08-01): across 133 first-agree
-   pairs the gate has **never fired** — zero same-session agrees exist —
-   while **14 first agrees landed inside one second of the claim being
-   filed**, the fastest at 0.282s, which is less than the cost of the
-   CLI invocations a verification makes before it reads anything. Two of
-   those claims are live at the time of writing. So `live` should be
-   read as *a differently-named session filed an agree*, and only where
-   the elapsed time affords it as *a separate session did the work*.
+   pairs **no same-session agree has ever landed** — a refusal writes no
+   record, so this is what the ledger can show, not proof the gate ever
+   fired — while **14 first agrees landed inside one second of the claim
+   being filed**, the fastest at 0.282s, indistinguishable from the bare
+   process cost of the CLI invocations a verification makes before it
+   reads anything (a scripted zero-read claim→agree cycle reproduces
+   0.285s). Two of those claims are live at the time of writing. So
+   `live` should be read as *a differently-named session filed an
+   agree*; where the elapsed time affords more, that a separate session
+   did the work remains asserted rather than evidenced, since affording
+   the time is not the same as spending it.
    `stats` and `doctor` now report this distinction from
    existing records (no schema change); it is an instrument, not a gate —
    a refusal keyed on elapsed time is defeated by `sleep` and would

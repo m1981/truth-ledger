@@ -1465,25 +1465,32 @@ def separation_report(events, now, folded=None):
     for cid, e in claims.items():
         c = e["claim"]
         authored[cid] = (c.get("ts"), c.get("session"))
-    firsts = {}
+    firsts, same = {}, 0
     for _n, ev in sorted(events, key=fold_key):
         if ev.get("kind") != "verdict":
             continue
         p = ev.get("payload") or {}
         cid = p.get("claim")
-        if p.get("verdict") != "agree" or cid not in authored or cid in firsts:
+        if p.get("verdict") != "agree" or cid not in authored:
             continue
-        firsts[cid] = ev
-    lat, same, unevidenced, live_un = [], 0, [], []
+        # ADR-010 governs EVERY agree, not just the first: a regressed gate
+        # letting an author self-agree a claim that already carries an
+        # independent first agree would be invisible to a firsts-only scan.
+        if ev.get("session") and ev.get("session") == authored[cid][1]:
+            same += 1
+        if cid not in firsts:
+            firsts[cid] = ev
+    # Latency is measured on FIRST agrees only, deliberately: later agrees
+    # are dominated by hash-match reaffirms answering an invalidation, which
+    # are legitimately fast and would swamp the signal.
+    lat, unevidenced, live_un = [], [], []
     for cid, v in firsts.items():
-        cts, csess = authored[cid]
+        cts, _csess = authored[cid]
         try:
             d = (parse_ts(v.get("ts")) - parse_ts(cts)).total_seconds()
         except Exception:
             continue
         lat.append((d, cid))
-        if v.get("session") and v.get("session") == csess:
-            same += 1
         if d < SEPARATION_FLOOR_SECONDS:
             unevidenced.append(cid)
             if claims[cid]["status"] == "live":
@@ -4064,9 +4071,9 @@ def cmd_doctor(a):
         warn("verifier separation",
              f"{len(sep['live_unevidenced'])} LIVE claim(s) were first agreed "
              f"inside {sep['floor_seconds']}s of being filed "
-             f"({', '.join(sep['live_unevidenced'])}) -- less than the cost of "
-             "the CLI calls a verification makes, so the ledger records a "
-             "verifier NAME, not evidence a separate session read anything. "
+             f"({', '.join(sep['live_unevidenced'])}) -- too little time for "
+             "the work a verification is, so the ledger records a verifier "
+             "NAME, not evidence a separate session read anything. "
              "Re-dispatch them, or accept that 'live' means named-a-verifier")
     elif sep["pairs"]:
         ok("verifier separation",
