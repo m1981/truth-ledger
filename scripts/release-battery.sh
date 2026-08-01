@@ -58,7 +58,8 @@ say "release-battery: content checks at the push boundary"
 # here as an ENVIRONMENT problem with both documented remedies, so the
 # operator resolves it deliberately. Auto-waiving it in a hook would be
 # this script manufacturing exactly the dark arm it exists to prevent.
-if ! python3 -c "import jsonschema" >/dev/null 2>&1 \
+JSOK=0; python3 -c "import jsonschema" >/dev/null 2>&1 && JSOK=1
+if [ "$JSOK" = 0 ] \
    && [ -z "${TRUTH_ALLOW_NO_JSONSCHEMA:-}" ]; then
   envr "jsonschema" "not importable, so the schema half of the record contract is UNCHECKED.
         This machine may already have a pip-less wheel lib -- check .local/machine.md
@@ -68,11 +69,21 @@ if ! python3 -c "import jsonschema" >/dev/null 2>&1 \
 fi
 
 # --- 2. cross-surface version lockstep (ADR-026) ------------------------
+# Skip-aware (R8): unittest prints "OK (skipped=k)" -- which grep ^OK
+# happily matches -- and "Ran N" counts the skipped tests, so a pinned
+# doc renamed out from under _assert_doc_pin would report "N surfaces
+# agree" having examined nothing. Any skip here IS the arm examining
+# less than it claims: a FAILURE per the header rule.
 OUT=$(python3 template/scripts/test-truth-core.py TestCrossSurfaceVersions 2>&1)
 N=$(printf '%s' "$OUT" | sed -n 's/^Ran \([0-9]*\) test.*/\1/p')
+SKIPPED=$(printf '%s' "$OUT" | sed -n 's/.*skipped=\([0-9]*\).*/\1/p')
 if printf '%s' "$OUT" | grep -q "^OK"; then
-  [ "${N:-0}" -gt 0 ] && pass "version lockstep" "$N pinned surfaces agree" \
-                      || bad  "version lockstep" "ran 0 tests -- the arm is dark"
+  if [ "${SKIPPED:-0}" -gt 0 ]; then
+    bad "version lockstep" "OK but skipped=$SKIPPED -- a pinned surface was skipped, not examined"
+  else
+    [ "${N:-0}" -gt 0 ] && pass "version lockstep" "$N pinned surfaces agree" \
+                        || bad  "version lockstep" "ran 0 tests -- the arm is dark"
+  fi
 else
   bad "version lockstep" "a pinned version surface disagrees with the CLI:
 $(printf '%s' "$OUT" | grep -E '^(FAIL|AssertionError)' | head -3)"
@@ -103,8 +114,22 @@ fi
 # --- 5. core + v04 suites ----------------------------------------------
 OUT=$(python3 template/scripts/test-truth-core.py 2>&1)
 N=$(printf '%s' "$OUT" | sed -n 's/^Ran \([0-9]*\) test.*/\1/p')
+SKIPPED=$(printf '%s' "$OUT" | sed -n 's/.*skipped=\([0-9]*\).*/\1/p')
 if printf '%s' "$OUT" | grep -qE "^(OK|OK \()"; then
-  pass "core suite" "${N:-?} tests"
+  # Skip-aware (R8): "OK (skipped=k)" matched the old grep and passed as
+  # fully examined. The ONE tolerated baseline is the three
+  # @skipUnless(JSONSCHEMA) conformance tests when jsonschema is absent:
+  # that absence is already surfaced by the ENV arm above or deliberately
+  # waived, so those skips are a disclosed consequence, not silent
+  # shrinkage -- and the pass line still names them. Anything beyond
+  # that baseline (or any skip with jsonschema present) is a FAILURE.
+  if [ "${SKIPPED:-0}" -eq 0 ]; then
+    pass "core suite" "${N:-?} tests, 0 skipped"
+  elif [ "$JSOK" = 0 ] && [ "$SKIPPED" -le 3 ]; then
+    pass "core suite" "${N:-?} tests; $SKIPPED jsonschema-gated skip(s), disclosed by the ENV/waiver lane"
+  else
+    bad "core suite" "OK but skipped=$SKIPPED -- examined less than it claims"
+  fi
 else
   FAILED=$(printf '%s' "$OUT" | grep -cE "^(FAIL|ERROR):" || true)
   if [ "${TRUTH_ALLOW_NO_JSONSCHEMA:-}" = "" ] && [ "$ENVBAD" = "1" ] && [ "$FAILED" = "1" ] \
@@ -116,8 +141,12 @@ $(printf '%s' "$OUT" | grep -E '^(FAIL|ERROR):' | head -3)"
   fi
 fi
 OUT=$(python3 template/scripts/test-truth-v04.py 2>&1)
-printf '%s' "$OUT" | grep -q "^OK" && pass "v04 suite" "fold/duplicate invariants" \
-                                   || bad  "v04 suite" "fold invariant regression"
+if printf '%s' "$OUT" | grep -q "^OK" \
+   && ! printf '%s' "$OUT" | grep -q "skipped="; then
+  pass "v04 suite" "fold/duplicate invariants"
+else
+  bad "v04 suite" "fold invariant regression (or a skipped arm)"
+fi
 
 # --- 6. canary, scoped ---------------------------------------------------
 # 45s: the one arm that cannot ride every push. Its 112 seeded faults pin

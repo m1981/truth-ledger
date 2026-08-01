@@ -8,7 +8,12 @@ ok()   { PASS=$((PASS+1)); say "  CAUGHT: $*"; }
 miss() { FAIL=$((FAIL+1)); say "  MISSED: $*"; }
 
 TMP1="$(mktemp -d)"; TMP2="$(mktemp -d)"; TMP3="$(mktemp -d)"; TMP4="$(mktemp -d)"; TMP5="$(mktemp -d)"
-cleanup() { rm -rf "$TMP1" "$TMP2" "$TMP3" "$TMP4" "$TMP5"; }
+# Every later per-arm mktemp -d appends itself to TDIRS so the EXIT trap
+# is the backstop when an arm dies before its own rm -rf line (which each
+# arm keeps -- belt and braces). ${TDIRS+...} keeps set -u happy on an
+# empty array under macOS bash 3.2.
+TDIRS=()
+cleanup() { rm -rf "$TMP1" "$TMP2" "$TMP3" "$TMP4" "$TMP5" ${TDIRS+"${TDIRS[@]}"}; }
 trap cleanup EXIT
 
 mkrepo() {
@@ -77,7 +82,7 @@ git config --unset core.hooksPath
 # gate. A CI config that names the gate script passes; neither hook nor CI
 # fails. Isolated sub-repo so the main sandbox's wiring is untouched.
 say "FAULT DG (ADR-025): doctor decides the commit gate via CI when no hook exists"
-DG="$(mktemp -d)"
+DG="$(mktemp -d)"; TDIRS+=("$DG")
 mkrepo "$DG"   # NB: mkrepo cd's into $DG. No subshell -- ok/miss mutate the
                # PASS/FAIL counters and a subshell would discard them (a
                # miss here would be invisible). Restore cwd with cd below.
@@ -177,12 +182,16 @@ else
 fi
 
 say "FAULT Q (TL-5): records must carry a real session id, never s-unknown"
-TRUTH_SESSION="" $T claim "session fallback probe" --class UNVERIFIED --tier P2 >/dev/null
-LAST_SESSION=$(tail -1 .truth/claims.jsonl | python3 -c "import json,sys;print(json.load(sys.stdin)['session'])")
-if [ "$LAST_SESSION" != "s-unknown" ] && [ -n "$LAST_SESSION" ]; then
-  ok "unset TRUTH_SESSION falls back to a derived id ($LAST_SESSION)"
+CID_QS=$(TRUTH_SESSION="" $T claim "session fallback probe" --class UNVERIFIED --tier P2)
+if [ -z "$CID_QS" ] || ! grep -q "$CID_QS" .truth/claims.jsonl; then
+  miss "fault injection failed: session-fallback claim was never filed (tail -1 would read the PREVIOUS record)"
 else
-  miss "record filed with session '$LAST_SESSION'"
+  LAST_SESSION=$(tail -1 .truth/claims.jsonl | python3 -c "import json,sys;print(json.load(sys.stdin)['session'])")
+  if [ "$LAST_SESSION" != "s-unknown" ] && [ -n "$LAST_SESSION" ]; then
+    ok "unset TRUTH_SESSION falls back to a derived id ($LAST_SESSION)"
+  else
+    miss "record filed with session '$LAST_SESSION'"
+  fi
 fi
 TRUTH_SESSION=s-custom-probe $T claim "session override probe" --class UNVERIFIED --tier P2 --duplicate-ok >/dev/null
 if tail -1 .truth/claims.jsonl | grep -q '"session": "s-custom-probe"'; then
@@ -195,11 +204,15 @@ say "FAULT D (G10): claim past its ttl_days must expire to stale"
 CID_D=$(TRUTH_NOW="2026-06-01T00:00:00+00:00" $T claim \
         "external API allows 100 req/min" --class INFERRED \
         --basis "vendor docs read 2026-06-01" --ttl-days 7 --tier P1)
-$T invalidate-scan --quiet
-if $T list --stale --json | grep -q "$CID_D"; then
-  ok "claim $CID_D expired after ttl elapsed"
+if [ -z "$CID_D" ] || ! grep -q "$CID_D" .truth/claims.jsonl; then
+  miss "fault injection failed: the ttl claim was never filed (an empty id makes grep -q match anything)"
 else
-  miss "ttl_days is still a dead field: $CID_D outlived its ttl"
+  $T invalidate-scan --quiet
+  if $T list --stale --json | grep -q "$CID_D"; then
+    ok "claim $CID_D expired after ttl elapsed"
+  else
+    miss "ttl_days is still a dead field: $CID_D outlived its ttl"
+  fi
 fi
 # ADR-019 (H2): the fold reads no clock -- a TTL'd claim is NOT stale
 # until a scan writes the invalidation record. File one already long past
@@ -290,20 +303,27 @@ else
   miss "gate misfired with no scoping signal in the command"
 fi
 say "FAULT Q5 (ADR-007, F3): a ripgrep -t type filter is a scope signal (no slash)"
-if $T claim "no occurrences remain anywhere in the codebase" --class VERIFIED \
-     --evidence-cmd "grep -t txt -rc hello ." --paths "watched.txt" \
-     --tier P1 2>/dev/null; then
-  miss "intake accepted a universal quantifier over a -t-scoped command (F3 evasion)"
+# The sentence must NOT collide with any claim already filed in this
+# sandbox: Q5's original text was byte-identical to the claim Q2 filed,
+# so G8 refused BEFORE the ADR-007 gate ever saw the -t flag (gate table
+# order) -- the arm was vacuous. A distinct sentence plus asserting the
+# refusal NAMES ADR-007 (the GS1/GS2 pattern) pins the right gate.
+Q5ERR=$($T claim "zero stray hello markers survive across the tracked corpus" \
+        --class VERIFIED --evidence-cmd "grep -t txt -rc hello ." \
+        --paths "watched.txt" --tier P1 2>&1); Q5RC=$?
+if [ "$Q5RC" -ne 0 ] && printf '%s\n' "$Q5ERR" | grep -q "ADR-007"; then
+  ok "-t type-filter scope signal refused, and the refusal names ADR-007"
 else
-  ok "-t type-filter scope signal caught under a universal quantifier"
+  miss "-t scope signal not refused by the ADR-007 gate (rc=$Q5RC, F3 evasion or wrong gate)"
 fi
 say "FAULT Q6 (ADR-007, F3): a glob-metacharacter positional is a scope signal"
-if $T claim "X appears everywhere in the code" --class VERIFIED \
-     --evidence-cmd "grep -c hello watched.*" --paths "watched.txt" \
-     --tier P1 2>/dev/null; then
-  miss "intake accepted a universal quantifier over a glob-scoped command (F3 evasion)"
+Q6ERR=$($T claim "X appears everywhere in the code" --class VERIFIED \
+        --evidence-cmd "grep -c hello watched.*" --paths "watched.txt" \
+        --tier P1 2>&1); Q6RC=$?
+if [ "$Q6RC" -ne 0 ] && printf '%s\n' "$Q6ERR" | grep -q "ADR-007"; then
+  ok "glob-metacharacter positional scope signal refused, and the refusal names ADR-007"
 else
-  ok "glob-metacharacter positional scope signal caught under a universal quantifier"
+  miss "glob positional not refused by the ADR-007 gate (rc=$Q6RC, F3 evasion or wrong gate)"
 fi
 
 say "FAULT E1 (ADR-009): a non-allowlisted program in the evidence command must be refused"
@@ -389,7 +409,7 @@ grep -v '^bash$' .truth/evidence-allow > .truth/evidence-allow.tmp && mv .truth/
 # here: the default carries no grey-zone program, and a consumer who keeps
 # one is warned rather than silently trusted.
 say "FAULT AL (ADR-040): the shipped allowlist default is grey-zone free, and a consumer keeping a removed program is warned"
-AL_TMP=$(mktemp -d)
+AL_TMP=$(mktemp -d); TDIRS+=("$AL_TMP")
 cp "$HERE/../.truth/evidence-allow" "$AL_TMP/shipped"
 cp .truth/evidence-allow "$AL_TMP/mine.bak"
 if grep -qxE 'rg|file|date' "$AL_TMP/shipped"; then
@@ -1026,19 +1046,23 @@ fi
 
 say "FAULT RL (ADR-002, HIGH-3): start --release returns a claimed item to open; refused from open"
 WK_REL=$($T issue "kernel issue for release probe" 2>/dev/null)
-$T start "$WK_REL" >/dev/null 2>&1                     # -> claimed
-# releasing a claimed item must put it back in ready (open, deps ok)
-$T start "$WK_REL" --release >/dev/null 2>&1
-if PATH="/usr/bin:/bin" $T ready | grep -q "^$WK_REL"; then
-  ok "start --release returned $WK_REL to the ready pool (claimed -> open)"
+if [ -z "$WK_REL" ] || ! grep -q "$WK_REL" .truth/claims.jsonl; then
+  miss "fault injection failed: the release-probe issue was never filed (an empty id makes grep -q match anything)"
 else
-  miss "start --release did not return $WK_REL to open"
-fi
-# released is valid ONLY from claimed: a second release (now open) must refuse
-if $T start "$WK_REL" --release >/dev/null 2>&1; then
-  miss "start --release accepted from open state (transition guard missing)"
-else
-  ok "start --release refused from open -- released is valid only from claimed"
+  $T start "$WK_REL" >/dev/null 2>&1                     # -> claimed
+  # releasing a claimed item must put it back in ready (open, deps ok)
+  $T start "$WK_REL" --release >/dev/null 2>&1
+  if PATH="/usr/bin:/bin" $T ready | grep -q "^$WK_REL"; then
+    ok "start --release returned $WK_REL to the ready pool (claimed -> open)"
+  else
+    miss "start --release did not return $WK_REL to open"
+  fi
+  # released is valid ONLY from claimed: a second release (now open) must refuse
+  if $T start "$WK_REL" --release >/dev/null 2>&1; then
+    miss "start --release accepted from open state (transition guard missing)"
+  else
+    ok "start --release refused from open -- released is valid only from claimed"
+  fi
 fi
 
 say "FAULT R5 (ADR-002): kernel-as-tracker seam must join identically to native"
@@ -1658,10 +1682,13 @@ git add -A && git commit -qm "canary: sc file"
 WK_SC=$($T issue "sc probe item" 2>/dev/null)
 $T start "$WK_SC" >/dev/null
 git add .truth/claims.jsonl && git commit -qm "canary: sc claimed" --no-verify
-if bash scripts/session-close.sh 2>/dev/null | grep -q "still claimed"; then
-  ok "claimed work item refused with the claimed-count named"
+# capture rc, not just the phrase: a fail->warn downgrade in
+# session-close.sh would keep printing "still claimed" at exit 0
+SCC_OUT=$(bash scripts/session-close.sh 2>/dev/null); SCC_RC=$?
+if [ "$SCC_RC" -ne 0 ] && printf '%s' "$SCC_OUT" | grep -q "still claimed"; then
+  ok "claimed work item refused (non-zero exit) with the claimed-count named"
 else
-  miss "in-flight claimed item not flagged"
+  miss "in-flight claimed item not flagged as a blocking hole (rc=$SCC_RC)"
 fi
 $T start "$WK_SC" --release --basis "canary: hand back" >/dev/null
 $T claim "sc unverified probe fact" --class UNVERIFIED --tier P2 >/dev/null
@@ -1824,7 +1851,7 @@ fi
 # peer claim in the same sweep proves the contrast: it IS reaffirmed, and
 # its advanced anchor (F2) survives the next scan.
 say "FAULT RA (ADR-030): reaffirm must file nothing on changed evidence, reaffirm the unchanged peer"
-RA="$(mktemp -d)"; RA_PREV="$PWD"
+RA="$(mktemp -d)"; TDIRS+=("$RA"); RA_PREV="$PWD"
 mkrepo "$RA"   # NB: mkrepo cd's into $RA. No subshell -- ok/miss mutate the
                # PASS/FAIL counters; cwd restored via $RA_PREV below.
 echo "solid"  > ra-ok.txt
@@ -1878,7 +1905,7 @@ rm -rf "$RA"
 # (ADR-032 -> ADR-019 scan -> ADR-030 arm 1). Own sandbox; no subshell so
 # ok/miss mutate the counters; cwd restored via $SD_PREV.
 say "FAULT SD-decay (ADR-032): a --scope-ok override without --ttl-days must decay to a default 30-day expiry"
-SD="$(mktemp -d)"; SD_PREV="$PWD"
+SD="$(mktemp -d)"; TDIRS+=("$SD"); SD_PREV="$PWD"
 mkrepo "$SD"
 echo "data" > f.txt
 git add -A && git commit -qm "sd: init" --no-verify -q
@@ -1932,7 +1959,7 @@ rm -rf "$SD"
 # advisory (red if the detector is patched out); (2) NEGATIVE CONTROL: a
 # genuinely narrowed re-file produces NO advisory.
 say "FAULT OV (ADR-033): a verbatim scope re-justification after expiry must raise the advisory; a narrowed one must not"
-OV="$(mktemp -d)"; OV_PREV="$PWD"
+OV="$(mktemp -d)"; TDIRS+=("$OV"); OV_PREV="$PWD"
 mkrepo "$OV"
 echo "data" > f.txt
 git add -A && git commit -qm "ov: init" --no-verify -q
@@ -1981,7 +2008,7 @@ rm -rf "$OV"
 # render as one contiguous prefixed block; (5) GS5 NEGATIVE CONTROL: a
 # clean filing prints zero advisory lines (silence on clean, CC-1).
 say "FAULT GS (ADR-034): staged gate order + one CC-1 advisory block"
-GS="$(mktemp -d)"; GS_PREV="$PWD"
+GS="$(mktemp -d)"; TDIRS+=("$GS"); GS_PREV="$PWD"
 mkrepo "$GS"
 echo "data" > f.txt
 git add -A && git commit -qm "gs: init" --no-verify -q
@@ -2050,7 +2077,7 @@ rm -rf "$GS"
 # validate refuses basis-beside-rc0, tolerates a legacy capsule with
 # no returncode; X7 done --claim parity.
 say "FAULT X (ADR-035): positive text + failing evidence must refuse; absence proofs keep the warning path"
-XG="$(mktemp -d)"; XG_PREV="$PWD"
+XG="$(mktemp -d)"; TDIRS+=("$XG"); XG_PREV="$PWD"
 mkrepo "$XG"
 echo "data" > f.txt
 git add -A && git commit -qm "x: init" --no-verify -q
@@ -2148,7 +2175,7 @@ rm -rf "$XG"
 # silent; pathspec-magic lines refused; dead scope loud. --orphan-ok
 # stores its basis; the ledger itself never blocks (TG9).
 say "FAULT TG (ADR-036): retraction must refuse while the id is cited inside the scope"
-TG="$(mktemp -d)"; TG_PREV="$PWD"
+TG="$(mktemp -d)"; TDIRS+=("$TG"); TG_PREV="$PWD"
 mkrepo "$TG"
 mkdir -p docs/specs docs/notes
 echo "data" > f.txt
@@ -2273,7 +2300,7 @@ rm -rf "$TG"
 
 # ---- FAULT RC (ADR-037, v0.9.23): recipe lints + generated-paths --------
 say "FAULT RC (ADR-037): recipe rot classes warn; generated-artifact watches refuse"
-RC="$(mktemp -d)"; RC_PREV="$PWD"
+RC="$(mktemp -d)"; TDIRS+=("$RC"); RC_PREV="$PWD"
 mkrepo "$RC"
 mkdir -p gen
 echo "data" > f.txt
@@ -2377,7 +2404,7 @@ rm -rf "$RC"
 
 # ---- FAULT DW (ADR-038, v0.9.24): the dirty-watch advisory --------------
 say "FAULT DW (ADR-038): a claim watching uncommitted content must hear about restale-at-birth"
-DW="$(mktemp -d)"; DW_PREV="$PWD"
+DW="$(mktemp -d)"; TDIRS+=("$DW"); DW_PREV="$PWD"
 mkrepo "$DW"
 mkdir -p ns
 echo "data" > f.txt
@@ -2464,7 +2491,7 @@ rm -rf "$DW"
 
 # ---- FAULT BF (ADR-039, v0.9.25): blast forecast + churn report ---------
 say "FAULT BF (ADR-039): a hot watch must voice its blast forecast; cold, shallow and unborn repos must degrade loudly or silently as designed"
-BF="$(mktemp -d)"; BF_PREV="$PWD"
+BF="$(mktemp -d)"; TDIRS+=("$BF"); BF_PREV="$PWD"
 mkrepo "$BF"
 echo "w0" > w.txt
 echo "cold" > cold.txt
@@ -2525,7 +2552,7 @@ if printf '%s\n' "$BF5" | grep -q "floor 15 (fallback)" \
 else
   miss "BF5: stats blast section missing or malformed"
 fi
-BFSH="$(mktemp -d)"
+BFSH="$(mktemp -d)"; TDIRS+=("$BFSH")
 git clone -q --depth 1 "file://$PWD" "$BFSH/shallow" 2>/dev/null
 ( cd "$BFSH/shallow" && mkdir -p .truth scripts \
   && cp "$BF/scripts/truth" scripts/truth \
@@ -2544,7 +2571,7 @@ else
   miss "BF3: shallow history degraded silently"
 fi
 rm -rf "$BFSH"
-BFU="$(mktemp -d)"
+BFU="$(mktemp -d)"; TDIRS+=("$BFU")
 ( cd "$BFU" && git init -q -b main . && git config user.email t@t \
   && git config user.name t && mkdir -p .truth scripts \
   && cp "$BF/scripts/truth" scripts/truth \
@@ -2565,6 +2592,62 @@ fi
 rm -rf "$BFU"
 cd "$BF_PREV"
 rm -rf "$BF"
+
+# ---- FAULT UM (union merge): the headline sync path, driven for real ----
+# Union-merge confluence was only ever validated by in-process permutation
+# (B6) and a hand-duplicated line (B2); the merge=union attribute binding
+# itself -- the path git actually takes when two sessions' branches meet
+# -- was untested. Two branches append distinct claims, git merges them,
+# and the fold must come out identical in BOTH merge directions.
+# NB: deliberately NO assertion that any hook fires on the merge commit --
+# that assertion belongs to a later phase (pre-merge-commit installation).
+say "FAULT UM (union merge): branch ledgers must merge conflict-free, keep both sides, validate, and fold direction-independently"
+UM="$(mktemp -d)"; TDIRS+=("$UM"); UM_PREV="$PWD"
+mkrepo "$UM"   # NB: mkrepo cd's into $UM. No subshell -- ok/miss mutate the
+               # PASS/FAIL counters; cwd restored via $UM_PREV below.
+echo ".truth/claims.jsonl merge=union" >> .gitattributes   # committed BEFORE branching
+git add -A && git commit -qm "um: init (union attribute first)" --no-verify -q
+CID_UM0=$($T claim "um base fact stands committed" --class UNVERIFIED --tier P2 2>/dev/null)
+git add .truth/claims.jsonl && git commit -qm "um: base claim" --no-verify -q
+git checkout -qb um-side
+CID_UMA=$(TRUTH_SESSION=s-um-side $T claim "um side branch filed its own fact" --class UNVERIFIED --tier P2 2>/dev/null)
+git add .truth/claims.jsonl && git commit -qm "um: side claim" --no-verify -q
+git checkout -q main
+CID_UMB=$(TRUTH_SESSION=s-um-main $T claim "um mainline filed a different fact" --class UNVERIFIED --tier P2 2>/dev/null)
+git add .truth/claims.jsonl && git commit -qm "um: main claim" --no-verify -q
+UMR="$(mktemp -d)"; TDIRS+=("$UMR")   # pre-merge clone for the reverse direction
+git clone -q "$PWD" "$UMR/rev" 2>/dev/null
+git merge -q --no-edit um-side >/dev/null 2>&1   # direction A: main <- side
+if grep -q "<<<<<<<" .truth/claims.jsonl; then
+  miss "UM1: union merge left conflict markers in the ledger (merge=union not bound)"
+else
+  ok "UM1: merged ledger carries no conflict markers"
+fi
+if [ -n "$CID_UMA" ] && [ -n "$CID_UMB" ] \
+   && grep -q "$CID_UMA" .truth/claims.jsonl \
+   && grep -q "$CID_UMB" .truth/claims.jsonl; then
+  ok "UM2: both sides' claims survive the merge ($CID_UMA + $CID_UMB)"
+else
+  miss "UM2: a side's claim vanished in the merge (side=${CID_UMA:-unfiled} main=${CID_UMB:-unfiled})"
+fi
+if $T validate >/dev/null 2>&1; then
+  ok "UM3: validate accepts the union-merged ledger (exit 0; an ADR-008 order warning on stderr is tolerable)"
+else
+  miss "UM3: validate refused the union-merged ledger"
+fi
+UM_FOLD='import json,sys; print(sorted((r["id"], r["status"]) for r in json.load(sys.stdin)))'
+UM_A=$($T list --json 2>/dev/null | python3 -c "$UM_FOLD")
+UM_B=$( cd "$UMR/rev" \
+        && git checkout -q um-side 2>/dev/null \
+        && git merge -q --no-edit main >/dev/null 2>&1 \
+        && python3 scripts/truth list --json 2>/dev/null | python3 -c "$UM_FOLD" )
+if [ -n "$UM_A" ] && [ "$UM_A" = "$UM_B" ]; then
+  ok "UM4: the opposite-direction merge folds to the identical id->status map"
+else
+  miss "UM4: fold changed with merge direction (a=[$UM_A] b=[$UM_B])"
+fi
+cd "$UM_PREV"
+rm -rf "$UM" "$UMR"
 
 say ""
 say "canary result: $PASS caught, $FAIL missed"
