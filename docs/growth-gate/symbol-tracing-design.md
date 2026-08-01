@@ -25,7 +25,7 @@ BOM pins (2 claims, kuchnie, 2026-07-22).
 - **D3 — contract-symbol manifests** (replaces a prose symbol table,
   which would rot): a tracked, **pre-sorted** manifest file + one
   sentinel claim. Adding/removing a contract symbol stales the claim —
-  the staling is the review trigger (the tr-ebac6513 pattern at symbol
+  the staling is the review trigger (the tr-14394281 pattern at symbol
   scale).
 
 ## Tested recipes (verbatim — they passed the ADR-009 screen when written,
@@ -104,7 +104,7 @@ it (under-extraction is deterministic).
   component-touching commits touch exactly one component → per-component
   claims give component-local blast radius by construction.
   Cross-component claims only at adapter boundaries; a claim watching
-  all components is the anti-pattern (kuchnie's tr-076ed1ea).
+  all components is the anti-pattern (kuchnie:tr-076ed1ea).
 
 ## kuchnie dark-symbol census (2026-07-22 validation round)
 

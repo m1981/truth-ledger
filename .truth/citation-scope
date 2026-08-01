@@ -1,0 +1,39 @@
+# ADR-036 tombstone citation scope — CONSUMER POLICY (this repo owns it).
+#
+# `verdict retracted` and `done --cancel` refuse while a file matched here
+# still cites the id being killed. Without this file the CLI falls back to
+# the built-in default `docs/specs/**`, which matches ZERO tracked files in
+# this repo — so from v0.9.22 until 2026-08-01 the gate reported "clean" on
+# every id, including ids cited in the operations guide. An armed-looking
+# gate that checks nothing is worse than no gate: it manufactures
+# confidence. Committed 2026-08-01 after a coverage audit reproduced that.
+#
+# Lines are CLI globs filtered by match_paths (`*` stops at `/`, `**`
+# spans) — never git pathspecs; a line starting ':', '-' or '!' is refused
+# (SI-1), so exclusions cannot be expressed and the live corpus is
+# enumerated positively instead.
+#
+# SCOPE = the live prose corpus, kept in LOCKSTEP with scripts/fact-health.sh.
+# Both answer one question — "which prose is a reader meant to act on today?"
+# — so they must not drift apart. Excluded here for the same reason they are
+# excluded there: docs/archive/ (frozen verbatim), docs/reviews/ (a dated
+# review record), docs/roadmap-v3.md (a history log) and docs/field-notes*
+# (dated session records) correctly name ids that were live THEN, and must
+# never block a retraction NOW. docs/growth-gate/ IS in scope: it declares
+# "Status: PILOT LIVE" and its shelved designs are instructions awaiting a
+# trigger, not records of the past.
+#
+# The ledger itself is excluded structurally by the CLI, not here — a
+# retraction basis legitimately cites its predecessor.
+README.md
+AGENTS.md
+docs/beads-integration-guide.md
+docs/candidate-adoption-analysis-prompt.md
+docs/independent-review.md
+docs/truth-ledger-explained.md
+docs/truth-ledger-loophole-map.md
+docs/truth-ledger-operations-guide.md
+docs/truth-ledger-paper-v3.md
+docs/truth-ledger-tutorial.md
+docs/diagrams/*.md
+docs/growth-gate/*.md

@@ -21,9 +21,15 @@
 # 1. FROZEN REFERENCE is excluded. A record of a past event correctly
 #    names the ids that were live THEN; re-judging it against today's
 #    ledger is a category error, not a finding. docs/archive/ was already
-#    excluded; docs/reviews/, docs/roadmap-v3.md and docs/growth-gate/ are
-#    the same character (operator decision, 2026-08-01) — a review record,
-#    a history log, and shelved designs. docs/field-notes* is excluded on
+#    excluded; docs/reviews/ and docs/roadmap-v3.md are the same character
+#    (operator decision, 2026-08-01) — a review record and a history log.
+#    docs/growth-gate/ was excluded on that ruling and RE-INCLUDED the same
+#    day: its README and spec-coverage-manifests.md declare "Status: PILOT
+#    LIVE" and three in-scope docs name the latter a source of truth, so it
+#    is not a record of the past. The shelved designs beside them are not
+#    frozen either — a design awaiting a trigger is an INSTRUCTION, and a
+#    dead citation in one is worse than in live prose because nobody reads
+#    it until the day they build from it. docs/field-notes* is excluded on
 #    the SAME reasoning but was NOT in the operator's list: they are dated
 #    session records whose citations narrate what was live during that
 #    session ("successors tr-… and tr-…"). Flagged as an extension, not a
@@ -51,10 +57,9 @@ cd "$(dirname "$0")/.."
 
 CLAIMS_JSON="$(python3 template/scripts/truth list --json)"
 # Frozen reference (see SCOPE above): excluded from the live corpus.
-FILES="$(git ls-files 'README.md' 'docs/*.md' 'docs/**/*.md' \
+FILES="$(git ls-files 'README.md' 'AGENTS.md' 'docs/*.md' 'docs/**/*.md' \
   | grep -v '^docs/archive/' \
   | grep -v '^docs/reviews/' \
-  | grep -v '^docs/growth-gate/' \
   | grep -v '^docs/roadmap-v3\.md$' \
   | grep -v '^docs/field-notes' \
   | sort -u)"
