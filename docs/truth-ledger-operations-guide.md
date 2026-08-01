@@ -401,7 +401,7 @@ watcher:
   staled nothing and tripped no gate — the security boundary was quieter
   than a typo in a doc. Each now carries a `sha256sum` sentinel claim
   (`tr-11701d6f`, `tr-6a3c9fef`, `tr-96351a43`, `tr-48fc1f89`,
-  `tr-45312cff`, `tr-df856f43`, `tr-d3b14d8f`, `tr-bcd40e31`,
+  `tr-45312cff`, `tr-df856f43`, `tr-4884ad97`, `tr-bcd40e31`,
   `tr-165faff1`). The pin works because the evidence is a DIGEST: an edit
   stales the claim AND changes the hash, so `reaffirm`'s match arm cannot
   clear it and the ADR-030 mismatch path forces a dispatched judgment.
