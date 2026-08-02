@@ -48,7 +48,10 @@ since; it states its own version), two shell gates (commit-time prefix
 check, post-merge invalidation scan), a fixed verifier prompt, a JSON
 Schema. Concurrent writers are assumed: racing appends rely on
 POSIX `O_APPEND` atomicity for single-write-call, single-filesystem
-safety — a load-bearing assumption, not only a caveat (§8).
+safety — a load-bearing assumption, not only a caveat (§8) — and, since
+the v0.9.29 write-verb `flock`, the intake gates are additionally
+coherent against same-machine concurrent writers (multi-machine stays
+untested; §8 item 4).
 
 **Seven record kinds**, one envelope (`id`, `kind`, `actor`, `session`,
 `ts`):

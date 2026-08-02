@@ -9,6 +9,18 @@ the numeric gate knobs.  Pure constants only -- no functions, no I/O
 import re
 
 LEDGER_REL = ".truth/claims.jsonl"
+# ADR-045 (D2): the write-verb serialization lock target -- a separate
+# file under the GIT DIR (like .git/truth-whisper.seen), never the
+# ledger fd itself, so the O_APPEND append path stays exactly as audited
+# (TestAppendSingleWrite) and readers never touch a lock. In the git dir
+# deliberately, not a worktree sibling: an untracked lock beside the
+# ledger dirtied every consumer's `git status` and refused the
+# session-close survival gate (caught by the SC canary on the sibling
+# draft); the git dir is machine-local and status-invisible by
+# construction, and per-worktree exactly as the checked-out ledger is.
+# The file's bytes never matter -- flock(2) state lives in the kernel,
+# so a crashed holder's lock dies with its process.
+LEDGER_LOCK_NAME = "truth-ledger.lock"
 PROMPT_REL = "prompts/truth-verifier.md"
 # ADR-036: tombstone citation gate. The scope file is consumer POLICY
 # (SI-4): absent -> the built-in default below applies with a notice;
@@ -180,7 +192,15 @@ DOCTOR_GREY_ZONE = frozenset((
 ACCEPT_ALLOW_REL = ".truth/accept-allow"
 ACCEPT_KINDS = ("verification", "validation")  # 12207's two V's
 # FS-3: the scale gate -- doctor warns when load+fold exceeds this;
-# the snapshot cache stays unimplemented until the warning fires.
+# the snapshot cache stays unimplemented until the warning fires. The
+# gate watches the READ path (load+fold+fold_issues, timed in doctor)
+# and, since v0.9.29, stands for the WRITE path too: every write verb
+# loads and folds inside the ledger lock, so the same latency prices
+# the critical section a concurrent writer waits behind. The linear
+# scans that remain (append's tail read is tail-seek since v0.9.29;
+# reaffirm/invalidate-scan walk every claim by design) are
+# watched-by-design residuals, not sensor-covered ones: no separate
+# alarm exists for them, this constant's trip is their proxy.
 FOLD_LATENCY_WARN_MS = 200
 HALF_LIFE_MIN_OBS = 5  # FS-1: below this, intake suggests nothing (noise)
 

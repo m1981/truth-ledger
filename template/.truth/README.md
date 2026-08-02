@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.9.28)
+# .truth — append-only claims ledger (v0.9.29)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -163,7 +163,12 @@ audit; once ≥5 half-life observations exist for a tier, filing a
 TTL'd claim prints the observed median beside the author's choice
 (suggestion only). `doctor` additionally checks the evidence allowlist
 exists and warns when load+fold exceeds 200ms (the FS-3 scale gate —
-the snapshot cache is deliberately unbuilt until that warning fires).
+the snapshot cache is deliberately unbuilt until that warning fires;
+since v0.9.29 the same latency also prices the WRITE path, because every
+write verb loads and folds inside the ledger lock's critical section
+(ADR-045) — the remaining linear scans, reaffirm and invalidate-scan
+walking every claim, are watched-by-design residuals with no sensor of
+their own: this warning's trip is their proxy).
 
 ## Layout
 
@@ -180,7 +185,8 @@ the snapshot cache is deliberately unbuilt until that warning fires).
                                        the JSON Schema must agree, closing
                                        the F1/F8 drift class
     scripts/test-truth-v04.py          v0.4 regression tests (confluence, anchors, globs)
-    scripts/check-truth.sh             pre-commit/CI gate: strict append-only + schema
+    scripts/check-truth.sh             commit gate (pre-commit, pre-merge-commit,
+                                       CI): strict append-only + schema
     scripts/truth-canary.sh            seeded-fault suite (run weekly; it
                                        prints its own count — all CAUGHT, or stop)
     prompts/truth-verifier.md          fixed verifier prompt (use `truth dispatch`)
@@ -203,7 +209,11 @@ the snapshot cache is deliberately unbuilt until that warning fires).
 1. `.gitattributes` already sets `.truth/claims.jsonl merge=union`.
 2. Run `bash scripts/install-hooks.sh` after every `git init`/`git clone`
    (local hooks do not survive clones), or use CI instead — one of the
-   two MUST exist. This is the *commit gate* (`check-truth`); without it
+   two MUST exist. It wires three hooks: `pre-commit` and
+   `pre-merge-commit` carry the same gate (git runs the latter, never
+   the former, when a merge auto-commits — the union-merge sync path;
+   ADR-045), and `post-merge` runs the invalidation scan. This is the
+   *commit gate* (`check-truth`); without it
    INV-A/INV-B/INV-G/INV-N and the ADR-008/031 order detections do not run and
    the ledger's append-only guarantee is unenforced. For CI, name the gate
    scripts (`check-truth`, `invalidate-scan`) in a workflow `doctor` greps

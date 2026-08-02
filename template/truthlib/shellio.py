@@ -7,6 +7,8 @@ append_records writer path, loaders, the ADR-011 human-ack ceremony, and
 the hook/CI wiring probes.  Imports kernel and registry only; its
 pre-existing sys.exit sites stay as-is this phase (ADR-044).
 """
+import contextlib
+import fcntl
 import hashlib
 import io
 import json
@@ -146,21 +148,90 @@ def human_ack_error(target_id, what):
         return "truth: confirmation mismatch -- nothing filed"
     return None
 
+@contextlib.contextmanager
+def ledger_lock():
+    """ADR-045 (D2): one EXCLUSIVE advisory lock held around a write
+    verb's entire load->gates->append critical section (main() wraps
+    args.fn for WRITE_VERBS), closing the R10 same-machine TOCTOU
+    catalogue: the G8 duplicate screen, the contradicts dormant/live
+    decision, and the issue_event transition check all read a fold that
+    can no longer go stale under a concurrent writer's append. Read
+    verbs never touch the lock (flock is advisory; readers are safe by
+    O_APPEND line-atomicity as before), and the lock target is
+    LEDGER_LOCK_NAME under the GIT DIR -- never the ledger itself (the
+    audited O_APPEND append path, TestAppendSingleWrite, is untouched)
+    and never a worktree sibling (an untracked lock file dirtied
+    `git status` and tripped the session-close survival gate; see the
+    registry comment). Blocking acquire, deliberately no timeout: a
+    flock(2) lock dies with its holder's process (kernel-owned state,
+    not a lock FILE convention), so a crashed holder cannot orphan the
+    lock and the wait is bounded by the FS-3-priced critical section.
+    Multi-machine remains out of scope -- paper sec 8 item 4 stands
+    (ADR-045)."""
+    r = subprocess.run(["git", "rev-parse", "--git-dir"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit("truth: not inside a git repository")
+    gd = os.path.abspath(r.stdout.strip())  # --git-dir is cwd-relative
+    fd = os.open(os.path.join(gd, LEDGER_LOCK_NAME),
+                 os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)  # close releases the flock, even on a refusal exit
+
+# R15: append's tail read used to scan the WHOLE ledger per write; only
+# the last line matters. A ledger line is far under this window (the
+# largest record shapes -- evidence capsules, reaffirm_cleared lists --
+# are hundreds of bytes to a few KB), so one tail read almost always
+# holds a complete last line; correctness never depends on it (fallback
+# below).
+_LAST_TS_TAIL_BYTES = 64 * 1024
+
 def _last_ledger_ts():
-    """The ts of the ledger's last well-formed line, or None."""
+    """The ts of the ledger's last well-formed line, or None.
+
+    Reads only the ledger TAIL (seek to size - 64KB, R15): the first
+    line of the window is dropped when the file is larger than the
+    window (it is almost certainly cut mid-line), junk tail lines walk
+    back a line, and a window with no parseable line at all falls back
+    to the old full scan -- correctness first, the seek is only an
+    optimization. errors="replace" keeps a mid-character cut or a
+    corrupt byte from crashing the append path; the mangled line then
+    fails json.loads and is walked past exactly like other junk."""
     path = ledger_path()
     if not os.path.exists(path):
         return None
-    last = None
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            try:
-                last = json.loads(line).get("ts")
-            except json.JSONDecodeError:
-                continue
-    return last
+    with open(path, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        f.seek(max(0, size - _LAST_TS_TAIL_BYTES))
+        chunk = f.read()
+    if size > _LAST_TS_TAIL_BYTES:
+        chunk = chunk.split(b"\n", 1)[1] if b"\n" in chunk else b""
+    for line in reversed(chunk.decode("utf-8",
+                                      errors="replace").splitlines()):
+        if not line.strip():
+            continue
+        try:
+            return json.loads(line).get("ts")  # last well-formed line's
+            # ts, present or not -- exactly what the full scan returned
+        except json.JSONDecodeError:
+            continue
+    if size > _LAST_TS_TAIL_BYTES:
+        # Nothing parseable in the window (a >64KB junk tail): full scan.
+        last = None
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    last = json.loads(line).get("ts")
+                except json.JSONDecodeError:
+                    continue
+        return last
+    return None
 
 def append_records(kinds_payloads):
     """Append a batch of records in ONE write(2) call -- all or nothing.

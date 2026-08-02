@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Git runs pre-merge-commit, never pre-commit, when a merge auto-commits
+# (ADR-045) -- the commit class the union-merge sync story produces.
+# Same gate as pre-commit, by delegation: the archive freeze and
+# check-truth ride along, and the two bodies cannot drift.
+exec "$(dirname "$0")/pre-commit"

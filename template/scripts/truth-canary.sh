@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor + ADR-028 FAULT IF future-dated-issue transition coherence + ADR-009/M4 FAULT SD screen-gates-execution ordering + v0.9.12 R3/ADR-030 FAULT RA reaffirm-mismatch-never-auto-filed + v0.9.13 R6/ADR-031 unified duplicate-id rule: B1/B3-B5 expect the one message, FAULT K2 later-ts distinct duplicate flips to refused + v0.9.14 R12/ADR-032 FAULT SD-decay --scope-ok default-expiry (4 arms incl. negative control) + R13/ADR-033 FAULT OV override-velocity verbatim-repeat advisory (2 arms incl. negative control) + v0.9.20/ADR-034 FAULT GS staged gate table + CC-1 advisory block (5 arms incl. negative control) + v0.9.21/ADR-035 FAULT X positive-claim exit gate (8 arms incl. negative control + validate mirror) + v0.9.22/ADR-036 FAULT TG tombstone citation gate (11 arms incl. scope policy, fail-closed, preflight, unicode quotepath) + v0.9.23/ADR-037 FAULT RC recipe lints + generated-paths (10 arms incl. per-segment, carve-outs, decay, quote-split, dropped-override) + v0.9.24/ADR-038 FAULT DW dirty-watch advisory (7 arms incl. untracked-under-glob, rename, unicode, UU-conflict) + v0.9.25/ADR-039 FAULT BF blast forecast + churn report (7 arms incl. window boundary, shallow, unborn-HEAD) + ADR-010 FAULT SEP separation instrument (3 arms incl. negative control) + P1 review R1 FAULT S2D disputed-citer spec fails + R3 SC dead-sensor scream and claimed-count false-match immunity + L3-F7 FAULT GE check-truth environment lane (2 arms incl. negative control) + v0.9.27 P2 contract layer: FAULT VC vocab-verb contract (2 arms) + GS6 done --claim --json advisory echo).
+# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor + ADR-028 FAULT IF future-dated-issue transition coherence + ADR-009/M4 FAULT SD screen-gates-execution ordering + v0.9.12 R3/ADR-030 FAULT RA reaffirm-mismatch-never-auto-filed + v0.9.13 R6/ADR-031 unified duplicate-id rule: B1/B3-B5 expect the one message, FAULT K2 later-ts distinct duplicate flips to refused + v0.9.14 R12/ADR-032 FAULT SD-decay --scope-ok default-expiry (4 arms incl. negative control) + R13/ADR-033 FAULT OV override-velocity verbatim-repeat advisory (2 arms incl. negative control) + v0.9.20/ADR-034 FAULT GS staged gate table + CC-1 advisory block (5 arms incl. negative control) + v0.9.21/ADR-035 FAULT X positive-claim exit gate (8 arms incl. negative control + validate mirror) + v0.9.22/ADR-036 FAULT TG tombstone citation gate (11 arms incl. scope policy, fail-closed, preflight, unicode quotepath) + v0.9.23/ADR-037 FAULT RC recipe lints + generated-paths (10 arms incl. per-segment, carve-outs, decay, quote-split, dropped-override) + v0.9.24/ADR-038 FAULT DW dirty-watch advisory (7 arms incl. untracked-under-glob, rename, unicode, UU-conflict) + v0.9.25/ADR-039 FAULT BF blast forecast + churn report (7 arms incl. window boundary, shallow, unborn-HEAD) + ADR-010 FAULT SEP separation instrument (3 arms incl. negative control) + P1 review R1 FAULT S2D disputed-citer spec fails + R3 SC dead-sensor scream and claimed-count false-match immunity + L3-F7 FAULT GE check-truth environment lane (2 arms incl. negative control) + v0.9.27 P2 contract layer: FAULT VC vocab-verb contract (2 arms) + GS6 done --claim --json advisory echo + v0.9.29/ADR-045 FAULT LK ledger-lock two-process serialization (2 arms) + FAULT UM5-UM7 pre-merge-commit merge gate (installer-driven; honest sync passes, tampered merge refused) + doctor pre-merge-commit WARN/quiet/CI-exempt arms (3)).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -61,6 +61,26 @@ if $T doctor >/dev/null 2>&1; then
 else
   miss "doctor failed a correctly wired repo"; $T doctor || true
 fi
+# ADR-045 (D3): git runs pre-merge-commit, never pre-commit, when a merge
+# auto-commits -- so a locally gated repo without the third hook lands
+# union-merged ledgers ungated. Doctor must WARN (adoption-gated, never
+# FAIL: pre-v0.9.29 installs lack it blamelessly) and go quiet once the
+# hook is installed.
+DOC_PMC="$($T doctor 2>&1)"
+if printf '%s\n' "$DOC_PMC" | grep -q "WARN  pre-merge-commit hook gates merge commits"; then
+  ok "doctor WARNs: pre-commit wired but pre-merge-commit absent (merge commits ungated, ADR-045)"
+else
+  miss "doctor stayed silent on a locally gated repo missing pre-merge-commit (ADR-045)"
+fi
+printf '#!/usr/bin/env bash\nexec bash scripts/check-truth.sh\n' > .git/hooks/pre-merge-commit
+chmod +x .git/hooks/pre-merge-commit
+DOC_PMC="$($T doctor 2>&1)"
+if printf '%s\n' "$DOC_PMC" | grep -q "OK    pre-merge-commit hook gates merge commits" \
+   && ! printf '%s\n' "$DOC_PMC" | grep -q "WARN  pre-merge-commit"; then
+  ok "doctor quiet (OK line) once pre-merge-commit is installed"
+else
+  miss "doctor still warns, or reports no OK, after pre-merge-commit was installed"
+fi
 # TL-1: hooks live where core.hooksPath says; .git/hooks wiring must not count
 git config core.hooksPath .hookmgr/_
 mkdir -p .hookmgr/_
@@ -118,6 +138,14 @@ if [ "$DGRC" -eq 0 ] \
   ok "doctor PASSes BOTH gate arms via a CI config naming check-truth and invalidate-scan"
 else
   miss "doctor did not accept the CI-named gate on both arms at exit 0 (ADR-025 regression)"
+fi
+# ADR-045: a CI-arm repo (no LOCAL pre-commit hook) is exempt from the
+# pre-merge-commit warn -- its gate runs server-side on push/PR, where a
+# merge commit arrives like any other.
+if printf '%s\n' "$DGOUT" | grep -q "pre-merge-commit"; then
+  miss "CI-arm repo got the pre-merge-commit line -- the exemption regressed (ADR-045)"
+else
+  ok "CI-arm repo exempt from the pre-merge-commit warn (gate runs server-side)"
 fi
 # a directory named after a hook must not crash doctor (it must report)
 rm -f .github/workflows/truth.yml; mkdir -p .git/hooks/pre-commit
@@ -2750,8 +2778,8 @@ rm -rf "$VC"
 # itself -- the path git actually takes when two sessions' branches meet
 # -- was untested. Two branches append distinct claims, git merges them,
 # and the fold must come out identical in BOTH merge directions.
-# NB: deliberately NO assertion that any hook fires on the merge commit --
-# that assertion belongs to a later phase (pre-merge-commit installation).
+# NB: this arm pins the UNGATED merge behavior (no hooks installed); the
+# deferred gate-fires assertion lives in UM5-UM7 below (ADR-045/D3).
 say "FAULT UM (union merge): branch ledgers must merge conflict-free, keep both sides, validate, and fold direction-independently"
 UM="$(mktemp -d)"; TDIRS+=("$UM"); UM_PREV="$PWD"
 mkrepo "$UM"   # NB: mkrepo cd's into $UM. No subshell -- ok/miss mutate the
@@ -2799,6 +2827,111 @@ else
 fi
 cd "$UM_PREV"
 rm -rf "$UM" "$UMR"
+
+# ---- FAULT UM5-UM7 (ADR-045/D3): the pre-merge-commit hook gates the ----
+# ---- merge-commit class the union-merge sync story produces          ----
+# P0 deliberately deferred the gate-fires assertion to the phase where the
+# hook exists; this is that phase. Hooks land via scripts/install-hooks.sh
+# so the INSTALLER itself is exercised, then: (i) the honest bidirectional
+# sync must still commit THROUGH the gate (a union-merged ledger is a
+# prefix extension of ours, so check-truth passes), and (ii) a branch that
+# REWRITES an early committed ledger line and lands it with --no-verify
+# must be BLOCKED when the union merge tries to auto-commit (non-prefix
+# result, INV-A).
+say "FAULT UM5-UM7 (ADR-045): pre-merge-commit gates merge commits -- honest sync passes, tampered merge refused"
+UMH="$(mktemp -d)"; TDIRS+=("$UMH"); UMH_PREV="$PWD"
+mkrepo "$UMH"   # NB: mkrepo cd's into $UMH; cwd restored via $UMH_PREV
+cp "$HERE/install-hooks.sh" scripts/install-hooks.sh
+echo ".truth/claims.jsonl merge=union" >> .gitattributes
+git add -A && git commit -qm "umh: init" --no-verify -q
+bash scripts/install-hooks.sh >/dev/null 2>&1
+if [ -x .git/hooks/pre-merge-commit ] \
+   && grep -q "check-truth" .git/hooks/pre-merge-commit; then
+  ok "UM5: install-hooks.sh wrote an executable pre-merge-commit invoking check-truth"
+else
+  miss "UM5: installer did not wire pre-merge-commit (ADR-045)"
+fi
+CID_UH0=$($T claim "umh base fact stands committed" --class UNVERIFIED --tier P2 2>/dev/null)
+git add .truth/claims.jsonl && git commit -qm "umh: base" -q  # NO --no-verify: the wired pre-commit gate must pass this
+git checkout -qb umh-side
+CID_UHA=$(TRUTH_SESSION=s-umh-side $T claim "umh side branch filed its own fact" --class UNVERIFIED --tier P2 2>/dev/null)
+git add .truth/claims.jsonl && git commit -qm "umh: side" -q
+git checkout -q main
+CID_UHB=$(TRUTH_SESSION=s-umh-main $T claim "umh mainline filed a different fact" --class UNVERIFIED --tier P2 2>/dev/null)
+git add .truth/claims.jsonl && git commit -qm "umh: main" -q
+if git merge --no-edit umh-side >/dev/null 2>&1 \
+   && [ ! -f "$(git rev-parse --git-dir)/MERGE_HEAD" ] \
+   && grep -q "$CID_UHA" .truth/claims.jsonl \
+   && grep -q "$CID_UHB" .truth/claims.jsonl; then
+  ok "UM6: honest union merge auto-commits THROUGH the gate (merged ledger is a prefix extension of ours)"
+else
+  miss "UM6: the pre-merge-commit gate blocked (or the merge lost) an honest union merge"
+fi
+# RED direction: rewrite an early COMMITTED ledger line on a branch, land
+# it with --no-verify, merge it back. The 3-way union takes the tampered
+# line (ours left it untouched), so the staged result is NOT a prefix
+# extension of ours and the new hook must refuse the merge commit.
+UMH_HEAD_BEFORE=$(git rev-parse HEAD)
+git checkout -qb umh-tamper
+# -i.bak is the only sed -i form GNU and BSD/macOS sed both accept
+sed -i.bak "s/umh base fact stands committed/umh base fact stands TAMPERED/" .truth/claims.jsonl && rm -f .truth/claims.jsonl.bak
+git add .truth/claims.jsonl && git commit -qm "umh: tamper an early line" --no-verify -q
+git checkout -q main
+CID_UHC=$(TRUTH_SESSION=s-umh-main2 $T claim "umh mainline advanced once more" --class UNVERIFIED --tier P2 2>/dev/null)
+git add .truth/claims.jsonl && git commit -qm "umh: advance main (forces a real 3-way merge, no fast-forward)" -q
+git merge --no-edit umh-tamper >/dev/null 2>&1; UMH_RC=$?
+if { [ "$UMH_RC" -ne 0 ] || [ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ]; } \
+   && ! git show HEAD:.truth/claims.jsonl 2>/dev/null | grep -q "stands TAMPERED"; then
+  ok "UM7: pre-merge-commit BLOCKED the tampered union merge (nothing tampered committed)"
+else
+  miss "UM7: a merge rewriting a committed ledger line landed past the gate (ADR-045/INV-A)"
+fi
+git merge --abort >/dev/null 2>&1 || true
+cd "$UMH_PREV"
+rm -rf "$UMH"
+
+# ---- FAULT LK (ADR-045/D2): write verbs serialize on the ledger lock ----
+# Deterministic two-process serialization through the REAL CLI: a holder
+# takes LOCK_EX on the lock target, a background `truth claim` must NOT
+# append while it is held, and must land promptly once released.
+say "FAULT LK (ADR-045): a write verb blocks on the held ledger lock and lands after release"
+LK="$(mktemp -d)"; TDIRS+=("$LK"); LK_PREV="$PWD"
+mkrepo "$LK"   # NB: mkrepo cd's into $LK; cwd restored via $LK_PREV
+git add -A && git commit -qm "lk: init" --no-verify -q
+rm -f .lk-held .lk-release
+python3 - <<'PYEOF' &
+import fcntl, os, time
+fd = os.open(".git/truth-ledger.lock", os.O_CREAT | os.O_RDWR, 0o644)
+fcntl.flock(fd, fcntl.LOCK_EX)
+open(".lk-held", "w").close()
+deadline = time.time() + 30          # backstop: never wedge the suite
+while not os.path.exists(".lk-release") and time.time() < deadline:
+    time.sleep(0.05)
+PYEOF
+LK_HOLDER=$!
+LK_WAITED=0
+while [ ! -f .lk-held ] && [ "$LK_WAITED" -lt 100 ]; do sleep 0.05; LK_WAITED=$((LK_WAITED+1)); done
+$T claim "lk fact filed under contention" --class UNVERIFIED --tier P2 >/dev/null 2>&1 &
+LK_CLAIMER=$!
+sleep 1
+LK_N=$(wc -l < .truth/claims.jsonl | tr -d ' ')
+if [ "$LK_N" -eq 0 ] && kill -0 "$LK_CLAIMER" 2>/dev/null; then
+  ok "LK1: the claim neither appended nor exited while the lock was held (~1s)"
+else
+  miss "LK1: a write verb proceeded past a held ledger lock (appended=$LK_N lines; ADR-045/R10)"
+fi
+touch .lk-release
+wait "$LK_CLAIMER" 2>/dev/null
+wait "$LK_HOLDER" 2>/dev/null
+if [ "$(wc -l < .truth/claims.jsonl | tr -d ' ')" -eq 1 ] \
+   && grep -q "lk fact filed under contention" .truth/claims.jsonl; then
+  ok "LK2: the blocked claim landed exactly once after the lock was released"
+else
+  miss "LK2: the record did not land (or landed twice) after release"
+fi
+rm -f .lk-held .lk-release
+cd "$LK_PREV"
+rm -rf "$LK"
 
 say ""
 say "canary result: $PASS caught, $FAIL missed"

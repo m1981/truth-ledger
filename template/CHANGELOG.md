@@ -8,6 +8,67 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.29 (ADR-045: write-path lock + merge gate -- the P4 phase of the
+  migration plan, decisions D2/D3; no verb, flag, schema, or fold
+  change; every existing refusal message and exit code byte-identical):
+  * Ledger lock (D2, closes R10): every write verb now holds an
+    EXCLUSIVE fcntl.flock around its ENTIRE load->gates->append call
+    (main() wraps args.fn for WRITE_VERBS), so the intake gates that
+    read a fold -- the G8 duplicate screen, the contradicts
+    dormant/live decision, the issue_event transition check -- can no
+    longer be raced by a concurrent same-machine append between fold
+    and write (the R10 TOCTOU catalogue). Lock target:
+    `<git-dir>/truth-ledger.lock` (registry LEDGER_LOCK_NAME), a
+    separate file like .git/truth-whisper.seen -- never the ledger fd
+    (the audited O_APPEND single-write path is untouched) and
+    deliberately NOT a worktree sibling: the .truth/.claims.lock draft
+    dirtied `git status` and red-flagged the session-close survival
+    gate in its first canary contact. Blocking acquire, no timeout --
+    flock state is kernel-owned and dies with a crashed holder's
+    process. Read verbs (incl. `validate --stdin`, inside the commit
+    gate) never touch the lock. Multi-machine concurrency unchanged
+    (paper sec 8 item 4 stands); an acceptance oracle that itself runs
+    a write verb against the SAME repo would self-deadlock -- disclosed
+    in ADR-045, oracles are suites by design. Canary FAULT LK (2 arms:
+    a held lock stalls a real `truth claim`, release lands it exactly
+    once) + TestLedgerLock (git-dir target, exclusion while held,
+    release on refusal exit).
+  * pre-merge-commit hook (D3, closes R5's gate half): git runs
+    pre-merge-commit -- never pre-commit -- when a merge auto-commits,
+    which is exactly the commit class the union-merge sync story
+    produces, previously ungated. install-hooks.sh now writes it as a
+    third hook with the same `exec bash scripts/check-truth.sh` body
+    (hooksPath-refusal guidance updated to name it); doctor gains an
+    adoption-gated WARN (never FAIL) when a local pre-commit gate hook
+    exists without a check-truth pre-merge-commit, naming
+    install-hooks.sh -- CI-arm repos are exempt (their gate runs
+    server-side on push/PR, where merge commits arrive like any other);
+    the meta-repo's own .githooks/ gains pre-merge-commit (delegating
+    to pre-commit so the archive freeze rides along). Canary UM5-UM7
+    complete the P0 union-merge arm's deferred assertion: hooks
+    installed via the real installer, the honest bidirectional union
+    merge commits THROUGH the gate (a union-merged ledger is a prefix
+    extension of ours), and a branch that rewrites an early committed
+    ledger line, landed with --no-verify and merged back, is BLOCKED at
+    the merge commit (non-prefix result, INV-A); plus 3 doctor arms
+    (WARN fires, goes quiet once installed, CI-arm exempt).
+  * Tail-seek + doctor fold-once (R15): _last_ledger_ts reads only the
+    ledger's last 64KB (partial first window line dropped, junk tail
+    lines walked past, full-scan fallback when the window holds nothing
+    parseable -- correctness first; TestLastLedgerTsTailSeek pins every
+    case against the old full scan inlined as the oracle), and
+    cmd_doctor loads the ledger ONCE and folds once, sharing `folded=`
+    with its consumers (it loaded 3x/folded 4x; ADR-034's fold-once
+    convention applied to its last violator -- output byte-identical).
+    The FS-3 scale-gate comment (registry) and the .truth/README FS-3
+    line now name the write path and reaffirm the remaining linear
+    scans (reaffirm, invalidate-scan) as watched-by-design residuals.
+  * Canary 243 -> 251 arms (FAULT LK 2, UM5-UM7 3, doctor
+    pre-merge-commit 3); core suite 290 -> 298 (TestLedgerLock 2,
+    TestLastLedgerTsTailSeek 6); every new arm red-proven by mutation.
+    ADR-045 records the decisions and the disclosed-not-solved
+    residuals.
+
 v0.9.28 (ADR-044: the package split -- truthlib/ modules behind the
   same single-file entry; zero behavior change; the unchanged 243-arm
   canary is the equivalence proof):

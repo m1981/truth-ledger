@@ -1,4 +1,4 @@
-"""truth v0.9.28 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.29 -- append-only claims ledger with a native work kernel.
 
 truthlib.cli -- argparse and the cmd_* orchestration (the line above is
 the argparse description, kept in lockstep with the entry docstring by
@@ -1015,15 +1015,19 @@ def cmd_doctor(a):
     else:
         fail("repo has commits", "no HEAD -- VERIFIED claims cannot anchor (G1)")
 
+    # ADR-034 fold-once, applied to its last violator (R15): doctor used
+    # to load the ledger three times and fold four; the timed block below
+    # is now the ONE load and fold, shared by every consumer down-file.
     lp = ledger_path()
+    events_d, folded = [], None
     if os.path.exists(lp):
         t0 = time.perf_counter()
-        events_timed = load_events()
-        fold(events_timed)
-        fold_issues(events_timed)
+        events_d = load_events()
+        folded = fold(events_d)
+        fold_issues(events_d)
         fold_ms = (time.perf_counter() - t0) * 1000
-        errs = validate_events(events_timed)
-        errs += order_check(events_timed)[0]
+        errs = validate_events(events_d)
+        errs += order_check(events_d)[0]
         if errs:
             fail("ledger validates", f"{len(errs)} schema error(s); run truth validate")
         else:
@@ -1097,6 +1101,29 @@ def cmd_doctor(a):
                  f".gitlab-ci.yml, Jenkinsfile, …) names {needle} -- a hook "
                  "OR CI MUST exist, see README Install")
 
+    # ADR-045 (D3): a merge that auto-commits runs pre-merge-commit,
+    # NEVER pre-commit -- the exact commit class the union-merge sync
+    # story produces, so a locally hook-gated repo without the third
+    # hook lands merged ledgers ungated. WARN, not FAIL: consumers who
+    # installed hooks before v0.9.29 lack it through no fault
+    # (adoption-gated). The check runs only when a pre-commit gate hook
+    # is wired LOCALLY: a CI-arm repo (no local hook, gate named in CI)
+    # is exempt because its gate runs server-side on push/PR, where a
+    # merge commit arrives like any other.
+    if find_gate_hook(hooks_dir, ("pre-commit",), "check-truth"):
+        pmc = find_gate_hook(hooks_dir, ("pre-merge-commit",),
+                             "check-truth")
+        if pmc:
+            ok("pre-merge-commit hook gates merge commits",
+               os.path.relpath(pmc, root))
+        else:
+            warn("pre-merge-commit hook gates merge commits",
+                 "pre-commit is wired but git runs pre-merge-commit "
+                 "(not pre-commit) when a merge auto-commits, so a "
+                 "union-merged ledger would land ungated -- re-run "
+                 "scripts/install-hooks.sh to add the third hook "
+                 "(ADR-045)")
+
     found = [f for f in DISCOVERY_FILES
              if os.path.exists(os.path.join(root, f))
              and "scripts/truth" in open(os.path.join(root, f),
@@ -1107,8 +1134,7 @@ def cmd_doctor(a):
         fail("discovery", "no instruction file mentions scripts/truth -- the "
              f"layer is invisible to agents (G2). Checked: {', '.join(DISCOVERY_FILES)}")
 
-    events_d = load_events() if os.path.exists(lp) else []
-    claims, premises = fold(events_d)
+    claims, premises = folded if folded is not None else fold(events_d)
     dangling = [f"{i}->{c}" for i, cs in premises.items() for c in cs if c not in claims]
     if dangling:
         warn("premise integrity", f"dangling premise(s): {', '.join(dangling)}")
@@ -1146,7 +1172,7 @@ def cmd_doctor(a):
     # ADR-010 separation: report what the records prove about independence.
     # Advisory only -- a refusal keyed on elapsed time is defeated by sleep
     # and would TEACH that bypass (the ADR-011 shape).
-    sep = separation_report(load_events(), now_dt())
+    sep = separation_report(events_d, now_dt(), folded=folded)
     if sep["same_session"]:
         fail("verifier separation",
              f"{sep['same_session']} agree(s) share the author's session -- "
@@ -1479,7 +1505,18 @@ def main():
         if banner:
             print(banner, file=sys.stderr)
     try:
-        args.fn(args)
+        if args.cmd in WRITE_VERBS:
+            # ADR-045 (D2): the ENTIRE verb -- load, gates, append -- is
+            # one critical section under the ledger lock, so every fold a
+            # gate decision reads is still current when the append lands
+            # (the R10 TOCTOU class). Read verbs (incl. `validate
+            # --stdin`, which runs inside the commit gate) never touch
+            # the lock. Blocking acquire, no timeout: flock(2) state dies
+            # with a crashed holder's process, so waiting is safe.
+            with ledger_lock():
+                args.fn(args)
+        else:
+            args.fn(args)
     except BrokenPipeError:
         try:
             sys.stdout.close()

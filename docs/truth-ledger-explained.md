@@ -4,7 +4,7 @@
 every layer, gate, hook, and deliberate loophole in a system built to
 keep AI coding agents' claims honest.
 
-**Scope** CLI v0.9.28 · paper v3 (2026-07-20) · ADR-001–044 ·
+**Scope** CLI v0.9.29 · paper v3 (2026-07-20) · ADR-001–045 ·
 **Sources** paper §N = `docs/truth-ledger-paper-v3.md`; ADR-NNN =
 `template/docs/adr/truth/NNN-*.md`
 
@@ -1588,9 +1588,10 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
 ### Acronyms & standards
 
 - **ADR** — Architecture Decision Record.
-- **CLI** — command-line interface; here the `truth` script (v0.9.28) —
+- **CLI** — command-line interface; here the `truth` script (v0.9.29) —
   since v0.9.28/ADR-044 a thin entry over the `truthlib/` package,
-  same surface.
+  same surface; since v0.9.29/ADR-045 write verbs serialize on a
+  per-repo `flock` and the commit gate also rides `pre-merge-commit`.
 - **CI** — continuous integration; the clone-proof backstop for the
   commit gate when local hooks are absent (ADR-025).
 - **JSONL** — JSON Lines: one JSON object per line, the ledger's format.

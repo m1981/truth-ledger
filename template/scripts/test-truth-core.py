@@ -2749,6 +2749,157 @@ class TestAppendRecords(unittest.TestCase):
             self.assertIn("filed tr-", out.getvalue())
 
 
+class TestLedgerLock(unittest.TestCase):
+    """ADR-045 (D2): the write-verb serialization lock. Unit level only
+    -- acquire/release semantics and the lock-file location; the real
+    two-process serialization through the CLI is canary FAULT LK.
+    Reentrancy is deliberately NOT required (no verb nests write verbs;
+    an acceptance oracle filing into the SAME repo would self-deadlock,
+    disclosed in ADR-045)."""
+
+    def _sandbox(self):
+        """A throwaway git repo, chdir'd into (ledger_lock resolves the
+        git dir from the working directory, like every shellio probe)."""
+        import tempfile
+        d = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(__import__("shutil").rmtree, d, True)
+        subprocess.run(["git", "init", "-q", "-b", "main", d], check=True,
+                       capture_output=True)
+        cwd = os.getcwd()
+        self.addCleanup(os.chdir, cwd)
+        os.chdir(d)
+        return d
+
+    def test_lock_targets_the_git_dir_and_excludes_while_held(self):
+        import fcntl
+        d = self._sandbox()
+        lock_path = os.path.join(d, ".git", tm.LEDGER_LOCK_NAME)
+        with tm.ledger_lock():
+            self.assertTrue(
+                os.path.exists(lock_path),
+                f"ledger_lock must create {tm.LEDGER_LOCK_NAME} under "
+                "the GIT DIR -- never flock the ledger fd itself, and "
+                "never a worktree sibling that would dirty git status "
+                "(ADR-045)")
+            probe = os.open(lock_path, os.O_RDWR)
+            try:
+                with self.assertRaises(
+                        OSError,
+                        msg="a second LOCK_EX|LOCK_NB on the held lock "
+                            "must be refused -- the critical section "
+                            "is exclusive"):
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            finally:
+                os.close(probe)
+        # released on exit: a fresh non-blocking acquire succeeds
+        probe = os.open(lock_path, os.O_RDWR)
+        try:
+            fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(probe, fcntl.LOCK_UN)
+        finally:
+            os.close(probe)
+
+    def test_release_survives_a_refusal_exit(self):
+        # Write verbs sys.exit their refusals INSIDE the critical
+        # section; the lock must not stay held past that.
+        import fcntl
+        d = self._sandbox()
+        with self.assertRaises(SystemExit):
+            with tm.ledger_lock():
+                sys.exit("truth: simulated refusal")
+        probe = os.open(os.path.join(d, ".git", tm.LEDGER_LOCK_NAME),
+                        os.O_RDWR)
+        try:
+            fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        finally:
+            os.close(probe)
+
+
+class TestLastLedgerTsTailSeek(unittest.TestCase):
+    """R15: _last_ledger_ts reads only the ledger tail (64KB window).
+    Every case is asserted against the OLD full-scan implementation,
+    inlined here as the oracle -- the seek is an optimization, never a
+    semantics change."""
+
+    @staticmethod
+    def _oracle(path):
+        # the pre-v0.9.29 implementation, verbatim semantics
+        if not os.path.exists(path):
+            return None
+        last = None
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    last = json.loads(line).get("ts")
+                except json.JSONDecodeError:
+                    continue
+        return last
+
+    def _with_ledger(self, content):
+        import tempfile
+        d = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, d, True)
+        path = os.path.join(d, ".truth", "claims.jsonl")
+        os.makedirs(os.path.dirname(path))
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        orig_lp = tm.ledger_path
+        tm.ledger_path = lambda: path
+        self.addCleanup(setattr, tm, "ledger_path", orig_lp)
+        return path
+
+    @staticmethod
+    def _line(i):
+        ts = f"2026-07-01T00:00:{i % 60:02d}.{i:06d}+00:00"
+        return json.dumps({"id": f"tr-{i:08x}", "kind": "claim", "ts": ts,
+                           "payload": {"text": "pad " * 40}}) + "\n"
+
+    def test_ledger_larger_than_window_matches_full_scan(self):
+        body = "".join(self._line(i) for i in range(400))  # ~120KB > 64KB
+        path = self._with_ledger(body)
+        self.assertGreater(os.path.getsize(path), tm._LAST_TS_TAIL_BYTES,
+                           "fixture must exceed the tail window or this "
+                           "test exercises nothing")
+        self.assertEqual(tm._last_ledger_ts(), self._oracle(path))
+        self.assertEqual(tm._last_ledger_ts(),
+                         json.loads(self._line(399))["ts"])
+
+    def test_file_smaller_than_window(self):
+        path = self._with_ledger(self._line(1) + self._line(2))
+        self.assertEqual(tm._last_ledger_ts(), self._oracle(path))
+
+    def test_last_line_without_trailing_newline(self):
+        path = self._with_ledger(self._line(1) + self._line(2).rstrip("\n"))
+        self.assertEqual(tm._last_ledger_ts(), self._oracle(path))
+        self.assertEqual(tm._last_ledger_ts(),
+                         json.loads(self._line(2))["ts"])
+
+    def test_junk_tail_line_walks_back(self):
+        path = self._with_ledger(self._line(1) + self._line(2)
+                                 + "{not json\n")
+        self.assertEqual(tm._last_ledger_ts(), self._oracle(path))
+        self.assertEqual(tm._last_ledger_ts(),
+                         json.loads(self._line(2))["ts"])
+
+    def test_empty_and_absent_ledger(self):
+        path = self._with_ledger("")
+        self.assertIsNone(tm._last_ledger_ts())
+        os.remove(path)
+        self.assertIsNone(tm._last_ledger_ts())
+
+    def test_window_of_pure_junk_falls_back_to_full_scan(self):
+        # one good line, then >64KB of junk: only the fallback scan can
+        # find the ts (correctness-first clause of R15)
+        body = self._line(7) + ("x" * 80 + "\n") * 1000
+        path = self._with_ledger(body)
+        self.assertGreater(os.path.getsize(path), tm._LAST_TS_TAIL_BYTES)
+        self.assertEqual(tm._last_ledger_ts(), self._oracle(path))
+        self.assertEqual(tm._last_ledger_ts(),
+                         json.loads(self._line(7))["ts"])
+
+
 # ---------------------- batch-1 hardening (roadmap-v3 R1/R2)
 #
 # R1 (field-notes-batch-m item 2): a VERIFIED claim whose evidence command

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""truth v0.9.28 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.29 -- append-only claims ledger with a native work kernel.
 
 Facts are appended as JSONL records to .truth/claims.jsonl (INV-A:
 append-only, commit-gated by scripts/check-truth.sh); every status is
@@ -59,7 +59,7 @@ from truthlib.advisory import _escape_ctrl
 from truthlib.gates import _gate_text_nonempty, _gate_duplicate, \
     _gate_quantifier_scope, _gate_scope_decay, _gate_inv_m, \
     _gate_generated, _gate_class_precheck, _gate_evidence_exit, _gate_blast
-from truthlib.shellio import _last_ledger_ts, _short_sha
+from truthlib.shellio import _last_ledger_ts, _LAST_TS_TAIL_BYTES, _short_sha
 from truthlib.cli import _issue_or_exit
 
 # ADR-044 monkeypatch seam: the core suite patches attributes on the
