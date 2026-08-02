@@ -47,7 +47,7 @@ v0.9.33 (ADR-048 check reachability -- the audit remediation: a check no
     hand-copied tuple -- the contract-copy drift ADR-043 closed, reopened
     in the untemplated tier. It now reads `truth vocab --json` at runtime
     and fails loud, like the health satellites.
-  * Canary 247 -> 250: doctor-JSON contract + text-unchanged arms, and
+  * Canary 247 -> 251: doctor-JSON contract + text-unchanged arms, and
     GS7/GS7b closing the last hard gate with no end-to-end arm
     (`text-nonempty`: empty and whitespace-only refused, ledger
     unchanged, plus a negative control). Core suite 293 -> 296.
