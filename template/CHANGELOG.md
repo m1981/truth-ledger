@@ -8,6 +8,37 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.32 (input hygiene on argument SHAPE -- no new ADR: both refusals
+  enforce decisions already taken, ADR-036 for the citation sweep and
+  ADR-013 for the premise refs; no schema change, no gate semantics
+  change, fold untouched):
+  * `truth citations` validates every positional arg as a ledger id
+    (tr-hex8, or wk-hex8 -- `done --cancel` sweeps issue tombstones too)
+    BEFORE any sweep runs, and refuses the WHOLE invocation on the first
+    bad token, naming it control-escaped (SI-3) and stating the shapes.
+    Found in a live operator transcript: `truth citations '#'` accepted
+    `#` as an id, swept the literal token across the corpus, and
+    reported it `clean` at exit 0 -- read-only, so nothing was
+    corrupted, but the verb answered a question nobody asked and did it
+    in verdict-shaped words. There is no bypass; a batch is one
+    preflight pass, so one bad token refuses the batch.
+  * `truth premise` refuses a claim id or `--supersedes` ref that is not
+    tr-hex8 BEFORE it appends. Intake checked neither, while the
+    validate mirror has always refused such a record: a normal verb
+    could therefore write, to an APPEND-ONLY file, a line that `truth
+    validate` and the commit gate then reject (`truth premise ISSUE-1
+    '#'` filed, then `validate` exited 1 on it). SHAPE only -- an
+    unknown-but-well-formed id stays legal, which is the deliberate
+    treatment of dangling premises (doctor's `premise integrity` WARN,
+    `issue --premise`'s warning, ADR-001); the issue ref stays free-form
+    for external trackers (ADR-004).
+  * Canary 245 -> 247 arms: TG12 (both junk shapes refused, nothing
+    swept, negative control -- a well-formed unknown id still reports
+    `clean` at rc 0, TG6's contract intact) and one R10-family arm (a
+    malformed premise ref refuses, the ledger does not grow, `validate`
+    still passes). Both red-proven: with the checks removed the arms
+    MISS.
+
 v0.9.31 (ADR-047: gate governance -- the P6 phase and close of the
   migration plan, decision D5; docs-only release, zero scripts/,
   truthlib/, or .truth/ contract changes -- the v0.9.16-0.9.19

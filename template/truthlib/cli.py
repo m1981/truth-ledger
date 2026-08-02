@@ -1,4 +1,4 @@
-"""truth v0.9.31 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.32 -- append-only claims ledger with a native work kernel.
 
 truthlib.cli -- argparse and the cmd_* orchestration (the line above is
 the argparse description, kept in lockstep with the entry docstring by
@@ -166,6 +166,23 @@ def cmd_citations(a):
     a multi-id ack stays refused on principle (ADR-011: one typed id
     authorizes one tombstone). Exit 0 = nothing cited inside the scope;
     CITATIONS_EXIT_CITED = at least one id is."""
+    # Input hygiene (ADR-036, no new decision): the sweep takes LEDGER
+    # ids, so anything else is a question nobody asked -- `citations '#'`
+    # used to grep the literal token across the whole corpus and answer
+    # "clean" about it. Read-only, but it launders junk into a corpus
+    # sweep and prints a verdict-shaped line about a non-id. Validated
+    # BEFORE any sweep and for EVERY arg: a batch is one preflight pass,
+    # so one bad token refuses the whole invocation -- nothing swept.
+    # wk-hex8 is legitimate: `done --cancel` sweeps issue tombstones too.
+    # fullmatch, not match: `$` also matches before a trailing newline,
+    # and "tr-deadbeef\n<junk>" must not pass for a bare id.
+    for cid in a.ids:
+        if not (ID_RE.fullmatch(cid) or WK_ID_RE.fullmatch(cid)):
+            # SI-3: a hostile arg is echoed control-escaped.
+            sys.exit(f"truth: not a ledger id: '{_escape_ctrl(cid)}' -- "
+                     "citations sweeps ledger ids only (tr-hex8, or "
+                     "wk-hex8 for an issue tombstone); nothing was swept "
+                     "(ADR-036)")
     globs, source, err = load_citation_scope()
     if err:
         sys.exit(err)  # R14a: cli-level exit, loader message verbatim
@@ -435,6 +452,23 @@ def cmd_reaffirm(a):
     print(summary)
 
 def cmd_premise(a):
+    # Input hygiene, mirror parity (same class as the citations check,
+    # but this verb WRITES): validate_events refuses a premise whose
+    # claim or supersedes ref is not tr-hex8, while intake checked
+    # neither -- so a normal verb could append, to an APPEND-ONLY file,
+    # a record that `truth validate` and the commit gate then reject.
+    # Intake may not be weaker than the mirror. SHAPE only: an
+    # unknown-but-well-formed id stays legal (doctor's dangling-premise
+    # WARN and `issue --premise`'s warning are the deliberate treatment
+    # of that case, ADR-001). The issue ref stays free-form -- external
+    # tracker ids are the point of the adapter seam (ADR-004).
+    for label, val in (("claim id", a.claim_id),
+                       ("--supersedes", a.supersedes)):
+        if val is not None and not ID_RE.fullmatch(val):
+            sys.exit(f"truth: not a claim id: '{_escape_ctrl(val)}' -- "
+                     f"premise {label} takes tr-hex8; validate refuses "
+                     "the record this would append (ADR-013). Nothing "
+                     "was filed.")
     payload = {"issue": a.issue, "claim": a.claim_id}
     if a.supersedes:
         # R14b: the ADR-013 rule ladder lives in supersede_error (core);

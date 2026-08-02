@@ -1504,6 +1504,18 @@ if PATH="/usr/bin:/bin" $T ready | grep -q "^$WK_R10"; then
 else
   miss "issue $WK_R10 still HELD after supersede"; PATH="/usr/bin:/bin" $T ready || true
 fi
+# R10-shape (v0.9.32): intake may not be weaker than the validate mirror.
+# A non-tr-hex8 claim ref used to APPEND -- and `truth validate` then
+# refused the line, on an append-only file.
+R10SL=$(wc -l < .truth/claims.jsonl)
+R10SERR=$($T premise "$WK_R10" '#' 2>&1); R10SRC=$?
+if [ "$R10SRC" -ne 0 ] && printf '%s\n' "$R10SERR" | grep -q "tr-hex8" \
+   && [ "$(wc -l < .truth/claims.jsonl)" -eq "$R10SL" ] \
+   && $T validate >/dev/null 2>&1; then
+  ok "premise refuses a non-tr-hex8 claim ref before appending -- the ledger never goes invalid-by-its-own-validator"
+else
+  miss "premise accepted a malformed claim ref (rc=$R10SRC) -- intake weaker than validate"
+fi
 
 say "FAULT R11 (ADR-017, C3): superseding a RETRACTED premise needs the human gate"
 CID_R11=$($T claim "r11 database is safe to drop" --class UNVERIFIED --tier P0)
@@ -2361,6 +2373,24 @@ if [ "$TG11RC" -eq 6 ]; then
   ok "TG11: a NON-ASCII-named citing file still blocks (git grep -z, SI-2 -- quotepath cannot hide it)"
 else
   miss "TG11: unicode-named citing file was invisible to the sweep (fail-open, rc=$TG11RC)"
+fi
+# TG12 (v0.9.32): the preflight takes LEDGER ids, nothing else. A junk
+# arg used to be swept literally across the corpus and reported "clean".
+# Both junk shapes must refuse, name the expected shape, and sweep
+# nothing; a well-formed unknown id must still answer clean at rc 0
+# (the negative control -- the refusal may not swallow TG6's contract).
+TG12A=$($T citations '#' 2>&1); TG12ARC=$?
+TG12B=$($T citations not-an-id 2>&1); TG12BRC=$?
+TG12C=$($T citations tr-deadbeef 2>/dev/null); TG12CRC=$?
+if [ "$TG12ARC" -ne 0 ] && [ "$TG12BRC" -ne 0 ] \
+   && printf '%s\n' "$TG12A" | grep -q "tr-hex8" \
+   && printf '%s\n' "$TG12B" | grep -q "tr-hex8" \
+   && ! printf '%s\n' "$TG12A" | grep -q "^#: " \
+   && [ "$TG12CRC" -eq 0 ] \
+   && printf '%s\n' "$TG12C" | grep -q "tr-deadbeef: clean"; then
+  ok "TG12: a non-id arg is refused by shape before any sweep (both junk forms), while a well-formed unknown id still reports clean at rc 0"
+else
+  miss "TG12: citations accepted a non-id arg or broke the clean case (rc=$TG12ARC/$TG12BRC/$TG12CRC)"
 fi
 cd "$TG_PREV"
 rm -rf "$TG"
