@@ -3,6 +3,12 @@
 Status: Accepted (2026-07-12, operator) — proposed 2026-07-11 in
 `docs/hardening-proposals-solo-regime.md`, implemented in CLI v0.6.0.
 Canary faults V1–V3.
+Amended by: ADR-046 (2026-08-02, v0.9.30) — the separation *report*
+(the instrument added beside this gate at v0.9.26, canary FAULT SEP)
+is Tier C now: `separation_report` stays pure in truthlib/advisory.py,
+driven by the meta-repo's `instruments/separation-report.py` instead
+of `stats`/`doctor`; SEP1–SEP3 retired to scripts/test-instruments.sh.
+The refusal gate this ADR defines is unchanged.
 Amended by: field note (2026-07-13, second deployment,
 `docs/field-notes-sdk-session.md` item 1) — the gate keys on the
 *record's* `session`, so a single-writer/scribe coordination pattern

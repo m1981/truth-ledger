@@ -6,6 +6,14 @@ the rev-1 refusal gate was severed there after its default threshold
 was falsified against this repository's own history, `tr-c3087292`).
 Implemented in CLI v0.9.25, schema `$id` v0.15. Core tests
 TestBlastForecast; canary FAULT BF (7 arms).
+Amended by: ADR-046 (2026-08-02, v0.9.30) — the STORAGE half is
+retired: intake no longer stamps `blast_forecast` (the field failed
+the envelope admission rule; stored ints are legacy-admitted, closed
+to new records), the forecast and floor are computed on read, and the
+churn report is Tier C (`instruments/blast-report.py`, no longer a
+stats section). The advisory, its floor logic, and the deferred
+refusal-gate stance below are unchanged. FAULT BF is 6 arms (BF4
+flipped to not-stored; BF5 retired to scripts/test-instruments.sh).
 Date: 2026-07-31
 Amends: — . Extends: ADR-034 (SI-2 subprocess discipline; the
 advisory rides the CC-1 block), ADR-033 (the churn section is that

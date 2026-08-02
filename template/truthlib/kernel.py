@@ -486,8 +486,12 @@ def validate_events(events):
             if "scope_basis" in p and not p["scope_basis"]:
                 errors.append(f"line {n}: empty scope_basis (ADR-007: the "
                               "override carries a sentence, not a boolean)")
-            # ADR-039: blast_forecast is a non-negative integer stamped
-            # at intake; validate tolerates its absence (legacy).
+            # ADR-039/ADR-046: blast_forecast -- LEGACY, admitted
+            # pre-ADR-046 (intake stamped it v0.9.25-v0.9.29; since
+            # ADR-046 the forecast is computed on read and never
+            # stored). Append-only history is never rewritten, so
+            # validate KEEPS shape-checking stored values; new records
+            # never carry the field.
             if "blast_forecast" in p:
                 bf = p["blast_forecast"]
                 if isinstance(bf, bool) or not isinstance(bf, int) or bf < 0:
@@ -535,7 +539,10 @@ def validate_events(events):
                                   "non-empty list of tr-hex8 ids (MEDIUM-1: "
                                   "the --duplicate-ok trace records which "
                                   "active claims it declared distinct from)")
-            # 42010 concerns: optional triage metadata; when present, a
+            # 42010 concerns -- LEGACY, admitted pre-ADR-046 (the filing
+            # surface is gone and the field is closed to new records;
+            # this repo's ledger holds records that carry it, and
+            # append-only history is never rewritten). When present, a
             # non-empty duplicate-free list of slug strings. Two
             # INDEPENDENT contract surfaces (this mirror + the schema's
             # uniqueItems/pattern), held in lockstep by the FS-2 corpus.

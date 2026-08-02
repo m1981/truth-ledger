@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.9.29)
+# .truth — append-only claims ledger (v0.9.30)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -387,31 +387,19 @@ must refuse, never read as a clean audit). Expect noise on a first run
 inventories and dark-file triage (adopt/attic/delete) are downstream
 satellites' work, not this verb's. Canary FAULTS W5–W8.
 
-**Stakeholder concerns (ISO/IEC/IEEE 42010 triage metadata, v0.9.15 — never a gate).**
-
-    scripts/truth claim "…" --concern security --concern latency
-    scripts/truth list --concern security [--live]
-
-The problem: the ledger records what a claim watches, never *whose
-concern* it serves, so "which claims guard the money path?" was a
-read-the-source census instead of a query — 42010's stakeholder-concern
-dimension, dropped when its correspondence rules were mechanized.
-
-`--concern` (repeatable) stamps 42010-style stakeholder-concern tags on
-a claim at filing — stored sorted and deduplicated under `concerns` in
-the claim payload. A tag is a slug (`[a-z0-9-]{1,32}`); anything else is
-refused at intake as input hygiene, exactly like INV-M's path hygiene —
-not a concern-gate. `list --concern TAG` filters and composes with the
-status flags; `stats` adds a `concerns` line: tag counts over
-non-retracted claims (stale/diverged still carry their stakeholder's
-interest — only retraction kills it) plus the count of active
-(`live`/`unverified`) claims carrying no tag. Explicit non-goal: a
-concern is TRIAGE METADATA, full stop — deciding whether a claim
-"touches security" needs a model's judgment, and the moment a gate needs
-a model to fire, it is a review, not a refusal (the Contradictions rule
-above). Tags never block filing, never change derived status, never
-enter the fold, and never gate `ready`; a ledger written before this
-flag existed folds, lists, and validates unchanged.
+**Stakeholder concerns (ISO/IEC/IEEE 42010 triage metadata, v0.9.15 —
+RETIRED at v0.9.30/ADR-046).** The `--concern` flag, `list --concern`,
+and the stats `concerns` line are gone: tags were triage metadata never
+read by the fold or any blocking gate, which fails the envelope
+admission rule (a payload field is admitted only if the fold or a
+blocking gate reads it — schema header, ADR-046). Records that already
+carry `concerns` are legacy-admitted: `validate` keeps shape-checking
+stored tags (slug `[a-z0-9-]{1,32}`, non-empty, duplicate-free) and a
+tagged ledger folds, lists, and validates unchanged forever. The field
+is CLOSED to new records — no verb stamps it, and hand-editing tags in
+is forbidden (append-only history; the admission rule). The meta-repo's
+Tier C reader (`instruments/concern-tag.py`) still tallies legacy tags;
+consumers keep nothing, by design.
 
 ## Claim discipline (earned lessons)
 
@@ -530,38 +518,44 @@ commit first, then file). Advisory only, never a refusal (a gate here
 would teach `git stash` as its bypass), machine-visible via --json
 advisories. Canary FAULT DW (7 arms).
 
-**The blast forecast** (ADR-039, v0.9.25): filing a path claim stamps
-`blast_forecast` -- the count of distinct commits touching the watch
-in the trailing 30 days, an UPPER BOUND on stalings (a claim stales
-only from live) -- and voices one advisory line at or above the
-floor. The floor SELF-CALIBRATES: P90 of stored forecasts over live
-path-claims once 20 exist, else the constant 15 (cold start). Shallow
-clones and unborn HEADs degrade LOUDLY (a notice, never a
-quietly-cold number); nothing is stored for them. `truth stats` gains
-the `blast` churn section: observed-vs-forecast per claim, the
-per-path staler ranking (read from invalidation `touched` lists), and
-the effective floor. A refusal gate deliberately does NOT ship -- it
-returns only as its own ADR once a field window of forecast-vs-
-observed data and the reaffirm-trial read exist. Canary FAULT BF
-(7 arms).
+**The blast forecast** (ADR-039, v0.9.25; computed on read since
+v0.9.30/ADR-046): filing a path claim computes the forecast -- the
+count of distinct commits touching the watch in the trailing 30 days,
+an UPPER BOUND on stalings (a claim stales only from live) -- and
+voices one advisory line at or above the floor. NOTHING is stored:
+`blast_forecast` failed the envelope admission rule and intake no
+longer stamps it (stored ints on pre-ADR-046 records stay
+validate-admitted). The floor SELF-CALIBRATES: P90 of live-computed
+forecasts over live path-claims once 20 exist, else the constant 15
+(cold start). Shallow clones and unborn HEADs degrade LOUDLY (a
+notice, never a quietly-cold number). The churn REPORT
+(observed-vs-forecast per claim, the per-path staler ranking read from
+invalidation `touched` lists, the effective floor) is Tier C: the
+meta-repo's `instruments/blast-report.py`, no longer a stats section.
+A refusal gate deliberately does NOT ship -- it returns only as its
+own ADR once a field window of forecast-vs-observed data and the
+reaffirm-trial read exist. Canary FAULT BF (6 arms; BF4 pins that the
+payload stays clean while the advisory voices).
 
-**The separation instrument** (ADR-010): `stats` and `doctor` report
-what the records can prove about verifier independence. ADR-010 refuses
-an `agree` whose session equals the author's, but `session()` returns
-whatever `TRUTH_SESSION` says -- the gate compares two strings one
-process can choose, so the name is all it ever sees. What the records
-DO show is how long a claim existed before its first agree: an agree
-landing inside `SEPARATION_FLOOR_SECONDS` (1.0s, derived by measuring
-that a CLI invocation costs ~0.1s, so `dispatch` + `verdict` is ~0.2s of
-process cost before anything is read) leaves no room for the work a
-verification is. `stats` prints the pair count, the median, and names
-any such claim that is still LIVE; `doctor` warns on those and FAILS if
-a same-session agree ever lands, which would be a gate regression.
-Advisory by design, never a refusal: a gate keyed on elapsed time is
-defeated by `sleep` and would teach that bypass (the ADR-011 shape).
-Latency is measured on FIRST agrees only -- later ones are dominated by
-hash-match reaffirms, which are legitimately fast. Canary FAULT SEP
-(3 arms incl. a negative control); no schema change.
+**The separation instrument** (ADR-010; Tier C since v0.9.30/ADR-046):
+the report of what the records can prove about verifier independence.
+ADR-010 refuses an `agree` whose session equals the author's, but
+`session()` returns whatever `TRUTH_SESSION` says -- the gate compares
+two strings one process can choose, so the name is all it ever sees.
+What the records DO show is how long a claim existed before its first
+agree: an agree landing inside `SEPARATION_FLOOR_SECONDS` (1.0s,
+derived by measuring that a CLI invocation costs ~0.1s, so `dispatch`
++ `verdict` is ~0.2s of process cost before anything is read) leaves
+no room for the work a verification is. The report (pair count,
+median, same-session regressions, currently-LIVE claims first-agreed
+inside the floor) lives in the meta-repo's
+`instruments/separation-report.py` -- it left `stats` and `doctor`
+with the rest of the Tier C surface. Advisory by design, never a
+refusal: a gate keyed on elapsed time is defeated by `sleep` and would
+teach that bypass (the ADR-011 shape). Latency is measured on FIRST
+agrees only -- later ones are dominated by hash-match reaffirms, which
+are legitimately fast. Gated by scripts/test-instruments.sh (the
+retired canary SEP arms); no schema change.
 
 ## Daily operation
 
@@ -576,11 +570,12 @@ you file without `--ttl-days` gets a default 30-day expiry (ADR-032), so
 expect scope overrides to surface for re-file about a month out — a
 re-file that re-fires the ADR-007 gate, not a silent renewal.
 Weekly (~30 s): `scripts/truth-canary.sh`.
-`scripts/truth stats` carries an `overrides` section (ADR-033): scope-ok
-filings, override-decay expiries, dup-overrides, unscreened filings, the
-max scope TTL, and a non-blocking advisory when a scope justification is
+The override-velocity report (ADR-033) -- scope-ok filings,
+override-decay expiries, dup-overrides, unscreened filings, the max
+scope TTL, and a non-blocking advisory when a scope justification is
 re-filed verbatim after expiry (review whether that scope judgment was
-ever real).
+ever real) -- is Tier C since v0.9.30/ADR-046: the meta-repo's
+`instruments/override-velocity.py`, no longer a `stats` section.
 After repo surgery (rebase spree, hook changes, new agent runtime):
 `scripts/truth doctor`.
 Monthly: re-audit a few fresh sessions' claims by hand against your day-0

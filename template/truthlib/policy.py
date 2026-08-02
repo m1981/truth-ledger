@@ -326,17 +326,3 @@ def join_ready(issues, claims, premises):
             ready.append(issue)
         annotated.append(issue)
     return ready, annotated
-
-def concerns_intake_error(tags):
-    """42010 concern tags: the ONE check they get -- each must be a
-    CONCERN_RE slug. Input hygiene only (a malformed tag is a typo, not a
-    judgment call); returns an error string or None. Called by cmd_claim
-    BEFORE build_claim_payload so a typo'd tag is refused before any
-    evidence command executes. Pure."""
-    for t in tags or []:
-        if not CONCERN_RE.match(t):
-            return (f"--concern tag {t!r} is not a slug -- lowercase "
-                    "letters, digits, hyphens, 1-32 chars ([a-z0-9-]{1,32})."
-                    " This is input hygiene, not a concern-gate: tags never "
-                    "block filing, they only have to be greppable.")
-    return None

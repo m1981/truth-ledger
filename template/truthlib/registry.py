@@ -114,18 +114,17 @@ WK_ID_RE = re.compile(r"^wk-[0-9a-f]{8}$")
 # Enforced in validate_events in lockstep with the schema's pattern
 # (FS-2 corpus holds the two together).
 TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}\+00:00$")
-# ISO/IEC/IEEE 42010 'concern': TRIAGE METADATA ONLY. Concern tags are
-# short slugs stamped on a claim payload at filing (--concern, repeatable,
-# stored sorted+deduplicated) and read back by list/stats. The slug check
-# is input hygiene like INV-M's path hygiene, NOT a concern-gate: deciding
-# whether a claim "touches security" needs a model, and the moment a gate
-# needs a model to fire, it is a review, not a refusal. Tags never block
-# filing, never enter the fold, never affect derived status or ready.
-# Anchored \A..\Z, not ^..$: Python's $ also matches BEFORE a trailing
-# newline, so ^..$ would let 'security\n' through intake into a stored
-# tag that breaks the one-line stats render and that list --concern can
-# never name (red-team F1). The schema's pattern carries the equivalent
-# guard in ECMA-compatible form.
+# ISO/IEC/IEEE 42010 'concern': LEGACY TRIAGE METADATA (Tier C since
+# ADR-046). The filing surface (--concern, list --concern, the stats
+# concerns section) is removed -- the field failed the envelope admission
+# rule (no fold or blocking gate ever read it). The regex stays because
+# validate's legacy branch still shape-checks the records admitted before
+# the demotion, and the Tier C reader (the meta-repo's
+# instruments/concern-tag.py) still tallies them. The field is CLOSED to
+# new records: no verb stamps it, and hand-editing it in is forbidden by
+# the admission rule. Anchored \A..\Z, not ^..$: Python's $ also matches
+# BEFORE a trailing newline (red-team F1); the schema's pattern carries
+# the equivalent guard in ECMA-compatible form.
 CONCERN_RE = re.compile(r"\A[a-z0-9-]{1,32}\Z")
 # ADR-007: universal-quantifier lexicon (tokens matched word-level via
 # tokens(); phrases matched with word boundaries). Changed only together

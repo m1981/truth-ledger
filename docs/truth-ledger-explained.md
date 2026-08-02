@@ -4,7 +4,7 @@
 every layer, gate, hook, and deliberate loophole in a system built to
 keep AI coding agents' claims honest.
 
-**Scope** CLI v0.9.29 · paper v3 (2026-07-20) · ADR-001–045 ·
+**Scope** CLI v0.9.30 · paper v3 (2026-07-20) · ADR-001–046 ·
 **Sources** paper §N = `docs/truth-ledger-paper-v3.md`; ADR-NNN =
 `template/docs/adr/truth/NNN-*.md`
 
@@ -267,7 +267,17 @@ at filing and recheck time. A stdlib mirror of the schema lives inside
 corpus" keeps mirror and schema from drifting apart — they drifted
 twice before that existed.
 
-### Stakeholder concern tags — whose concern does a claim serve (v0.9.15)
+### Stakeholder concern tags — whose concern does a claim serve (v0.9.15; RETIRED v0.9.30)
+
+> **Demoted to Tier C (D4/ADR-046).** The open question at the end of
+> this section got its answer: two tagged claims since v0.9.15, never
+> read by any decision — the field failed the envelope admission rule (*a
+> payload field is admitted only if the fold or a blocking gate reads
+> it*). `--concern`, `list --concern`, and the stats concerns section
+> left the CLI at v0.9.30; stored tags are legacy-admitted (records
+> are never rewritten) and CLOSED to new records; the meta-repo reader
+> `instruments/concern-tag.py` still tallies the legacy tags. The
+> section below is kept as the record of what the surface was.
 
 **The intention.** Every mechanism above records *what* a claim watches
 — paths, commands, hashes — but nothing records *who cares*. That is
@@ -696,7 +706,7 @@ flowchart LR
         BAN["unwired-gate banner: every write verb warns<br/>loudly when no commit gate exists"]
         EXW["non-zero evidence-exit advisory at filing<br/>(absence proofs only since v0.9.21 -<br/>positive sentences are REFUSED, ADR-035)"]
         DWN["dirty-watch advisory (ADR-038, v0.9.24):<br/>a watched path with uncommitted changes -<br/>modified, untracked-under-glob, mid-rename,<br/>or merge-conflict - voices restale-at-birth;<br/>advisory only, never a refusal"]
-        BLF["blast forecast (ADR-039, v0.9.25):<br/>a hot watch (>= self-calibrating floor of<br/>distinct commits/30d) voices its upper bound;<br/>stamped as blast_forecast for the stats<br/>churn report; shallow/unborn history degrades<br/>LOUDLY - advisory only, gate deferred to data"]
+        BLF["blast forecast (ADR-039, v0.9.25):<br/>a hot watch (>= self-calibrating floor of<br/>distinct commits/30d) voices its upper bound;<br/>computed LIVE - never stored since<br/>v0.9.30/ADR-046 (churn report: the Tier C<br/>blast instrument); shallow/unborn history<br/>degrades LOUDLY - advisory only"]
         SOK["scope-ok default-expiry notice - reaffirm<br/>summaries - verbatim-repeat advisory"]
     end
 
@@ -1156,11 +1166,13 @@ verdict), the definition carries it too.
   legitimate (ADR-037, schema v0.14). This one decays on the ADR-032
   clock alongside `scope_basis`; `evidence_exit_basis` and
   `orphan_basis` do not.
-- **`blast_forecast`** — stamped at filing on a path claim: distinct
-  commits that touched the watch in the trailing 30 days, an UPPER bound
-  on how often it will stale. Advisory at or above a self-calibrating
-  floor; shallow or unborn history stores nothing and says so (ADR-039).
-  This is the field that defines schema v0.15.
+- **`blast_forecast`** — LEGACY (v0.9.25–v0.9.29): distinct commits
+  that touched the watch in the trailing 30 days, an UPPER bound on how
+  often it will stale, once stamped at filing. Since v0.9.30/ADR-046 it
+  is computed on read (the advisory and the Tier C blast instrument),
+  never stored — the field failed the envelope admission rule and is
+  legacy-admitted, closed to new records. Defined schema v0.15;
+  deprecated at v0.16.
 - **`reaffirm_cleared`** — a field on a reaffirm auto-`agree` recording
   that a watched-but-unread file changed yet the output still matched;
   auditability, not judgment (ADR-030).
@@ -1175,9 +1187,12 @@ verdict), the definition carries it too.
 - **`output_hash` / `returncode`** — the hash of the evidence command's
   output and its exit code; recheck and reaffirm compare *both* for
   stability, not success (source of the hollow-VERIFIED residual).
-- **`concerns`** — the sorted, duplicate-free list of stakeholder-concern
-  slugs stamped by `--concern` at filing (§04); 42010 triage metadata the
-  fold never reads — read only by `list --concern` and `stats`.
+- **`concerns`** — LEGACY (v0.9.15–v0.9.29): the sorted, duplicate-free
+  list of stakeholder-concern slugs once stamped by `--concern` at
+  filing (§04); 42010 triage metadata the fold never reads. Retired to
+  Tier C at v0.9.30/ADR-046 — legacy-admitted, closed to new records;
+  read only by validate's legacy branch and the meta-repo's
+  `instruments/concern-tag.py`.
 
 ### CLI verbs
 
@@ -1210,8 +1225,10 @@ verdict), the definition carries it too.
   (e.g. `list --live`).
 - **`queue`** — the human review queue: diverged + stale P0/P1 +
   unverifiable P0 claims.
-- **`stats`** — ledger metrics (FS-1): status/tier counts, per-tier
-  half-life, and the ADR-033 `overrides` velocity report.
+- **`stats`** — ledger metrics (FS-1): status/tier counts, verdict
+  rates, per-tier half-life, queue aging. Since v0.9.30/ADR-046 the
+  overrides/separation/blast/concerns sections live outside the CLI as
+  meta-repo Tier C instruments (`instruments/*.py`).
 - **`impact`** — what knowledge editing given paths would demote; shares
   one path matcher with the scan (a second is forbidden by decree).
   `--inverse` lists files watched by no active claim.
@@ -1235,9 +1252,10 @@ verdict), the definition carries it too.
   30-day default (ADR-007/032).
 - **`--single-run`** — skip the determinism double-run (expensive
   commands).
-- **`--concern TAG`** — repeatable on `claim`: tag the claim with a
-  stakeholder concern (`[a-z0-9-]{1,32}`); on `list`: filter to claims
-  carrying the tag. Triage metadata, never a gate (§04).
+- **`--concern TAG`** — RETIRED at v0.9.30/ADR-046 (was: repeatable on
+  `claim` to tag a stakeholder concern, a filter on `list`). Triage
+  metadata never earned its envelope seat; legacy tags are read by
+  `instruments/concern-tag.py` (§04).
 - **`--evidence-unsafe-ok`** — file despite a failed safety screen; runs
   once in the author's own session, stored `screened:false`, refused by
   recheck forever after (ADR-009).
@@ -1338,10 +1356,11 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
 - **INV-T** — a `scope_basis` claim filed without `--ttl-days` is stamped
   `ttl_days=30` + `ttl_default:true` and never refused; expiry rides the
   unchanged ADR-019 scan path (ADR-032).
-- **INV-U** — `truth stats`'s `overrides` section counts scope-ok
-  filings, decay expiries, overridden duplicates, and unscreened filings
-  exactly, and flags a verbatim re-justification only when the prior is
-  now dead (ADR-033).
+- **INV-U** — the override-velocity report (since v0.9.30/ADR-046
+  `instruments/override-velocity.py`, formerly a `truth stats` section)
+  counts scope-ok filings, decay expiries, overridden duplicates, and
+  unscreened filings exactly, and flags a verbatim re-justification
+  only when the prior is now dead (ADR-033).
 
 ### Findings & code series — what the letter prefixes mean
 
@@ -1588,10 +1607,12 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
 ### Acronyms & standards
 
 - **ADR** — Architecture Decision Record.
-- **CLI** — command-line interface; here the `truth` script (v0.9.29) —
+- **CLI** — command-line interface; here the `truth` script (v0.9.30) —
   since v0.9.28/ADR-044 a thin entry over the `truthlib/` package,
   same surface; since v0.9.29/ADR-045 write verbs serialize on a
-  per-repo `flock` and the commit gate also rides `pre-merge-commit`.
+  per-repo `flock` and the commit gate also rides `pre-merge-commit`;
+  since v0.9.30/ADR-046 the instrument reports live outside it (Tier C,
+  `instruments/*.py`).
 - **CI** — continuous integration; the clone-proof backstop for the
   commit gate when local hooks are absent (ADR-025).
 - **JSONL** — JSON Lines: one JSON object per line, the ledger's format.

@@ -1,10 +1,13 @@
 """truthlib.advisory -- advisory assembly and the pure report family (C6).
 
 The CC-1 advisory block (ADR-034), the post-append intake advisories,
-the commit-gate banner, and every pure fold consumer the read verbs
-render: queue, impact, inverse, baseline, stats, half-life, override
-velocity, separation, blast, vocab, dispatch text, and the citation-scope
-helpers.  Pure: facts arrive as data; nothing here probes the world.
+the commit-gate banner, and every pure fold consumer a read surface
+renders: queue, impact, inverse, baseline, stats, half-life, vocab,
+dispatch text, and the citation-scope helpers -- plus the Tier C report
+family (override velocity, separation, blast, ADR-046), which stays
+pure HERE and is driven by the meta-repo's instruments/*.py, no longer
+by stats/doctor.  Pure: facts arrive as data; nothing here probes the
+world.
 """
 import hashlib
 import json
@@ -91,27 +94,40 @@ def dirty_watch(entries, watch_patterns):
                 hits.add(p)
     return sorted(hits)
 
-def effective_blast_floor(claims):
-    """Pure (ADR-039): the advisory floor, self-calibrated -- P90 of
-    stored blast_forecast values over LIVE path-claims once >=
-    BLAST_MIN_OBSERVATIONS exist; the constant is the cold-start
-    fallback only. Returns (floor, source)."""
+def effective_blast_floor(claims, history):
+    """Pure (ADR-039, recast by ADR-046): the advisory floor,
+    self-calibrated -- P90 of forecasts COMPUTED LIVE over live
+    path-claims once >= BLAST_MIN_OBSERVATIONS exist; the constant is
+    the cold-start fallback only. `history` is blast_history()'s parsed
+    log passed as data (the shell gathers it ONCE -- same git cost as
+    the retired stored-int read, one log, plus N pure matches); None
+    (shallow/unavailable history) reads as fallback -- a floor computed
+    from a truncated log would be the quietly-cold number ADR-039
+    forbids. Returns (floor, source)."""
+    if history is None:
+        return BLAST_ADVISORY_FLOOR, "fallback"
     vals = sorted(
-        e["claim"]["payload"]["blast_forecast"] for e in claims.values()
+        blast_forecast(e["claim"]["payload"]["evidence_paths"], history)
+        for e in claims.values()
         if e["status"] == "live"
-        and isinstance(e["claim"]["payload"].get("blast_forecast"), int)
-        and not isinstance(e["claim"]["payload"].get("blast_forecast"), bool))
+        and e["claim"]["payload"].get("evidence_paths"))
     if len(vals) >= BLAST_MIN_OBSERVATIONS:
         # clamped to >= 1: an all-cold corpus must not calibrate the
         # floor to 0 and flag stone-cold watches as hot (R5 review, F2)
         return max(1, vals[max(0, int(len(vals) * 0.9) - 1)]), "calibrated"
     return BLAST_ADVISORY_FLOOR, "fallback"
 
-def blast_report(events, folded=None):
-    """ADR-039: the churn instrument -- observed invalidations vs
-    forecast-at-filing per path-claim (top 5 by observed), the per-path
-    staler ranking read from invalidation `touched` lists (no git work),
-    and the effective floor. Pure fold consumer; shares the fold."""
+def blast_report(events, folded=None, history=None):
+    """ADR-039 (Tier C since ADR-046): the churn instrument -- observed
+    invalidations vs forecast per path-claim (top 5 by observed), the
+    per-path staler ranking read from invalidation `touched` lists (no
+    git work), and the effective floor. Pure fold consumer; shares the
+    fold. `history` is blast_history()'s parsed log as data: when
+    present, forecasts are computed LIVE over the current window
+    (ADR-046 -- intake no longer stamps them); when None, a stored
+    legacy blast_forecast int is reported as-is (records admitted
+    pre-ADR-046) and claims without one show forecast null. Driven by
+    the meta-repo's instruments/blast-report.py, not by stats."""
     claims, _ = folded if folded is not None else fold(events)
     inval_counts, staler = {}, {}
     for _, ev in events:
@@ -124,14 +140,16 @@ def blast_report(events, folded=None):
             staler[t] = staler.get(t, 0) + 1
     rows = []
     for cid, e in claims.items():
-        if not e["claim"]["payload"].get("evidence_paths"):
+        paths = e["claim"]["payload"].get("evidence_paths")
+        if not paths:
             continue
-        pf = e["claim"]["payload"].get("blast_forecast")
+        pf = (blast_forecast(paths, history) if history is not None
+              else e["claim"]["payload"].get("blast_forecast"))
         obs = inval_counts.get(cid, 0)
         if pf is not None or obs:
             rows.append({"claim": cid, "observed": obs, "forecast": pf})
     rows.sort(key=lambda r: (-r["observed"], r["claim"]))
-    floor, src = effective_blast_floor(claims)
+    floor, src = effective_blast_floor(claims, history)
     return {"rows": rows[:5],
             "staler_ranking": [{"path": p, "invalidations": n} for p, n
                                in sorted(staler.items(),
@@ -140,7 +158,8 @@ def blast_report(events, folded=None):
 
 def intake_advisories(events, tier, ttl_days_arg, scope_ok, evidence_class,
                       payload, generated_ok=None, claims=None, *,
-                      generated_source, porcelain, shallow_state):
+                      generated_source, porcelain, shallow_state,
+                      blast_forecast_live=None, blast_history=None):
     """The post-append advisory set shared by `claim` and `done --claim`
     (ADR-034): FS-1 half-life note (moved post-append -- it advises, so
     it rides the block), ADR-032 default-expiry notice, the ADR-037
@@ -152,10 +171,12 @@ def intake_advisories(events, tier, ttl_days_arg, scope_ok, evidence_class,
     passes them as keyword-only data -- generated_source is the ADR-037
     list state _gate_generated already stashed in ctx (None when the
     filing carried no paths, unread then), porcelain is the raw
-    `git status --porcelain=v1 -z` text (or None), and shallow_state is
-    blast_history()'s state from _gate_blast's own probe. No subprocess,
-    file, clock, or env in here any more; the duplicate probes per
-    filing are gone with them."""
+    `git status --porcelain=v1 -z` text (or None), and shallow_state /
+    blast_forecast_live / blast_history are _gate_blast's own probe
+    results passed through as data (ADR-046: the forecast is computed
+    live and NEVER stored -- the payload no longer carries it). No
+    subprocess, file, clock, or env in here any more; the duplicate
+    probes per filing are gone with them."""
     msgs = []
     if ttl_days_arg:
         # FS-1: suggestion only, beside the author's choice -- TTLs stay
@@ -205,7 +226,7 @@ def intake_advisories(events, tier, ttl_days_arg, scope_ok, evidence_class,
     # only at or above the (self-calibrating) floor; shallow/unavailable
     # history is voiced loudly instead of quietly reading cold.
     if payload.get("evidence_paths"):
-        f = payload.get("blast_forecast")
+        f = blast_forecast_live
         if f is None:
             # R6: the shallow/unavailable fact is _gate_blast's own
             # blast_history state, passed through -- the duplicated
@@ -216,7 +237,7 @@ def intake_advisories(events, tier, ttl_days_arg, scope_ok, evidence_class,
                         else "blast: history unavailable -- forecast "
                              "skipped (ADR-039)")
         elif claims is not None:
-            floor, src = effective_blast_floor(claims)
+            floor, src = effective_blast_floor(claims, blast_history)
             if f >= floor:
                 msgs.append(f"blast: watch matched {f} commits in the "
                             f"last {BLAST_WINDOW_DAYS}d -- an upper bound "
@@ -306,11 +327,13 @@ def half_life_observations(events):
     return obs, {cid: e["status"] for cid, e in state.items()}
 
 def claim_concerns(payload):
-    """The claim's 42010 concern tags as READ-side data: the string items
-    of a well-formed list, else []. A hand-appended malformed value is
-    validate's finding to report; the read verbs (list --concern, stats)
-    must degrade to 'no tags', never crash on an unhashable item or fall
-    into substring matching on a bare string (red-team F2). Pure."""
+    """The claim's LEGACY 42010 concern tags as READ-side data: the
+    string items of a well-formed list, else []. Kept after ADR-046
+    demoted the concerns surface to Tier C because two readers remain:
+    validate's legacy branch (records admitted pre-ADR-046) and the
+    meta-repo's instruments/concern-tag.py. Readers must degrade to 'no
+    tags', never crash on an unhashable item or fall into substring
+    matching on a bare string (red-team F2). Pure."""
     cs = payload.get("concerns")
     if not isinstance(cs, list):
         return []
@@ -357,25 +380,12 @@ def stats_report(events, now, folded=None):
                                "median_days": round(statistics.median(days), 2)}
     queue = queue_rows(claims, now)
     ages = sorted(r["age_days"] for r in queue if r["age_days"] is not None)
-    # 42010 concern triage view: tag counts over non-retracted claims
-    # (stale/diverged still carry their stakeholder's interest -- only
-    # retraction kills it, the impact --inverse convention), plus how many
-    # ACTIVE claims ({live, unverified}, the ADR-018 intake notion) carry
-    # no tag at all -- the coverage residue a triager would sweep. Pure
-    # fold read; concerns never feed status, queue, or any gate.
-    concerns, untagged = {}, 0
-    for e in claims.values():
-        tags = claim_concerns(e["claim"]["payload"])
-        if e["status"] != "retracted":
-            for t in tags:
-                concerns[t] = concerns.get(t, 0) + 1
-        if e["status"] in ACTIVE_STATUSES and not tags:
-            untagged += 1
+    # ADR-046: the 42010 concern tally moved OUT (Tier C -- the meta-repo's
+    # instruments/concern-tag.py reads legacy tags over the raw ledger).
     return {"claims_by_status": by_status, "claims_by_tier": by_tier,
             "verdicts": verdicts, "half_life": half_life,
             "queue_size": len(queue),
-            "queue_max_age_days": ages[-1] if ages else None,
-            "concerns": concerns, "concerns_untagged_active": untagged}
+            "queue_max_age_days": ages[-1] if ages else None}
 
 def separation_report(events, now, folded=None):
     """The evidence-of-separation instrument for ADR-010. Pure consumer of

@@ -620,10 +620,11 @@ that already names it.
   (§5); ISO/IEC 25010/25023's functional completeness gets the same
   treatment, "module X covers Y" becoming a claim with a lifecycle.
   42010's other first-class term — the stakeholder *concern* each view
-  frames — is recorded since v0.9.15 as `--concern` triage metadata on
-  claims: queryable ("which live claims guard the billing path"), never
-  a gate, and outside every field window §2 covers, so its net value is
-  as unmeasured as §10 leaves everything else.
+  frames — was recorded v0.9.15–v0.9.29 as `--concern` triage metadata
+  on claims: queryable ("which live claims guard the billing path"),
+  never a gate, and outside every field window §2 covers; at v0.9.30
+  the unmeasured net value came due — the field failed ADR-046's
+  envelope admission rule and was demoted to a Tier C reader.
 - **The agent-era amplifier.** Every standard above assumes a human
   review loop; LLM agents produce confident assertions faster than any
   such loop scales, and §2 says their dominant failure is scope
@@ -746,7 +747,8 @@ question*.
    agree*; where the elapsed time affords more, that a separate session
    did the work remains asserted rather than evidenced, since affording
    the time is not the same as spending it.
-   `stats` and `doctor` now report this distinction from
+   The separation instrument (instruments/separation-report.py) reports
+   this distinction from
    existing records (no schema change); it is an instrument, not a gate —
    a refusal keyed on elapsed time is defeated by `sleep` and would
    teach that bypass. Making separation genuinely evidenced would need

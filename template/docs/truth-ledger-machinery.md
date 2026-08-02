@@ -47,6 +47,25 @@ flowchart TB
 flip to "done" or "true". The only way to change a status is to append a
 new, attributable, gate-checked event.
 
+### The envelope admission rule (ADR-046)
+
+Records are permanent, so what goes *into* a record is governed, not
+convenient: **a payload field is admitted only if the fold or a
+blocking gate reads it.** Report-only data belongs in Tier C
+instruments (meta-repo `instruments/*.py`, computed on read), never in
+the envelope. The grandfather list:
+
+* **pass** — the override bases (`scope_basis`, `generated_ok_basis`,
+  `evidence_exit_basis`, `orphan_basis`, `overridden_duplicates`) and
+  `ttl_default`: gates stamp them, decay/reviews read them.
+* **legacy-admitted, closed to new records** — `concerns` and
+  `blast_forecast`: nothing in the fold or a blocking gate ever read
+  them, so their filing surfaces are gone; records admitted before
+  ADR-046 keep validating forever (append-only history is never
+  rewritten), and no new record may carry them — including by
+  hand-editing the ledger, which is forbidden twice over (it rewrites
+  history *and* smuggles a field past the rule).
+
 ---
 
 ## 2. Life of a fact — how a claim stays honest

@@ -5,6 +5,11 @@ override decay's instrument), adopting candidate C6 from the 2026-07-20
 clean-room convergence analysis. Implemented in CLI v0.9.14, after
 ADR-032 (it reads the fields R12 stamps). Core tests TestOverrideReport +
 TestOverrideReportCLI; canary FAULT OV (2 arms incl. negative control).
+Amended by: ADR-046 (2026-08-02, v0.9.30) — the report is Tier C now:
+`override_report` stays pure in truthlib/advisory.py but is driven by
+the meta-repo's `instruments/override-velocity.py`, no longer a `truth
+stats` section; TestOverrideReportCLI and the FAULT OV stats arms
+retired to scripts/test-instruments.sh (the pure tests stand).
 Date: 2026-07-20
 Amends: ADR-007 (supplies its adoption gate the instrument it named but
 lacked). Extends: ADR-012/030's measurability discipline (make the

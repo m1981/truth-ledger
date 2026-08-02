@@ -1,4 +1,4 @@
-"""truth v0.9.29 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.30 -- append-only claims ledger with a native work kernel.
 
 truthlib.cli -- argparse and the cmd_* orchestration (the line above is
 the argparse description, kept in lockstep with the entry docstring by
@@ -63,8 +63,9 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
         payload["overridden_duplicates"] = ctx["overridden_duplicates"]
     if ctx.get("payload_generated_basis"):
         payload["generated_ok_basis"] = ctx["payload_generated_basis"]
-    if ctx.get("blast_forecast") is not None:
-        payload["blast_forecast"] = ctx["blast_forecast"]  # ADR-039
+    # ADR-046: blast_forecast is NOT stamped -- it failed the envelope
+    # admission rule (nothing in the fold or a blocking gate reads it).
+    # The gate still computes it live; it rides `facts` to the advisory.
 
     if evidence_class == "VERIFIED":
         # -- execution boundary (ADR-029): screen, then double-run.
@@ -90,16 +91,12 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
     elif evidence_class == "INFERRED":
         payload["basis"] = basis
     facts = {"generated_source": ctx.get("generated_source"),
-             "blast_state": ctx.get("blast_state")}
+             "blast_state": ctx.get("blast_state"),
+             "blast_forecast": ctx.get("blast_forecast"),
+             "blast_history": ctx.get("blast_history")}
     return payload, facts
 
 def cmd_claim(a):
-    # 42010 concerns: hygiene-check the slugs BEFORE intake so a typo'd
-    # tag never triggers an evidence run (VERIFIED intake executes the
-    # command twice); the tags themselves gate nothing.
-    err = concerns_intake_error(a.concern)
-    if err:
-        sys.exit("truth: " + err)
     events = load_events()
     claims, _ = fold(events)
     payload, facts = build_claim_payload(
@@ -108,11 +105,6 @@ def cmd_claim(a):
         scope_basis=a.scope_ok, unsafe_ok=a.evidence_unsafe_ok,
         evidence_exit_basis=a.evidence_exit_ok,
         generated_basis=a.generated_ok)
-    if a.concern:
-        # stored sorted+deduplicated: canonical form keeps the record's
-        # canonical serialization (ADR-016 fold key) order-independent of
-        # how the author happened to repeat the flag
-        payload["concerns"] = sorted(set(a.concern))
     rec = append_record("claim", payload)
     advisories = intake_advisories(events, a.tier, a.ttl_days, a.scope_ok,
                                    a.evidence_class, payload,
@@ -122,7 +114,9 @@ def cmd_claim(a):
                                    porcelain=(working_tree_status()
                                               if payload.get("evidence_paths")
                                               else None),
-                                   shallow_state=facts["blast_state"])
+                                   shallow_state=facts["blast_state"],
+                                   blast_forecast_live=facts["blast_forecast"],
+                                   blast_history=facts["blast_history"])
     if a.json:
         out = dict(rec)
         if advisories:
@@ -492,9 +486,7 @@ def cmd_list(a):
              "class": e["claim"]["payload"].get("evidence_class"),
              "text": e["claim"]["payload"].get("text")}
             for cid, e in claims.items()
-            if (not want or e["status"] in want)
-            and (not a.concern
-                 or a.concern in claim_concerns(e["claim"]["payload"]))]
+            if not want or e["status"] in want]
     if a.json:
         print(json.dumps(rows, indent=2))
     else:
@@ -696,7 +688,9 @@ def cmd_done(a):
             generated_source=claim_facts["generated_source"],
             porcelain=(working_tree_status()
                        if claim_payload.get("evidence_paths") else None),
-            shallow_state=claim_facts["blast_state"])
+            shallow_state=claim_facts["blast_state"],
+            blast_forecast_live=claim_facts["blast_forecast"],
+            blast_history=claim_facts["blast_history"])
     if a.json:
         # SI-3, extended to claim-at-death (P2): one machine-readable
         # object -- the echoed claim record (NOT the ledger line) plus
@@ -914,19 +908,15 @@ def cmd_stats(a):
     if a.since:
         events = [(n, ev) for n, ev in events
                   if (ev.get("ts") or "") >= a.since]
-    # ADR-034: fold ONCE and share -- each stats consumer used to re-fold
-    # (and re-sort) the whole event list per invocation.
+    # ADR-034: fold ONCE and share. ADR-046 (Tier C): the separation,
+    # override-velocity, blast, and concerns sections moved OUT of this
+    # verb -- their pure reports stay in truthlib.advisory, driven by the
+    # meta-repo's instruments/*.py over `truth ... --json` + the raw
+    # ledger. stats keeps exactly what Tier B reads: counts, verdicts,
+    # half-life (feeds the FS-1 intake advisory), and queue aging.
     folded = fold(events)
     report = stats_report(events, now_dt(), folded=folded)
-    # ADR-033: the override-velocity section rides alongside stats. No
-    # threshold, no gate -- a non-blocking advisory only.
-    overrides = override_report(events, now_dt(), folded=folded)
-    blast = blast_report(events, folded=folded)
-    separation = separation_report(events, now_dt(), folded=folded)
     if a.json:
-        report["overrides"] = overrides
-        report["blast"] = blast
-        report["separation"] = separation
         print(json.dumps(report, indent=2))
         return
     print("claims by status: " + (", ".join(
@@ -946,58 +936,6 @@ def cmd_stats(a):
     age = report["queue_max_age_days"]
     print(f"queue: {report['queue_size']} item(s)"
           + (f", oldest {age}d" if age is not None else ""))
-    # 42010 concern triage view (metadata report only, never a gate)
-    print("concerns: " + (", ".join(
-        f"{k}={v}" for k, v in sorted(report["concerns"].items()))
-        or "none")
-        + f", untagged-active={report['concerns_untagged_active']}")
-    # ADR-033: override-velocity section (feeds ADR-007's adoption gate).
-    o = overrides
-    mx = o["max_scope_ttl_days"]
-    print(f"overrides: scope-ok={o['scope_basis_filings']} "
-          f"decay-expiries={o['decay_expiries']} "
-          f"dup-overrides={o['overridden_duplicates']} "
-          f"unscreened={o['screened_false_filings']} "
-          f"exit-ok={o['evidence_exit_filings']} "
-          f"orphan-ok={o['orphan_filings']} "
-          f"generated-ok={o['generated_ok_filings']}"
-          + (f", max scope ttl {mx}d" if mx is not None else ""))
-    # ADR-035: warned population beside the single-homed override count
-    # (the refused class leaves no record, so it has no counter).
-    print(f"hollow: warned={o['hollow_warned']} "
-          f"(overridden -> overrides exit-ok)")
-    # ADR-039: the churn instrument (report, never a gate).
-    b = blast
-    print(f"blast: floor {b['effective_floor']} ({b['floor_source']})"
-          + ("; top observed-vs-forecast: " + ", ".join(
-              f"{r['claim']}={r['observed']}/{r['forecast']}"
-              for r in b["rows"]) if b["rows"] else "")
-          + ("; top stalers: " + ", ".join(
-              f"{s['path']}={s['invalidations']}"
-              for s in b["staler_ranking"]) if b["staler_ranking"] else ""))
-    sp = separation
-    if sp["pairs"]:
-        print(f"separation: {sp['pairs']} first-agree pair(s), median "
-              f"{sp['median_seconds']}s; {sp['unevidenced']} inside the "
-              f"{sp['floor_seconds']}s floor"
-              + (f" (fastest {sp['fastest'][0]}s, {sp['fastest'][1]})"
-                 if sp["fastest"] else ""))
-        if sp["same_session"]:
-            print(f"  advisory: {sp['same_session']} agree(s) share the "
-                  "author's session -- ADR-010 should have refused these; "
-                  "the gate has regressed")
-        if sp["live_unevidenced"]:
-            print("  advisory: currently-LIVE claims whose first agree "
-                  "landed inside the floor, so the ledger holds no evidence "
-                  "a separate session ever read them: "
-                  + ", ".join(sp["live_unevidenced"])
-                  + " -- re-dispatch to earn the verification, or accept "
-                  "that 'live' here means 'named a verifier' (ADR-010)")
-    for r in o["repeats"]:
-        print(f"  advisory: {r['claim']} re-files the scope justification of "
-              f"{r['prior']} (now {r['prior_status']}) verbatim -- same scope "
-              "justification re-filed unchanged after expiry -- review "
-              "whether the scope judgment was ever real (ADR-033)")
 
 def cmd_doctor(a):
     """G4: check the INSTALLATION, which the sandboxed canary cannot."""
@@ -1169,26 +1107,9 @@ def cmd_doctor(a):
     else:
         ok("queue aging")
 
-    # ADR-010 separation: report what the records prove about independence.
-    # Advisory only -- a refusal keyed on elapsed time is defeated by sleep
-    # and would TEACH that bypass (the ADR-011 shape).
-    sep = separation_report(events_d, now_dt(), folded=folded)
-    if sep["same_session"]:
-        fail("verifier separation",
-             f"{sep['same_session']} agree(s) share the author's session -- "
-             "ADR-010 must refuse those; the gate has regressed")
-    elif sep["live_unevidenced"]:
-        warn("verifier separation",
-             f"{len(sep['live_unevidenced'])} LIVE claim(s) were first agreed "
-             f"inside {sep['floor_seconds']}s of being filed "
-             f"({', '.join(sep['live_unevidenced'])}) -- too little time for "
-             "the work a verification is, so the ledger records a verifier "
-             "NAME, not evidence a separate session read anything. "
-             "Re-dispatch them, or accept that 'live' means named-a-verifier")
-    elif sep["pairs"]:
-        ok("verifier separation",
-           f"{sep['pairs']} first-agree pair(s), none inside the "
-           f"{sep['floor_seconds']}s floor")
+    # ADR-046: the ADR-010 "verifier separation" check moved OUT of
+    # doctor -- it is a Tier C instrument (the meta-repo's
+    # instruments/separation-report.py), not an installation check.
 
     print(f"\ndoctor: {len(fails)} failure(s), {len(warns)} warning(s)")
     sys.exit(1 if fails else 0)
@@ -1198,14 +1119,13 @@ def cmd_doctor(a):
 def add_claim_intake_flags(p):
     """R7: the claim-intake flags `claim` and `done --claim` share
     verbatim, declared once so the two surfaces cannot drift (done had
-    already lost --json and never gained --concern by hand-copy).
-    Deliberately per-verb, NOT here: claim's `text` positional; --basis
-    vs --claim-basis (done's claim basis must not shadow the close's own
-    --basis); --concern (not on done -- decision D4; the concerns
-    surface's removal path is P5); --json; and the four override flags
-    whose done-side help deliberately reads 'see `truth claim ...`'
-    (--scope-ok, --evidence-unsafe-ok, --generated-ok,
-    --evidence-exit-ok)."""
+    already lost --json by hand-copy). Deliberately per-verb, NOT here:
+    claim's `text` positional; --basis vs --claim-basis (done's claim
+    basis must not shadow the close's own --basis); --json; and the four
+    override flags whose done-side help deliberately reads 'see `truth
+    claim ...`' (--scope-ok, --evidence-unsafe-ok, --generated-ok,
+    --evidence-exit-ok). --concern is GONE from both (D4/ADR-046: the
+    concerns surface is Tier C; the field is closed to new records)."""
     p.add_argument("--class", dest="evidence_class", default="UNVERIFIED",
                    choices=EVIDENCE_CLASSES)
     p.add_argument("--evidence-cmd", help="re-runnable command whose output is the evidence")
@@ -1231,11 +1151,6 @@ def main():
                    help="one sentence: why the evidence command's scope "
                         "covers the claim's universal quantifier (ADR-007; "
                         "stored as scope_basis, attackable by verifiers)")
-    c.add_argument("--concern", action="append", default=[], metavar="TAG",
-                   help="42010 stakeholder-concern slug ([a-z0-9-]{1,32}; "
-                        "repeatable; stored sorted+deduplicated). Triage "
-                        "metadata ONLY: never a gate, never affects "
-                        "derived status or the fold")
     c.add_argument("--evidence-unsafe-ok", action="store_true",
                    help="file despite a failed evidence-command safety "
                         "screen (ADR-009); recheck will refuse to execute "
@@ -1410,9 +1325,6 @@ def main():
     l = sub.add_parser("list", help="list claims by derived status")
     for flag in STATUSES:
         l.add_argument("--" + flag.replace("_", "-"), dest=flag, action="store_true")
-    l.add_argument("--concern", metavar="TAG",
-                   help="only claims tagged with this 42010 concern slug "
-                        "(composes with the status flags)")
     l.add_argument("--json", action="store_true")
     l.set_defaults(fn=cmd_list)
 

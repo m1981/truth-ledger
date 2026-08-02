@@ -167,15 +167,20 @@ def _gate_evidence_exit(ctx):
     return None
 
 def _gate_blast(ctx):
-    # ADR-039 transform row -- never refuses. Stamps the forecast so
-    # the stats blast section can compare observed-vs-forecast later.
-    # Shallow or unavailable history stores NOTHING (a floor is not a
-    # bound); the advisory block voices why, post-append.
+    # ADR-039 advisory row -- never refuses, and since ADR-046 never
+    # stamps the payload either: blast_forecast failed the envelope
+    # admission rule (no fold or blocking gate reads it), so the
+    # forecast is computed here LIVE for the post-append advisory only.
+    # Shallow or unavailable history computes NOTHING (a floor is not a
+    # bound); the advisory block voices why, post-append. The parsed
+    # history is stashed so the advisory's floor calibration reuses the
+    # one git log this probe already paid for (R6).
     if not ctx["paths"]:
         return None
     history, state = blast_history()
     ctx["blast_state"] = state  # R6: the advisory pass reuses this fact
     if state == "ok":
+        ctx["blast_history"] = history
         ctx["blast_forecast"] = blast_forecast(ctx["paths"], history)
     return None
 

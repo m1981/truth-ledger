@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor + ADR-028 FAULT IF future-dated-issue transition coherence + ADR-009/M4 FAULT SD screen-gates-execution ordering + v0.9.12 R3/ADR-030 FAULT RA reaffirm-mismatch-never-auto-filed + v0.9.13 R6/ADR-031 unified duplicate-id rule: B1/B3-B5 expect the one message, FAULT K2 later-ts distinct duplicate flips to refused + v0.9.14 R12/ADR-032 FAULT SD-decay --scope-ok default-expiry (4 arms incl. negative control) + R13/ADR-033 FAULT OV override-velocity verbatim-repeat advisory (2 arms incl. negative control) + v0.9.20/ADR-034 FAULT GS staged gate table + CC-1 advisory block (5 arms incl. negative control) + v0.9.21/ADR-035 FAULT X positive-claim exit gate (8 arms incl. negative control + validate mirror) + v0.9.22/ADR-036 FAULT TG tombstone citation gate (11 arms incl. scope policy, fail-closed, preflight, unicode quotepath) + v0.9.23/ADR-037 FAULT RC recipe lints + generated-paths (10 arms incl. per-segment, carve-outs, decay, quote-split, dropped-override) + v0.9.24/ADR-038 FAULT DW dirty-watch advisory (7 arms incl. untracked-under-glob, rename, unicode, UU-conflict) + v0.9.25/ADR-039 FAULT BF blast forecast + churn report (7 arms incl. window boundary, shallow, unborn-HEAD) + ADR-010 FAULT SEP separation instrument (3 arms incl. negative control) + P1 review R1 FAULT S2D disputed-citer spec fails + R3 SC dead-sensor scream and claimed-count false-match immunity + L3-F7 FAULT GE check-truth environment lane (2 arms incl. negative control) + v0.9.27 P2 contract layer: FAULT VC vocab-verb contract (2 arms) + GS6 done --claim --json advisory echo + v0.9.29/ADR-045 FAULT LK ledger-lock two-process serialization (2 arms) + FAULT UM5-UM7 pre-merge-commit merge gate (installer-driven; honest sync passes, tampered merge refused) + doctor pre-merge-commit WARN/quiet/CI-exempt arms (3)).
+# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor + ADR-028 FAULT IF future-dated-issue transition coherence + ADR-009/M4 FAULT SD screen-gates-execution ordering + v0.9.12 R3/ADR-030 FAULT RA reaffirm-mismatch-never-auto-filed + v0.9.13 R6/ADR-031 unified duplicate-id rule: B1/B3-B5 expect the one message, FAULT K2 later-ts distinct duplicate flips to refused + v0.9.14 R12/ADR-032 FAULT SD-decay --scope-ok default-expiry (4 arms incl. negative control) + R13/ADR-033 FAULT OV override-velocity verbatim-repeat advisory (2 arms incl. negative control) + v0.9.20/ADR-034 FAULT GS staged gate table + CC-1 advisory block (5 arms incl. negative control) + v0.9.21/ADR-035 FAULT X positive-claim exit gate (8 arms incl. negative control + validate mirror) + v0.9.22/ADR-036 FAULT TG tombstone citation gate (11 arms incl. scope policy, fail-closed, preflight, unicode quotepath) + v0.9.23/ADR-037 FAULT RC recipe lints + generated-paths (10 arms incl. per-segment, carve-outs, decay, quote-split, dropped-override) + v0.9.24/ADR-038 FAULT DW dirty-watch advisory (7 arms incl. untracked-under-glob, rename, unicode, UU-conflict) + v0.9.25/ADR-039 FAULT BF blast forecast + churn report (7 arms incl. window boundary, shallow, unborn-HEAD) + ADR-010 FAULT SEP separation instrument (3 arms incl. negative control) + P1 review R1 FAULT S2D disputed-citer spec fails + R3 SC dead-sensor scream and claimed-count false-match immunity + L3-F7 FAULT GE check-truth environment lane (2 arms incl. negative control) + v0.9.27 P2 contract layer: FAULT VC vocab-verb contract (2 arms) + GS6 done --claim --json advisory echo + v0.9.29/ADR-045 FAULT LK ledger-lock two-process serialization (2 arms) + FAULT UM5-UM7 pre-merge-commit merge gate (installer-driven; honest sync passes, tampered merge refused) + doctor pre-merge-commit WARN/quiet/CI-exempt arms (3) + v0.9.30/ADR-046 tiering (D4): FAULT SEP (3 arms) and FAULT OV's two stats arms RETIRED -- the separation and override-velocity stats sections left the template CLI for Tier C instruments, and the arms moved to the meta-repo gate scripts/test-instruments.sh; BF5 RETIRED there too (stats blast section render); BF4 FLIPPED to assert blast_forecast is NOT stored while the BF1 advisory still voices from the live computation (BF 7->6 arms); the concerns surface had no canary arms -- its retired core-suite arms are named in ADR-046).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -474,47 +474,13 @@ fi
 cp "$AL_TMP/mine.bak" .truth/evidence-allow
 rm -rf "$AL_TMP"
 
-# ---- FAULT SEP (ADR-010 separation instrument) --------------------------
-# The author-not-verifier gate compares two session STRINGS, and
-# `session()` returns whatever TRUTH_SESSION says -- so the gate can see
-# the name and never the separation. Measured on the meta-repo's own
-# ledger 2026-08-01: 133 first-agree pairs, ZERO same-session agrees (the
-# gate has never fired), and 14 agrees landed inside one second of the
-# claim being filed -- less than the cost of the CLI calls a verification
-# makes. These arms pin the instrument that reports that, not a gate:
-# refusing on elapsed time is defeated by `sleep` and would teach the
-# bypass (the ADR-011 shape).
-say "FAULT SEP (ADR-010): a first agree landing inside the floor must be reported as unevidenced, and a slow one must not"
-CID_SEP=$($T claim "the widget probe is separation-instrumented" --class VERIFIED \
-     --evidence-cmd "cat watched.txt" --paths "watched.txt" \
-     --tier P2 --duplicate-ok 2>/dev/null)
-TRUTH_SESSION=s-canary-verifier $T verdict "$CID_SEP" agree --basis "canary: immediate agree, no reading possible" >/dev/null 2>&1
-if $T stats 2>/dev/null | grep -Eq "[1-9][0-9]* inside the 1.0s floor"; then
-  ok "SEP1: an agree filed inside the floor is reported as unevidenced separation"
-else
-  miss "SEP1: a sub-second agree was not reported -- the instrument is dark"
-fi
-# Assert on the JSON field, never on a grep of the whole stats text: the
-# blast section also prints claim ids, so a text grep matches for reasons
-# that have nothing to do with separation. The first cut of SEP3 did
-# exactly that and went flaky -- the release battery caught it.
-if [ -n "$CID_SEP" ] && $T stats --json 2>/dev/null | python3 -c "import json,sys; print('\n'.join(json.load(sys.stdin)['separation']['live_unevidenced']))" | grep -q "$CID_SEP"; then
-  ok "SEP2: the unevidenced claim is NAMED while it is live, not merely counted"
-else
-  miss "SEP2: the live unevidenced claim was not named -- the operator cannot act on a count"
-fi
-# negative control: a claim whose agree lands after the floor must NOT be
-# named. Costs one second of wall clock, deliberately.
-CID_SEPOK=$($T claim "the widget probe is separation-clean" --class VERIFIED \
-     --evidence-cmd "cat watched.txt" --paths "watched.txt" \
-     --tier P2 --duplicate-ok 2>/dev/null)
-sleep 1.1
-TRUTH_SESSION=s-canary-verifier $T verdict "$CID_SEPOK" agree --basis "canary: agree filed after the floor" >/dev/null 2>&1
-if $T stats --json 2>/dev/null | python3 -c "import json,sys; print('\n'.join(json.load(sys.stdin)['separation']['live_unevidenced']))" | grep -q "$CID_SEPOK"; then
-  miss "SEP3: a claim agreed AFTER the floor was flagged -- false positive on an honest verification"
-else
-  ok "SEP3: an agree after the floor is not flagged (negative control)"
-fi
+# ---- FAULT SEP: RETIRED (ADR-046) ---------------------------------------
+# SEP1/SEP2/SEP3 pinned the ADR-010 separation instrument through the
+# `truth stats` separation section, which left the template CLI (Tier C).
+# Their assertions moved VERBATIM-in-substance to the meta-repo gate
+# scripts/test-instruments.sh, which drives the same separation_report
+# through instruments/separation-report.py (incl. the SEP3 negative
+# control and the JSON-field-not-text-grep lesson).
 
 say "FAULT T (INV-M): a dead evidence-path tripwire must be refused at intake"
 if $T claim "a and watched are fine" --class VERIFIED \
@@ -2060,50 +2026,15 @@ fi
 cd "$SD_PREV"
 rm -rf "$SD"
 
-# ---- FAULT OV (ADR-033, v0.9.14): override-velocity verbatim-repeat -------
-# `truth stats` raises a NON-blocking advisory when a scope justification
-# is re-filed verbatim (tokens() token-set-identical) after the prior claim
-# died. Two arms: (1) a verbatim re-justification after expiry produces the
-# advisory (red if the detector is patched out); (2) NEGATIVE CONTROL: a
-# genuinely narrowed re-file produces NO advisory.
-say "FAULT OV (ADR-033): a verbatim scope re-justification after expiry must raise the advisory; a narrowed one must not"
-OV="$(mktemp -d)"; TDIRS+=("$OV"); OV_PREV="$PWD"
-mkrepo "$OV"
-echo "data" > f.txt
-git add -A && git commit -qm "ov: init" --no-verify -q
-OV_SB="the include filter deliberately covers the whole codebase"
-OV_EC="grep -rc data --include=f.txt ."
-CID_OV1=$(TRUTH_NOW="2026-06-01T00:00:00+00:00" $T claim \
-          "no occurrences remain anywhere in the codebase" --class VERIFIED \
-          --evidence-cmd "$OV_EC" --paths f.txt --tier P1 \
-          --scope-ok "$OV_SB" 2>/dev/null)
-$T invalidate-scan --quiet   # CID_OV1 -> stale (ttl, ttl_default)
-CID_OV2=$($T claim "no occurrences remain anywhere in the codebase" \
-          --class VERIFIED --evidence-cmd "$OV_EC" --paths f.txt --tier P1 \
-          --scope-ok "$OV_SB" 2>/dev/null)   # same sentence + justification
-OVOUT=$($T stats 2>/dev/null)
-if printf '%s\n' "$OVOUT" | grep -q "ADR-033" \
-   && printf '%s\n' "$OVOUT" | grep -q "$CID_OV2" \
-   && printf '%s\n' "$OVOUT" | grep -q "$CID_OV1"; then
-  ok "verbatim re-justification after expiry raised the advisory ($CID_OV2 vs $CID_OV1)"
-else
-  miss "override-velocity advisory missing for a verbatim re-justification (detector patched out?)"
-fi
-CID_OV3=$(TRUTH_NOW="2026-06-01T00:00:00+00:00" $T claim \
-          "every call site is covered by the services grep" --class VERIFIED \
-          --evidence-cmd "$OV_EC" --paths f.txt --tier P2 \
-          --scope-ok "services is the only place this pattern can appear" 2>/dev/null)
-$T invalidate-scan --quiet   # CID_OV3 -> stale
-CID_OV4=$($T claim "every call site is covered by the services grep" \
-          --class VERIFIED --evidence-cmd "$OV_EC" --paths f.txt --tier P2 \
-          --scope-ok "now narrowed to the single services subtree after refactor" 2>/dev/null)
-if $T stats --json 2>/dev/null | python3 -c "import json,sys; o=json.load(sys.stdin)['overrides']; ids=[r['claim'] for r in o['repeats']]; sys.exit(0 if '$CID_OV4' not in ids and '$CID_OV2' in ids else 1)"; then
-  ok "negative control: a genuinely narrowed re-file produced no advisory ($CID_OV4)"
-else
-  miss "override-velocity advisory false-fired on a genuinely narrowed re-file"
-fi
-cd "$OV_PREV"
-rm -rf "$OV"
+# ---- FAULT OV: RETIRED (ADR-046) ----------------------------------------
+# The two override-velocity stats arms ("verbatim re-justification after
+# expiry raised the advisory" and its narrowed-re-file negative control)
+# pinned the `truth stats` overrides section, which left the template CLI
+# (Tier C). Their assertions moved to the meta-repo gate
+# scripts/test-instruments.sh, which seeds the identical expiry/repeat
+# fixture and drives override_report through
+# instruments/override-velocity.py. The PURE detector tests
+# (TestOverrideReport in test-truth-core.py) never moved.
 
 # ---- FAULT GS (ADR-034, v0.9.20): staged gate table + CC-1 advisories ----
 # The intake gate sequence is data (INTAKE_GATES) and post-append
@@ -2642,11 +2573,19 @@ if printf '%s\n' "$BF1" | grep -q "blast: watch matched 1[0-9] commits"; then
 else
   miss "BF1: hot watch stayed silent"
 fi
-BF4OK=$(python3 -c "import json; p=json.loads(open('.truth/claims.jsonl').read().splitlines()[-1])['payload']; print('ok' if isinstance(p.get('blast_forecast'), int) and p['blast_forecast'] >= 15 else 'bad')")
-if [ "$BF4OK" = ok ] && $T validate >/dev/null 2>&1; then
-  ok "BF4: blast_forecast stored on the record; validate accepts it (and tolerates its absence on legacy lines)"
+# BF4 FLIPPED by ADR-046 (the item-2 red-proof arm): the forecast is
+# computed on read and NEVER stamped -- the payload must NOT carry
+# blast_forecast while the BF1 advisory above still voiced at/above the
+# floor from the live computation. Legacy stored ints stay validate-
+# tolerated (checked by appending one).
+BF4OK=$(python3 -c "import json; p=json.loads(open('.truth/claims.jsonl').read().splitlines()[-1])['payload']; print('ok' if 'blast_forecast' not in p else 'bad')")
+BF4LEGACY='{"id": "tr-00bf4bf4", "kind": "claim", "actor": "canary", "session": "s-legacy", "ts": "2026-01-01T00:00:00.000000+00:00", "payload": {"text": "legacy forecast line for BF4", "evidence_class": "UNVERIFIED", "cost_tier": "P2", "ttl_days": null, "evidence_paths": ["w.txt"], "blast_forecast": 3}}'
+if [ "$BF4OK" = ok ] && printf '%s\n' "$BF1" | grep -q "blast: watch matched" \
+   && $T validate >/dev/null 2>&1 \
+   && printf '%s\n' "$BF4LEGACY" | $T validate --stdin >/dev/null 2>&1; then
+  ok "BF4: blast_forecast NOT stored (ADR-046 computed-on-read) while the advisory still voiced; validate keeps admitting a legacy stored line"
 else
-  miss "BF4: forecast not stored or validate refused (state=$BF4OK)"
+  miss "BF4: forecast stamped again, advisory dark, or legacy line refused (state=$BF4OK)"
 fi
 BF2=$($T claim "cold.txt sits untouched since the initial commit" \
       --class VERIFIED --evidence-cmd "grep cold cold.txt" --paths cold.txt \
@@ -2681,13 +2620,10 @@ if [ "$BF6N" = "1" ] && [ "$BF6W" -ge 16 ] 2>/dev/null; then
 else
   miss "BF6: window semantics broken (cold=$BF6N hot=$BF6W -- a plain --since would empty the log here)"
 fi
-BF5=$($T stats 2>/dev/null | grep "^blast:")
-if printf '%s\n' "$BF5" | grep -q "floor 15 (fallback)" \
-   && printf '%s\n' "$BF5" | grep -q "top observed-vs-forecast"; then
-  ok "BF5: stats renders the blast section (floor + observed-vs-forecast rows)"
-else
-  miss "BF5: stats blast section missing or malformed"
-fi
+# BF5 RETIRED (ADR-046): the stats blast section left the template CLI
+# (Tier C). Its render assertion (floor + observed-vs-forecast rows)
+# moved to scripts/test-instruments.sh, driven through
+# instruments/blast-report.py against the identical hot-watch fixture.
 BFSH="$(mktemp -d)"; TDIRS+=("$BFSH")
 git clone -q --depth 1 "file://$PWD" "$BFSH/shallow" 2>/dev/null
 ( cd "$BFSH/shallow" && mkdir -p .truth scripts \

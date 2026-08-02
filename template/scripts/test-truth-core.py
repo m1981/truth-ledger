@@ -2555,10 +2555,13 @@ class TestCrossSurfaceVersions(unittest.TestCase):
     # a conscious "is this a shape change? then bump $id" review.
     # v0.12: ADR-035 evidence_exit_basis; v0.13: ADR-036 orphan_basis
     # (verdict + issue_event); v0.14: ADR-037 generated_ok_basis;
-    # v0.15: ADR-039 blast_forecast.
-    EXPECTED_SCHEMA_ID = "truth-ledger-record.v0.15"
+    # v0.15: ADR-039 blast_forecast; v0.16: ADR-046 envelope admission
+    # rule -- concerns + blast_forecast marked legacy-admitted/closed
+    # (description-level deprecation; the structural checks stay so
+    # legacy records keep validating).
+    EXPECTED_SCHEMA_ID = "truth-ledger-record.v0.16"
     PINNED_SHAPE_SHA256 = \
-        "46da42cc8b2d1140024fb5ffe72bf7148140e36aa0568570197c763af97edb96"
+        "3418acbf535fe0d163dfae44da2385ec780cc74acfdd69a7bcbaa0d5c8846561"
 
     def _schema(self):
         import json as _json
@@ -2973,8 +2976,10 @@ class TestEvidenceExitWarning(unittest.TestCase):
             # the record is untouched: the captured returncode (first run,
             # never re-run) is in the capsule, the warning is print-only
             self.assertEqual(filed["payload"]["evidence"]["returncode"], 1)
+            # ADR-046: no blast_forecast key -- intake no longer stamps
+            # it (the envelope admission rule; computed on read instead)
             self.assertEqual(sorted(filed["payload"]),
-                             ["anchor_commit", "blast_forecast",
+                             ["anchor_commit",
                               "cost_tier", "evidence", "evidence_class",
                               "evidence_paths", "text", "ttl_days"])
 
@@ -3138,25 +3143,38 @@ class TestBlastForecast(unittest.TestCase):
         self.assertEqual(tm.blast_forecast([], hist), 0)
 
     def test_floor_falls_back_then_calibrates(self):
-        def claim_with(bf, status="live"):
+        # ADR-046: forecasts are COMPUTED from history at read time --
+        # each claim watches its own file fN.txt, and the history gives
+        # fN.txt exactly N touching commits, so the P90 math is
+        # unchanged from the stored-int era it replaces.
+        def claim_with(i, status="live"):
             return {"status": status,
-                    "claim": {"payload": {"evidence_paths": ["f"],
-                                          "blast_forecast": bf}}}
+                    "claim": {"payload": {"evidence_paths": [f"f{i}.txt"]}}}
+        def hist(n):
+            # commit j touches every fi.txt with i > j, so fi.txt is
+            # touched by exactly i commits
+            return [(f"c{j}", frozenset(f"f{i}.txt" for i in range(j + 1, n)))
+                    for j in range(n - 1)]
         few = {f"tr-{i:08x}": claim_with(i) for i in range(5)}
-        self.assertEqual(tm.effective_blast_floor(few),
+        self.assertEqual(tm.effective_blast_floor(few, hist(5)),
                          (tm.BLAST_ADVISORY_FLOOR, "fallback"))
         many = {f"tr-{i:08x}": claim_with(i) for i in range(30)}
-        floor, src = tm.effective_blast_floor(many)
+        floor, src = tm.effective_blast_floor(many, hist(30))
         self.assertEqual(src, "calibrated")
         self.assertEqual(floor, 26)  # P90 of 0..29
         # stale claims are excluded from calibration
         stale = {f"tr-{i:08x}": claim_with(i, "stale") for i in range(30)}
-        self.assertEqual(tm.effective_blast_floor(stale),
+        self.assertEqual(tm.effective_blast_floor(stale, hist(30)),
                          (tm.BLAST_ADVISORY_FLOOR, "fallback"))
         # an all-cold corpus clamps to 1 -- never a floor of 0 that
         # flags stone-cold watches as hot (R5 review, F2)
-        cold = {f"tr-{i:08x}": claim_with(0) for i in range(30)}
-        self.assertEqual(tm.effective_blast_floor(cold), (1, "calibrated"))
+        cold = {f"tr-{i:08x}": claim_with(i) for i in range(30)}
+        self.assertEqual(tm.effective_blast_floor(cold, []),
+                         (1, "calibrated"))
+        # None history (shallow/unavailable) must NEVER calibrate -- a
+        # truncated log would be the quietly-cold floor ADR-039 forbids
+        self.assertEqual(tm.effective_blast_floor(many, None),
+                         (tm.BLAST_ADVISORY_FLOOR, "fallback"))
 
 class TestIntakeAdvisories(unittest.TestCase):
     """R6 (P2 purity hoist): intake_advisories is pure -- the shell
@@ -3166,7 +3184,8 @@ class TestIntakeAdvisories(unittest.TestCase):
     def _adv(self, evts=(), tier="P2", ttl=None, scope_ok=None,
              cls="UNVERIFIED", payload=None, generated_ok=None,
              claims=None, generated_source=None, porcelain=None,
-             shallow_state=None):
+             shallow_state=None, blast_forecast_live=None,
+             blast_history=None):
         return tm.intake_advisories(list(evts), tier, ttl, scope_ok, cls,
                                     payload if payload is not None
                                     else claim_p(),
@@ -3174,7 +3193,9 @@ class TestIntakeAdvisories(unittest.TestCase):
                                     claims=claims,
                                     generated_source=generated_source,
                                     porcelain=porcelain,
-                                    shallow_state=shallow_state)
+                                    shallow_state=shallow_state,
+                                    blast_forecast_live=blast_forecast_live,
+                                    blast_history=blast_history)
 
     def test_clean_filing_is_silent(self):
         self.assertEqual(self._adv(), [])
@@ -3213,32 +3234,37 @@ class TestIntakeAdvisories(unittest.TestCase):
                              for m in msgs), msgs)
 
     def test_dark_generated_list_notice(self):
-        payload = claim_p(evidence_paths=["f.txt"], blast_forecast=0)
+        payload = claim_p(evidence_paths=["f.txt"])
         msgs = self._adv(payload=payload, claims={},
-                         generated_source="absent")
+                         generated_source="absent", blast_forecast_live=0)
         self.assertTrue(any("generated-artifact check is dark" in m
                             for m in msgs), msgs)
         msgs = self._adv(payload=payload, claims={},
-                         generated_source="empty")
+                         generated_source="empty", blast_forecast_live=0)
         self.assertFalse(any("check is dark" in m for m in msgs), msgs)
 
     def test_dirty_watch_lines_from_porcelain_data(self):
-        payload = claim_p(evidence_paths=["f.txt"], blast_forecast=0)
+        payload = claim_p(evidence_paths=["f.txt"])
         msgs = self._adv(payload=payload, claims={},
-                         generated_source="empty",
+                         generated_source="empty", blast_forecast_live=0,
                          porcelain=" M f.txt\x00?? other.txt\x00")
         self.assertTrue(any(m.startswith("dirty watch: f.txt")
                             for m in msgs), msgs)
         self.assertFalse(any("other.txt" in m for m in msgs), msgs)
 
     def test_blast_advisory_at_or_above_the_floor(self):
-        hot = claim_p(evidence_paths=["w.txt"], blast_forecast=20)
-        msgs = self._adv(payload=hot, claims={}, generated_source="empty")
+        # ADR-046: the forecast arrives as LIVE data (the gate's own
+        # computation), never from the payload -- a stored legacy int
+        # must be ignored, which the hot arm proves by contradiction.
+        hot = claim_p(evidence_paths=["w.txt"], blast_forecast=1)
+        msgs = self._adv(payload=hot, claims={}, generated_source="empty",
+                         blast_forecast_live=20)
         self.assertTrue(any("blast: watch matched 20 commits" in m
                             and "floor 15, fallback" in m
                             for m in msgs), msgs)
-        cold = claim_p(evidence_paths=["w.txt"], blast_forecast=3)
-        msgs = self._adv(payload=cold, claims={}, generated_source="empty")
+        cold = claim_p(evidence_paths=["w.txt"])
+        msgs = self._adv(payload=cold, claims={}, generated_source="empty",
+                         blast_forecast_live=3)
         self.assertFalse(any(m.startswith("blast:") for m in msgs), msgs)
 
     def test_missing_forecast_voices_the_gathered_state(self):
@@ -3254,7 +3280,7 @@ class TestIntakeAdvisories(unittest.TestCase):
                             for m in msgs), msgs)
 
     def test_exit_warning_suppressed_by_a_stored_basis(self):
-        p = verified_p(blast_forecast=0)
+        p = verified_p()
         p["evidence"]["returncode"] = 1
         bare = self._adv(cls="VERIFIED", payload=p, claims={},
                          generated_source="empty")
@@ -3267,9 +3293,11 @@ class TestIntakeAdvisories(unittest.TestCase):
                              for m in excused), excused)
 
 class TestBlastReport(unittest.TestCase):
-    """L4-F5: the churn instrument's pure report, pinned exactly."""
+    """L4-F5: the churn instrument's pure report, pinned exactly --
+    both the ADR-046 live-history path (forecasts computed on read) and
+    the legacy path (history=None reports stored pre-ADR-046 ints)."""
 
-    def test_fixture_events_to_exact_report(self):
+    def _fixture(self):
         c1 = rec("claim", claim_p(evidence_paths=["a.py"],
                                   blast_forecast=3), rid="tr-00000b01")
         c2 = rec("claim", claim_p(evidence_paths=["b.py"],
@@ -3282,8 +3310,12 @@ class TestBlastReport(unittest.TestCase):
                                   "touched": ["a.py", "x.py"]},
                  rid="tr-00000b12",
                  ts="2026-07-03T00:00:00.000000+00:00")
+        return events(c1, c2, c3, i1, i2)
+
+    def test_legacy_fixture_events_to_exact_report(self):
+        # history=None: stored legacy ints are reported as-is
         self.assertEqual(
-            tm.blast_report(events(c1, c2, c3, i1, i2)),
+            tm.blast_report(self._fixture()),
             {"rows": [{"claim": "tr-00000b01", "observed": 2,
                        "forecast": 3},
                       {"claim": "tr-00000b02", "observed": 0,
@@ -3292,6 +3324,20 @@ class TestBlastReport(unittest.TestCase):
                                 {"path": "x.py", "invalidations": 1}],
              "effective_floor": tm.BLAST_ADVISORY_FLOOR,
              "floor_source": "fallback"})
+
+    def test_live_history_overrides_stored_legacy_ints(self):
+        # ADR-046: with history as data, forecasts are computed live --
+        # a.py touched by 5 commits beats its stored 3, and b.py's cold
+        # 0 beats its stored 1. The stored ints must be IGNORED.
+        hist = [(f"c{j}", frozenset(["a.py"])) for j in range(5)]
+        rep = tm.blast_report(self._fixture(), history=hist)
+        self.assertEqual(rep["rows"],
+                         [{"claim": "tr-00000b01", "observed": 2,
+                           "forecast": 5},
+                          {"claim": "tr-00000b02", "observed": 0,
+                           "forecast": 0}])
+        self.assertEqual((rep["effective_floor"], rep["floor_source"]),
+                         (tm.BLAST_ADVISORY_FLOOR, "fallback"))
 
 class TestCitationBlockPaths(unittest.TestCase):
     """L4-F5: hits x globs -> blocking paths, incl. the structural
@@ -3940,91 +3986,71 @@ class TestScopeDecayCLI(unittest.TestCase):
             self.assertIn("1 ttl (re-file)", r.stdout)
 
 
-class TestOverrideReportCLI(unittest.TestCase):
-    """R13 / ADR-033 end-to-end: a scope-ok override expires, the same
-    justification is re-filed, and `truth stats` raises the advisory."""
+class TestStatsCLIShape(unittest.TestCase):
+    """ADR-046 (Tier C): `truth stats` keeps EXACTLY the Tier B core --
+    counts, verdicts, half-life (feeds the FS-1 intake advisory), queue
+    aging. The retired TestOverrideReportCLI arms
+    (test_verbatim_refile_after_expiry_raises_the_advisory,
+    test_max_scope_ttl_rendered_in_plain_text) moved to
+    scripts/test-instruments.sh, which drives the same assertions
+    through instruments/override-velocity.py; the pure override_report
+    tests above never moved."""
 
-    SB = "the include filter deliberately covers the whole codebase"
-    QTEXT = "no occurrences remain anywhere in the codebase"
-    ECMD = "grep -rc data --include=f.txt ."
-
-    def _scope_claim(self, d, env_extra=None):
-        r = _truth(d, "claim", self.QTEXT, "--class", "VERIFIED",
-                   "--evidence-cmd", self.ECMD, "--paths", "f.txt",
-                   "--tier", "P1", "--scope-ok", self.SB, env_extra=env_extra)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        return r.stdout.strip().splitlines()[-1]
-
-    def test_verbatim_refile_after_expiry_raises_the_advisory(self):
+    def test_stats_json_keeps_core_keys_and_nothing_else(self):
         with tempfile.TemporaryDirectory() as d:
             _mk_sandbox(d)
-            past = {"TRUTH_NOW": "2026-06-01T00:00:00+00:00"}
-            prior = self._scope_claim(d, env_extra=past)
-            _truth(d, "invalidate-scan")  # prior -> stale (ttl, ttl_default)
-            repeat = self._scope_claim(d)  # same sentence + scope_basis, now
-            r = _truth(d, "stats")
-            self.assertIn("overrides:", r.stdout)
-            self.assertIn("decay-expiries=1", r.stdout)
-            self.assertIn("ADR-033", r.stdout)
-            self.assertIn("review whether the scope judgment was ever real",
-                          r.stdout)
-            self.assertIn(repeat, r.stdout)
-            self.assertIn(prior, r.stdout)
-            # --json shape
-            r = _truth(d, "stats", "--json")
-            o = json.loads(r.stdout)["overrides"]
-            self.assertEqual(o["scope_basis_filings"], 2)
-            self.assertEqual(o["decay_expiries"], 1)
-            self.assertEqual(o["max_scope_ttl_days"], 30)
-            self.assertEqual(len(o["repeats"]), 1)
-            self.assertEqual(o["repeats"][0]["claim"], repeat)
-            self.assertEqual(o["repeats"][0]["prior"], prior)
-            self.assertEqual(o["repeats"][0]["prior_status"], "stale")
-
-    def test_max_scope_ttl_rendered_in_plain_text(self):
-        """F2: the `max scope ttl <N>d` suffix is part of the PLAIN
-        `truth stats` render, not only the JSON field. A large --ttl-days
-        (the visible opt-out) must surface in plain text; this fails if
-        the suffix is ever dropped while JSON stays intact."""
-        with tempfile.TemporaryDirectory() as d:
-            _mk_sandbox(d)
-            r = _truth(d, "claim", self.QTEXT, "--class", "VERIFIED",
-                       "--evidence-cmd", self.ECMD, "--paths", "f.txt",
-                       "--tier", "P1", "--scope-ok", self.SB,
-                       "--ttl-days", "36500")
+            r = _truth(d, "claim", "f.txt holds data")
             self.assertEqual(r.returncode, 0, r.stderr)
-            r = _truth(d, "stats")
-            self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertIn("max scope ttl 36500d", r.stdout)
-            # and the JSON twin carries the same number (both surfaces)
             rj = _truth(d, "stats", "--json")
+            self.assertEqual(rj.returncode, 0, rj.stderr)
             self.assertEqual(
-                json.loads(rj.stdout)["overrides"]["max_scope_ttl_days"],
-                36500)
+                sorted(json.loads(rj.stdout)),
+                ["claims_by_status", "claims_by_tier", "half_life",
+                 "queue_max_age_days", "queue_size", "verdicts"],
+                "stats --json must keep its Tier B core keys and must "
+                "NOT regrow the Tier C sections (overrides/blast/"
+                "separation/concerns moved to instruments/*.py, ADR-046)")
+
+    def test_stats_plain_render_has_no_tier_c_sections(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            _truth(d, "claim", "f.txt holds data")
+            r = _truth(d, "stats")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("claims by status:", r.stdout)
+            self.assertIn("verdicts:", r.stdout)
+            self.assertIn("queue:", r.stdout)
+            for gone in ("overrides:", "hollow:", "blast:", "separation:",
+                         "concerns:"):
+                self.assertNotIn(gone, r.stdout,
+                                 f"retired stats section {gone!r} is back")
 
 
 class TestConcernsCore(unittest.TestCase):
-    """42010 stakeholder concerns are TRIAGE METADATA only: slug hygiene,
-    the stats tally, and -- the hard constraint -- proof the fold is
-    concern-blind (a tagged claim and its untagged twin derive identical
-    status under every verdict/invalidation shape)."""
+    """LEGACY 42010 stakeholder concerns (Tier C since D4/ADR-046: the
+    filing surface is gone; the field is closed to new records). What
+    remains under test is exactly what remains in truthlib: CONCERN_RE
+    and claim_concerns still guard validate's legacy branch and feed the
+    meta-repo's concern-tag instrument, and -- the hard constraint --
+    the fold stays concern-blind over the legacy records (a tagged claim
+    and its untagged twin derive identical status under every
+    verdict/invalidation shape). The retired CLI arms (TestConcernsCLI;
+    the stats tally test) live on in scripts/test-instruments.sh."""
 
-    def test_slug_hygiene(self):
-        self.assertIsNone(tm.concerns_intake_error(None))
-        self.assertIsNone(tm.concerns_intake_error([]))
-        self.assertIsNone(tm.concerns_intake_error(
-            ["security", "a-b-1", "x" * 32]))
+    def test_slug_shape_guards_the_legacy_validate_branch(self):
+        # CONCERN_RE is what validate's legacy branch shape-checks
+        # stored tags against (kernel mirror + schema pattern, FS-2).
+        for good in ("security", "a-b-1", "x" * 32):
+            self.assertIsNotNone(tm.CONCERN_RE.match(good), repr(good))
         for bad in ("Security", "sec_urity", "", "x" * 33,
                     "sec urity", "s/c", "security\n", "\nsecurity"):
-            self.assertIsNotNone(tm.concerns_intake_error([bad]),
-                                 repr(bad))
+            self.assertIsNone(tm.CONCERN_RE.match(bad), repr(bad))
 
     def test_claim_concerns_read_side_degrades(self):
-        """red-team F2: the read verbs (list --concern, stats) consume
-        claim_concerns(), which returns [] for any malformed hand-appended
-        value -- never a crash on an unhashable item, never substring
-        matching on a bare string. validate reports the malformation; the
-        reads just degrade to 'no tags'."""
+        """red-team F2: the legacy readers (validate's finding text, the
+        concern-tag instrument) consume claim_concerns(), which returns
+        [] for any malformed hand-appended value -- never a crash on an
+        unhashable item, never substring matching on a bare string."""
         self.assertEqual(tm.claim_concerns({"concerns":
                                             ["security", "latency"]}),
                          ["security", "latency"])
@@ -4034,10 +4060,11 @@ class TestConcernsCore(unittest.TestCase):
         self.assertEqual(tm.claim_concerns({"concerns": ["ok", ["a"], 3]}),
                          ["ok"])
         # and stats_report itself survives the unhashable-item ledger
+        # (no concern keys any more -- just no crash, ADR-046)
         report = tm.stats_report(
             events(rec("claim", claim_p(concerns=[["a"]]))), NOW)
-        self.assertEqual(report["concerns"], {})
-        self.assertEqual(report["concerns_untagged_active"], 1)
+        self.assertNotIn("concerns", report)
+        self.assertNotIn("concerns_untagged_active", report)
 
     def test_fold_is_concern_blind(self):
         # bare claim first -- no verdict/invalidation at all: the INITIAL
@@ -4075,135 +4102,35 @@ class TestConcernsCore(unittest.TestCase):
             self.assertEqual(cp["tr-00000001"]["status_ts"],
                              ct["tr-00000001"]["status_ts"], kind)
 
-    def test_stats_report_concern_tally(self):
+    def test_legacy_tagged_and_forecast_records_still_admitted(self):
+        """ADR-046 legacy admission: a ledger holding pre-demotion
+        records (concerns and blast_forecast in payloads -- this
+        meta-repo's own ledger is one) must still validate, fold, and
+        list; the fields just stopped meaning anything to the CLI."""
         evs = events(
-            rec("claim", claim_p(concerns=["security"])),
+            rec("claim", claim_p(concerns=["security", "latency"])),
             rec("claim", claim_p(text="config parser rejects bad input",
-                                 concerns=["latency", "security"]),
-                rid="tr-00000002"),
-            rec("claim", claim_p(text="cache layer evicts old entries"),
-                rid="tr-00000003"),
-            rec("claim", claim_p(text="worker pool drains on shutdown",
-                                 concerns=["security"]),
-                rid="tr-00000004"),
-            rec("verdict", {"claim": "tr-00000004", "verdict": "retracted",
-                            "basis": "b"}, rid="tr-00000005"),
-            rec("claim", claim_p(text="scheduler honors the quiet hours"),
-                rid="tr-00000006"),
-            rec("invalidation", {"claim": "tr-00000006", "commit": "abc1234",
-                                 "reason": "x"}, rid="tr-00000007"))
-        report = tm.stats_report(evs, NOW)
-        # retracted tr-00000004 drops out of the tag counts; the stale
-        # untagged tr-00000006 is not active, so untagged counts only
-        # tr-00000003
-        self.assertEqual(report["concerns"], {"latency": 1, "security": 2})
-        self.assertEqual(report["concerns_untagged_active"], 1)
+                                 evidence_paths=["f.txt"],
+                                 blast_forecast=7),
+                rid="tr-00000002"))
+        self.assertEqual(tm.validate_events(evs), [])
+        claims, _ = tm.fold(evs)
+        self.assertEqual(claims["tr-00000001"]["status"], "unverified")
+        # ...while the legacy SHAPE checks still fire on junk values
+        bad = events(rec("claim", claim_p(concerns=["Not_A_Slug"])),
+                     rec("claim", claim_p(text="second",
+                                          evidence_paths=["f.txt"],
+                                          blast_forecast=-1),
+                         rid="tr-00000002"))
+        errs = tm.validate_events(bad)
+        self.assertTrue(any("concerns" in e for e in errs), errs)
+        self.assertTrue(any("blast_forecast" in e for e in errs), errs)
 
     def test_old_format_records_still_validate(self):
         # backward compatibility: a ledger predating concerns (no key at
         # all) is not an error anywhere in the mirror
         self.assertEqual(tm.validate_events(events(rec("claim", claim_p()))),
                          [])
-
-class TestConcernsCLI(unittest.TestCase):
-    """--concern end to end: filing, hygiene refusal, list filter, stats
-    section, and old-format ledger backward compatibility."""
-
-    def test_filing_stores_sorted_deduplicated_tags(self):
-        with tempfile.TemporaryDirectory() as d:
-            _mk_sandbox(d)
-            r = _truth(d, "claim", "f.txt holds data",
-                       "--concern", "security", "--concern", "latency",
-                       "--concern", "security")
-            self.assertEqual(r.returncode, 0, r.stderr)
-            with open(os.path.join(d, ".truth", "claims.jsonl")) as f:
-                filed = json.loads(f.read().splitlines()[-1])
-            self.assertEqual(filed["payload"]["concerns"],
-                             ["latency", "security"])
-            # and validate accepts what claim filed
-            self.assertEqual(_truth(d, "validate").returncode, 0)
-
-    def test_untagged_filing_carries_no_concerns_key(self):
-        with tempfile.TemporaryDirectory() as d:
-            _mk_sandbox(d)
-            r = _truth(d, "claim", "f.txt holds data")
-            self.assertEqual(r.returncode, 0, r.stderr)
-            with open(os.path.join(d, ".truth", "claims.jsonl")) as f:
-                filed = json.loads(f.read().splitlines()[-1])
-            self.assertNotIn("concerns", filed["payload"])
-
-    def test_malformed_tag_refused_before_anything_files(self):
-        with tempfile.TemporaryDirectory() as d:
-            _mk_sandbox(d)
-            for bad in ("Not_A_Slug", "UPPER", "", "x" * 33, "a b",
-                        "security\n"):  # F1: $ matches before trailing \n
-                r = _truth(d, "claim", "f.txt holds data", "--concern", bad)
-                self.assertNotEqual(r.returncode, 0, repr(bad))
-                self.assertIn("is not a slug", r.stderr, repr(bad))
-                self.assertIn("not a concern-gate", r.stderr, repr(bad))
-            with open(os.path.join(d, ".truth", "claims.jsonl")) as f:
-                self.assertEqual(f.read(), "")  # nothing was filed
-
-    def test_list_filter_composes_with_status_flags(self):
-        with tempfile.TemporaryDirectory() as d:
-            _mk_sandbox(d)
-            a = _truth(d, "claim", "f.txt holds data",
-                       "--concern", "security").stdout.strip()
-            b = _truth(d, "claim", "config parser rejects bad input",
-                       "--concern", "latency").stdout.strip()
-            _truth(d, "claim", "cache layer evicts old entries")
-            r = _truth(d, "list", "--concern", "security", "--json")
-            self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual([row["id"] for row in json.loads(r.stdout)], [a])
-            # composes with a status flag: both unverified, so the tag
-            # still narrows to one; --live matches nothing yet
-            r = _truth(d, "list", "--unverified", "--concern", "latency",
-                       "--json")
-            self.assertEqual([row["id"] for row in json.loads(r.stdout)], [b])
-            r = _truth(d, "list", "--live", "--concern", "latency", "--json")
-            self.assertEqual(json.loads(r.stdout), [])
-
-    def test_stats_concerns_section_plain_and_json(self):
-        with tempfile.TemporaryDirectory() as d:
-            _mk_sandbox(d)
-            _truth(d, "claim", "f.txt holds data", "--concern", "security",
-                   "--concern", "latency")
-            _truth(d, "claim", "cache layer evicts old entries")
-            r = _truth(d, "stats")
-            self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertIn("concerns: latency=1, security=1, "
-                          "untagged-active=1", r.stdout)
-            rj = _truth(d, "stats", "--json")
-            report = json.loads(rj.stdout)
-            self.assertEqual(report["concerns"],
-                             {"latency": 1, "security": 1})
-            self.assertEqual(report["concerns_untagged_active"], 1)
-
-    def test_old_format_ledger_lists_folds_validates_stats(self):
-        """CRITICAL backward compatibility: a ledger written before
-        concerns existed (no key anywhere) must list, fold, validate, and
-        stats without error, and a --concern filter over it is simply
-        empty."""
-        with tempfile.TemporaryDirectory() as d:
-            _mk_sandbox(d)
-            old = [rec("claim", claim_p()),
-                   rec("verdict", {"claim": "tr-00000001", "verdict": "agree",
-                                   "basis": "b"}, rid="tr-00000002",
-                       ts="2026-07-02T00:00:00.000000+00:00")]
-            with open(os.path.join(d, ".truth", "claims.jsonl"), "w") as f:
-                f.write("".join(json.dumps(e) + "\n" for e in old))
-            r = _truth(d, "validate")
-            self.assertEqual(r.returncode, 0, r.stderr)
-            r = _truth(d, "list", "--json")
-            self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual([row["status"] for row in json.loads(r.stdout)],
-                             ["live"])
-            r = _truth(d, "list", "--concern", "security", "--json")
-            self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual(json.loads(r.stdout), [])
-            r = _truth(d, "stats")
-            self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertIn("concerns: none, untagged-active=1", r.stdout)
 
 
 class TestScanRenameBlindness(unittest.TestCase):

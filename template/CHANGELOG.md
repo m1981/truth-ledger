@@ -8,6 +8,69 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.30 (ADR-046: tiering and the envelope admission rule -- the P5
+  phase of the migration plan, decision D4; the ONE migration phase
+  that deliberately changes consumer-facing behavior: report surface is
+  REMOVED from the template CLI and re-provided as meta-repo Tier C
+  instruments; fold, statuses, refusals, and every gate unchanged):
+  * Envelope admission rule, written down (schema `$id` v0.15 -> v0.16,
+    the phase's single schema bump): a payload field is admitted only
+    if the fold or a blocking gate reads it. Grandfathered as passing:
+    the override bases (scope_basis, generated_ok_basis,
+    evidence_exit_basis, orphan_basis, overridden_duplicates) and
+    ttl_default. `concerns` and `blast_forecast` FAIL the rule and are
+    legacy-admitted only: validate and the schema keep accepting them
+    on records filed pre-ADR-046 (append-only history is never
+    rewritten) and both carry deprecation notes; the fields are CLOSED
+    to new records. The rule + grandfather list also land in
+    docs/truth-ledger-machinery.md.
+  * `concerns` -> Tier C (D4): REMOVED from the template CLI --
+    `claim --concern`, `list --concern`, and the stats
+    `concerns`/`concerns_untagged_active` section are gone, and
+    `concerns_intake_error` left truthlib with its wiring. CONCERN_RE
+    and the `claim_concerns` reader STAY (validate's legacy branch and
+    the instrument need them). Replacement:
+    `instruments/concern-tag.py`, a READER over
+    `scripts/truth list --json` + the raw ledger (stdlib only) --
+    filing-side tagging is gone, the field is closed, and hand-editing
+    tags into the ledger is forbidden by the admission rule.
+  * `blast_forecast` computed on read: intake stops stamping the
+    payload (the `_gate_blast` row is advisory-only -- it computes the
+    forecast live and passes it plus the parsed history through
+    `facts`); `effective_blast_floor(claims, history)` now calibrates
+    P90 from LIVE forecasts over live path-claims in one
+    `blast_history()` log (same git cost as the retired stored-int
+    read; >=1 clamp and fallback kept, None history NEVER calibrates);
+    `blast_report(events, folded, history)` computes rows live and
+    falls back to stored legacy ints only when history is unreadable.
+    Replacement report surface: `instruments/blast-report.py`.
+  * Reports out of `stats` and `doctor` (Tier C): `truth stats` keeps
+    EXACTLY claims_by_status/claims_by_tier, verdicts, half_life (it
+    feeds the FS-1 intake advisory -- Tier B), and queue_size/age; it
+    LOSES the separation, overrides (+ repeats advisory lines +
+    hollow), blast, and concerns sections in both plain and --json
+    (TestStatsCLIShape pins the slimmed shape both ways). doctor LOSES
+    the "verifier separation" check. The pure reports
+    (separation_report, override_report, blast_report) STAY in
+    truthlib/advisory.py; the new meta-repo drivers are
+    `instruments/separation-report.py`,
+    `instruments/override-velocity.py`, `instruments/blast-report.py`
+    (each with --json; NOT templated -- consumers never receive them).
+  * Retired arms, BY NAME (the ADR-046 canary-arm ledger): canary
+    SEP1/SEP2/SEP3 (FAULT SEP), FAULT OV's two stats arms, and BF5 ->
+    all moved to the NEW meta-repo gate `scripts/test-instruments.sh`
+    (16 arms: real-ledger lane + a red-proof lane per instrument);
+    canary BF4 FLIPPED to assert blast_forecast is NOT stored while
+    the BF1 advisory still voices (canary 251 -> 245 arms). Core
+    suite: TestConcernsCLI (6 tests) and
+    TestOverrideReportCLI (2 tests) retired to the instruments gate;
+    test_stats_report_concern_tally replaced by
+    test_legacy_tagged_and_forecast_records_still_admitted;
+    test_slug_hygiene re-pointed at CONCERN_RE
+    (test_slug_shape_guards_the_legacy_validate_branch);
+    TestStatsCLIShape (2) and a live-history TestBlastReport arm added
+    (core 298 -> 293 tests).
+
 v0.9.29 (ADR-045: write-path lock + merge gate -- the P4 phase of the
   migration plan, decisions D2/D3; no verb, flag, schema, or fold
   change; every existing refusal message and exit code byte-identical):
