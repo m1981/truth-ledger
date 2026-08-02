@@ -204,6 +204,46 @@ if printf '%s\n' "$CTOUT" | grep -q "concerns: security=1, untagged-active=1"; t
 else
   bad "concern-tag mis-tallied the sandbox ledger: [$CTOUT]"
 fi
+
+# -- concern-tag must FETCH the active set, never carry a copy ------------
+# Until 2026-08-02 the instrument held `ACTIVE = ("live", "unverified")`
+# as a literal: the exact contract-copy drift class ADR-043 closed when
+# the satellites started reading `truth vocab --json` at runtime. A copy
+# cannot be caught by any CLI test -- it keeps answering yesterday's
+# vocabulary and calls it a measurement. These two arms pin the fetch by
+# BENDING the vocabulary under a shim CLI: if the literal ever returns,
+# the tally stops following the contract and both arms redden.
+mv scripts/truth scripts/truth.real
+cat > scripts/truth <<'SHIM'
+#!/usr/bin/env python3
+"""Gate shim: forwards to the real CLI, bends only `vocab`."""
+import json, os, subprocess, sys
+REAL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "truth.real")
+argv = sys.argv[1:]
+if argv[:1] == ["vocab"]:
+    if os.environ.get("SHIM_VOCAB") == "dead":
+        sys.stderr.write("shim: vocabulary unavailable\n")
+        sys.exit(3)
+    r = subprocess.run([sys.executable, REAL, *argv], capture_output=True, text=True)
+    v = json.loads(r.stdout)
+    v["active"] = ["live"]          # the contract moved under the reader
+    print(json.dumps(v))
+    sys.exit(0)
+sys.exit(subprocess.run([sys.executable, REAL, *argv]).returncode)
+SHIM
+CT_NARROW=$(SHIM_VOCAB=narrow python3 "$INST/concern-tag.py" 2>&1)
+if printf '%s\n' "$CT_NARROW" | grep -q "untagged-active=0"; then
+  ok "narrowing vocab's active set to {live} drops the unverified claim from the tally -- the set is FETCHED, not copied"
+else
+  bad "concern-tag ignored the CLI's active set (a hand-copied ACTIVE is back?): [$CT_NARROW]"
+fi
+CT_DEAD=$(SHIM_VOCAB=dead python3 "$INST/concern-tag.py" 2>&1); CT_RC=$?
+if [ "$CT_RC" -ne 0 ] && printf '%s\n' "$CT_DEAD" | grep -q "vocab"; then
+  ok "an unavailable vocabulary kills the report loudly (rc=$CT_RC), rather than tallying against a guess"
+else
+  bad "concern-tag survived a dead vocabulary (rc=$CT_RC) -- it is guessing the contract: [$CT_DEAD]"
+fi
+mv scripts/truth.real scripts/truth
 cd "$PREV"
 
 say ""

@@ -4,7 +4,7 @@
 every layer, gate, hook, and deliberate loophole in a system built to
 keep AI coding agents' claims honest.
 
-**Scope** CLI v0.9.32 · paper v3 (2026-07-20) · ADR-001–047 ·
+**Scope** CLI v0.9.33 · paper v3 (2026-07-20) · ADR-001–048 ·
 **Sources** paper §N = `docs/truth-ledger-paper-v3.md`; ADR-NNN =
 `template/docs/adr/truth/NNN-*.md`
 
@@ -1607,12 +1607,17 @@ gate" rows are conditional on an installed hook or CI (ADR-025).
 ### Acronyms & standards
 
 - **ADR** — Architecture Decision Record.
-- **CLI** — command-line interface; here the `truth` script (v0.9.30) —
-  since v0.9.28/ADR-044 a thin entry over the `truthlib/` package,
-  same surface; since v0.9.29/ADR-045 write verbs serialize on a
-  per-repo `flock` and the commit gate also rides `pre-merge-commit`;
-  since v0.9.30/ADR-046 the instrument reports live outside it (Tier C,
-  `instruments/*.py`).
+- **CLI** — command-line interface; here the `truth` script. Its version
+  is stated once on this page, in the **Scope** header above, and its
+  per-release history lives in `template/CHANGELOG.md`; this entry
+  deliberately restates neither, because a restated version rots in
+  place while a cited one stays checkable (paper §5, the rule this page
+  is itself governed by — the previous wording here sat two releases
+  stale). Shape, by decision rather than by version: a thin entry over
+  the `truthlib/` package, same surface (ADR-044); write verbs serialize
+  on a per-repo `flock` and the commit gate also rides
+  `pre-merge-commit` (ADR-045); the instrument reports live *outside*
+  it, in Tier C `instruments/*.py` (ADR-046).
 - **CI** — continuous integration; the clone-proof backstop for the
   commit gate when local hooks are absent (ADR-025).
 - **JSONL** — JSON Lines: one JSON object per line, the ledger's format.

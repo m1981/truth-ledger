@@ -1,4 +1,4 @@
-"""truth v0.9.32 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.33 -- append-only claims ledger with a native work kernel.
 
 truthlib.cli -- argparse and the cmd_* orchestration (the line above is
 the argparse description, kept in lockstep with the entry docstring by
@@ -9,7 +9,6 @@ ADR-034 gate table.  The only module argparse lives in.
 import argparse
 import json
 import os
-import subprocess
 import sys
 import time
 
@@ -686,13 +685,13 @@ def cmd_done(a):
                            "kind": accept.get("kind", "verification"),
                            "executed": False, "screened": False}
         else:
-            r = subprocess.run(accept["command"], shell=True,
-                               cwd=repo_root(), capture_output=True,
-                               text=True)
-            if r.returncode != 0:
-                tail = "\n".join((r.stdout + r.stderr).splitlines()[-15:])
+            # ADR-044 (P4): the execution itself is shellio's -- cli holds
+            # the decision and the refusal text, not the subprocess.
+            rc, combined = run_accept_command(accept["command"], repo_root())
+            if rc != 0:
+                tail = "\n".join(combined.splitlines()[-15:])
                 sys.exit(f"truth: acceptance oracle failed (exit "
-                         f"{r.returncode}) -- {a.issue_id} stays {status}; "
+                         f"{rc}) -- {a.issue_id} stays {status}; "
                          "the finish line is the command, not the "
                          f"narrative (ADR-014)\n  $ {accept['command']}\n"
                          f"{tail}")
@@ -975,12 +974,28 @@ def cmd_doctor(a):
     """G4: check the INSTALLATION, which the sandboxed canary cannot."""
     root = repo_root()
     fails, warns = [], []
+    # --json is a REPORTING layer only (the contract-layer machine
+    # surface: one question, one surface). The checks below, their
+    # order, their semantics and the exit code are untouched; the three
+    # accumulators additionally record {check, detail} so the same run
+    # can be rendered as text OR as one object. Text mode prints exactly
+    # what it always printed, byte for byte.
+    report = {"ok": [], "warn": [], "fail": []}
+    as_json = getattr(a, "json", False)
     def ok(name, detail=""):
-        print(f"OK    {name}" + (f" -- {detail}" if detail else ""))
+        report["ok"].append({"check": name, "detail": detail})
+        if not as_json:
+            print(f"OK    {name}" + (f" -- {detail}" if detail else ""))
     def fail(name, detail):
-        fails.append(name); print(f"FAIL  {name} -- {detail}")
+        fails.append(name); report["fail"].append({"check": name,
+                                                   "detail": detail})
+        if not as_json:
+            print(f"FAIL  {name} -- {detail}")
     def warn(name, detail):
-        warns.append(name); print(f"WARN  {name} -- {detail}")
+        warns.append(name); report["warn"].append({"check": name,
+                                                   "detail": detail})
+        if not as_json:
+            print(f"WARN  {name} -- {detail}")
 
     if head_commit():
         ok("repo has commits (anchors resolvable)")
@@ -1145,7 +1160,15 @@ def cmd_doctor(a):
     # doctor -- it is a Tier C instrument (the meta-repo's
     # instruments/separation-report.py), not an installation check.
 
-    print(f"\ndoctor: {len(fails)} failure(s), {len(warns)} warning(s)")
+    if as_json:
+        # The counts are derived from the SAME lists the exit code reads,
+        # so a consumer can trust failures>0 <=> exit 1 without parsing
+        # the human summary line (which --json replaces, not augments).
+        report["failures"] = len(fails)
+        report["warnings"] = len(warns)
+        print(json.dumps(report, indent=2))
+    else:
+        print(f"\ndoctor: {len(fails)} failure(s), {len(warns)} warning(s)")
     sys.exit(1 if fails else 0)
 
 # ---------------------------------------------------------------- main
@@ -1426,6 +1449,11 @@ def main():
     d.set_defaults(fn=cmd_dispatch)
 
     doc = sub.add_parser("doctor", help="check the installation, not just the scripts (G4)")
+    doc.add_argument("--json", action="store_true",
+                     help="the same run as one object: {ok, warn, fail} "
+                          "lists of {check, detail} plus failures/warnings "
+                          "counts; the exit code is unchanged (1 on "
+                          "failures)")
     doc.set_defaults(fn=cmd_doctor)
 
     val = sub.add_parser("validate", help="schema-check every ledger record")

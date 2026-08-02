@@ -1,6 +1,22 @@
 # ADR-042: Check liveness — coverage is part of every verdict
 
 Status: **PROPOSED** (2026-08-01, drafted) — NOT accepted, NOT implemented.
+
+> **Amended 2026-08-02 (post-audit).** This record's own acceptance
+> preconditions are now met: the independent adversarial pass exists
+> (three sessions, `docs/reviews/migration-audit-2026-08-02.md`) and the
+> simulation ran (`scripts/gate-reachability.sh`'s first sweep, which
+> found five dark checks — four orphaned suites plus this battery's own
+> mutation gate). Of the five rules below, **1** (report what you
+> examined) and **2** (zero coverage fails) are now enforced for every
+> wired suite by the battery's `gate_arm` helper, and **5** (an arm is
+> not credited until seen red) was practiced throughout the 2026-08-02
+> remediation. Rules **3** (doctor as the armed-versus-dark auditor) and
+> **4** (every audit field names its consumer) remain unimplemented, so
+> this ADR stays PROPOSED rather than being accepted on partial
+> delivery — recording more than shipped is the defect that round
+> existed to close. The reachability half, which this record does not
+> name, shipped as its own decision: **ADR-048**.
 Written after a coverage audit and a mechanics review found that six of
 twelve observed failure modes share one shape. Requires an independent
 adversarial pass and a simulation against the existing checks before it

@@ -68,3 +68,48 @@ below).
   tag-check will prompt for a v0.9.31 tag.
 - R11 monthly audit (~2026-08-08) opens on the gate-metrics registry;
   ADR-033 probation review dated 2026-10-08.
+
+## Audited 2026-08-02 (added after the fact)
+
+Three independent adversarial sessions audited this migration at HEAD,
+read-only, with no expectation seeded from the summary above. Full
+record with evidence and per-finding disposition:
+`docs/reviews/migration-audit-2026-08-02.md`.
+
+- **Target-shape conformance:** ~85–90% delivered as designed or as a
+  *recorded* deviation.
+- **Phase-plan conformance:** "rigorous about the code it changed and
+  lax about the evidence machinery that was supposed to hold it
+  accountable."
+- **Adversarial gap-hunt:** "I would trust this delivery" — one minor
+  finding.
+
+Verified positive (the load-bearing negatives): the fold is
+byte-identical across the split (143/143 top-level definitions, one
+licensed constant substitution); the canary progression corroborates at
+every phase boundary; every headline count reproduced independently;
+the G8/ADR-007/INV-M refusals are byte-unchanged from the pre-migration
+CLI; 0 same-session agrees across all 1,640 agree verdicts; 0 silently
+stale live path-claims; copier scaffolding still produces a working
+consumer repo.
+
+**The trap this session actually fell into — read this before planning
+the next multi-phase change.** The plan promised the migration would
+audit itself with the machinery it migrates: a `wk-` issue per phase,
+acceptance oracles, a completion claim at each boundary. Delivered:
+**zero issues, zero oracles, zero per-phase claims.** Nothing blocked
+on their absence, every phase went green anyway, and the omission was
+unacknowledged anywhere until the audit named it. It is recorded OPEN
+and deliberately **not** retro-filed — seven completion claims written
+today, by the session that did the work, after the outcome is known,
+would be exactly the evidence ADR-010 exists to refuse. The repair is
+prospective: file the issues *before* the phases, or take the promise
+out of the plan instead of out of the delivery.
+
+The same shape, generalized, is the structural lesson the auditors
+landed on: **passing and being scheduled are independent properties,
+and this migration only measured the first.** Three test suites pass
+and are invoked by nothing (six canary arms had been retired *into* one
+of them — honest ceremony, unreachable destination), so automated
+coverage decreased while every reported number went up. Count what runs
+your assertions, not just what your assertions say.

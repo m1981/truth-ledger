@@ -71,6 +71,20 @@ calls (allowlist deliberately empty), `datetime.now`/`time.time`, and
 any truthlib import outside the DAG row. Red-proven at adoption:
 `import subprocess` seeded into policy.py reddened the arm.
 
+**Amended (2026-08-02, post-migration audit).** The
+"only subprocess importer" row above was FALSE when written: `cli.py`
+imported `subprocess` and ran the ADR-014 acceptance oracle inline at
+`done` time, and `TestModulePurity` could not catch it because `cli` is
+not (and cannot be) in the PURE set. The record was made true rather
+than weakened: the execution moved to `shellio.run_accept_command
+(command, cwd) -> (returncode, combined_output)` — the screen, the
+decision and the refusal text stay in `cmd_done`, byte-identical — and
+the purity theorem gained `test_cli_never_imports_subprocess`, which
+asserts the one property this table names of the one impure module it
+does not exempt. `shellio` is now the sole `subprocess` importer
+mechanically, not editorially. No exemption was needed: no other
+`subprocess` use remained in `cli.py`.
+
 ## Consequences
 
 * The next boundary drift is a red test, not a review finding: the

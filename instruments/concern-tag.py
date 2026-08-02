@@ -5,8 +5,10 @@
 Reports concern-tag counts over the ledger: per-tag totals across
 non-retracted claims (stale/diverged still carry their stakeholder's
 interest; only retraction kills it -- the impact --inverse convention)
-plus the untagged-ACTIVE count ({live, unverified}, the ADR-018 intake
-notion). Statuses come from `scripts/truth list --json`; the tags come
+plus the untagged-ACTIVE count, where ACTIVE is fetched from the CLI's
+own vocabulary (`truth vocab --json`) at runtime and never hand-copied
+(ADR-043; see active_statuses below). Statuses come from
+`scripts/truth list --json`; the tags come
 from a raw ledger read, because `list` rows do not carry payload
 concerns. Stdlib only; no truthlib import -- this instrument exercises
 the same public surfaces any external reader has.
@@ -31,7 +33,38 @@ import subprocess
 import sys
 
 LEDGER_REL = ".truth/claims.jsonl"
-ACTIVE = ("live", "unverified")  # ADR-018 intake notion of active
+
+
+def cli(truth, *args):
+    """Run the CLI and return stdout, or die loudly."""
+    r = subprocess.run([sys.executable, truth, *args],
+                       capture_output=True, text=True,
+                       cwd=os.path.dirname(os.path.dirname(truth)))
+    if r.returncode != 0:
+        sys.exit(f"concern-tag: `truth {' '.join(args)}` failed "
+                 f"(rc={r.returncode}): {r.stderr.strip()}")
+    return r.stdout
+
+
+def active_statuses(truth):
+    """The ACTIVE set, fetched from the CLI's own vocabulary at runtime.
+
+    Never hand-copied. A literal ("live", "unverified") sat here until
+    2026-08-02 and was the exact contract-copy drift class ADR-043 closed
+    with `truth vocab --json`: the day the CLI's notion of active moves,
+    a copy keeps counting yesterday's answer and calls it a measurement.
+    Fail LOUD if the vocabulary is unavailable (the F1 rule, and the same
+    shape as scripts/fact-health.sh) -- tallying against a guessed
+    vocabulary is the drift re-armed, dressed as a report.
+    """
+    vocab = json.loads(cli(truth, "vocab", "--json"))
+    active = vocab.get("active")
+    if not isinstance(active, list) or not active \
+       or not all(isinstance(s, str) for s in active):
+        sys.exit("concern-tag: `truth vocab --json` carries no usable "
+                 "'active' set -- refusing to tally against a guessed "
+                 "vocabulary")
+    return frozenset(active)
 
 
 def repo_root():
@@ -55,12 +88,9 @@ def claim_concerns(payload):
 def main(argv):
     root = repo_root()
     truth = os.path.join(root, "scripts", "truth")
-    r = subprocess.run([sys.executable, truth, "list", "--json"],
-                       capture_output=True, text=True, cwd=root)
-    if r.returncode != 0:
-        sys.exit(f"concern-tag: `truth list --json` failed "
-                 f"(rc={r.returncode}): {r.stderr.strip()}")
-    status = {row["id"]: row["status"] for row in json.loads(r.stdout)}
+    active = active_statuses(truth)
+    status = {row["id"]: row["status"]
+              for row in json.loads(cli(truth, "list", "--json"))}
     tags_by_id = {}
     with open(os.path.join(root, LEDGER_REL), encoding="utf-8") as f:
         for line in f:
@@ -81,7 +111,7 @@ def main(argv):
         if st != "retracted":
             for t in tags:
                 counts[t] = counts.get(t, 0) + 1
-        if st in ACTIVE and not tags:
+        if st in active and not tags:
             untagged += 1
     if "--json" in argv:
         print(json.dumps({"concerns": counts,

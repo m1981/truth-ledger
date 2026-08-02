@@ -8,6 +8,60 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.33 (ADR-048 check reachability -- the audit remediation: a check no
+  scheduled root invokes is prose, and four of ours were; no schema
+  change, no gate semantics change, fold untouched):
+  * `scripts/gate-reachability.sh` (meta-repo, new): enumerates every
+    git-tracked executable check mechanically, enumerates the scheduled
+    roots (`.githooks/*`, the harness hooks, and `install-hooks.sh` as a
+    template root), and computes reachability as a transitive closure to
+    fixpoint. Unreachable FAILS, excusable only by a committed reason in
+    `.truth/reachability-opt-out` (ADR-037 policy semantics: absent =
+    dark + loud, empty = conscious, populated = armed; a stale excuse
+    also fails). It enumerates ITSELF and fails if it is unreachable or
+    examined zero checks. First sweep found five dark checks.
+  * The four orphaned suites are WIRED, not excused, so the opt-out file
+    ships committed-empty: `test-fact-health` (10 arms), `test-instruments`
+    (18), `test-whisper-hook` (5) and `test-session-digest` (3) now ride
+    the battery through a `gate_arm` helper that judges each by its own
+    "N caught, M missed" line -- no summary, zero caught, any missed, or
+    a non-zero exit all FAIL (ADR-042 rules 1-2, enforced). Battery cost
+    measured: ~9s -> ~17s on an ordinary push.
+  * The battery's own mutation gate rides the battery (scoped to pushes
+    touching it; ~6m19s there), re-entrancy guarded by a variable set at
+    exactly one line and ANNOUNCED when it suppresses -- not an operator
+    skip flag; `--no-verify` remains the one honest exit (ADR-011).
+    `scripts/test-release-battery.sh` gains 6 arms (6 -> 12) covering the
+    skip-awareness logic P0 shipped ungated.
+  * `truth doctor --json` (the contract-layer surface the migration
+    listed and never built): structured ok/warn/fail entries with
+    `failures`/`warnings` derived from the same lists the exit code
+    reads. Plain text and the exit-code contract are byte-unchanged.
+  * ADR-044's module table said shellio was "the only subprocess
+    importer" and cli.py contradicted it. The ADR-014 acceptance-oracle
+    execution moved to `shellio.run_accept_command`, `import subprocess`
+    is gone from cli.py, and `TestModulePurity` now ASSERTS it -- the row
+    is mechanical instead of editorial. ADR-044 carries an amendment
+    saying plainly that it was false when written.
+  * `instruments/concern-tag.py` fetched its active-status set from a
+    hand-copied tuple -- the contract-copy drift ADR-043 closed, reopened
+    in the untemplated tier. It now reads `truth vocab --json` at runtime
+    and fails loud, like the health satellites.
+  * Canary 247 -> 250: doctor-JSON contract + text-unchanged arms, and
+    GS7/GS7b closing the last hard gate with no end-to-end arm
+    (`text-nonempty`: empty and whitespace-only refused, ledger
+    unchanged, plus a negative control). Core suite 293 -> 296.
+  * ADR-042 (check liveness) stays PROPOSED with a dated amendment: its
+    acceptance preconditions are now met and rules 1/2/5 are enforced,
+    but rules 3-4 are unshipped, and accepting on partial delivery is the
+    defect this round exists to close. Registry rows for `text-nonempty`
+    and `class-precheck` were missing (ADR-047 says "every"); added, so
+    it carries 13 rows -- not the 11 the v0.9.31 entry states.
+  * Provenance: everything above answers findings 1-5 and 7 of
+    `docs/reviews/migration-audit-2026-08-02.md`. Finding 6 -- the
+    migration's dropped per-phase ledger discipline -- is recorded OPEN
+    and deliberately NOT retro-filed.
+
 v0.9.32 (input hygiene on argument SHAPE -- no new ADR: both refusals
   enforce decisions already taken, ADR-036 for the citation sweep and
   ADR-013 for the premise refs; no schema change, no gate semantics

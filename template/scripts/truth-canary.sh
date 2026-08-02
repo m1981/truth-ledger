@@ -117,6 +117,41 @@ if [ "$DGRC" -ne 0 ] \
 else
   miss "doctor did not fail the gate on a repo with no hook and no CI"
 fi
+# `doctor --json` is the SAME run rendered as one object (the contract
+# layer's machine surface): the exit contract is unchanged, the missing
+# gate is named in fail[], and the counts are the lists' lengths.
+DGJ="$($T doctor --json 2>&1)"; DGJRC=$?
+if [ "$DGJRC" -eq 1 ] && printf '%s' "$DGJ" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+assert set(d) == {"ok", "warn", "fail", "failures", "warnings"}, sorted(d)
+assert all(set(e) == {"check", "detail"}
+           for lvl in ("ok", "warn", "fail") for e in d[lvl]), d
+assert d["failures"] == len(d["fail"]), d
+assert d["warnings"] == len(d["warn"]), d
+assert "pre-commit hook enforces INV-A/INV-B" in [e["check"] for e in d["fail"]], d["fail"]
+'; then
+  ok "doctor --json emits the structured report (fail[] names the missing gate) at the unchanged exit 1"
+else
+  miss "doctor --json did not parse as the contract object, or lost the exit-1 contract"
+fi
+# and the flag changes REPORTING only: with --json ABSENT the render is
+# the pre-existing text, pinned literally (NOT by re-running doctor and
+# comparing it to itself -- that compares one binary to the same binary
+# and would pass any leak present in both runs). Every line is an
+# OK/FAIL/WARN line, a blank, or the summary; the summary agrees with
+# the JSON counts; no JSON leaks in.
+DGTXT="$($T doctor 2>&1)"; DGTRC=$?
+DGSUM="$(printf '%s' "$DGJ" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("doctor: %d failure(s), %d warning(s)" % (d["failures"], d["warnings"]))')"
+if [ "$DGTRC" -eq 1 ] \
+   && [ "$(printf '%s\n' "$DGTXT" | tail -1)" = "$DGSUM" ] \
+   && printf '%s\n' "$DGTXT" | grep -q '^FAIL  pre-commit hook enforces INV-A/INV-B -- ' \
+   && ! printf '%s\n' "$DGTXT" | grep -q '"check"' \
+   && [ "$(printf '%s\n' "$DGTXT" | grep -cvE '^(OK    |FAIL  |WARN  |doctor: |$)')" -eq 0 ]; then
+  ok "plain doctor renders the unchanged text (OK/FAIL/WARN + summary agreeing with the JSON counts), no JSON leak"
+else
+  miss "plain doctor output changed when the --json surface was added"
+fi
 # a workflow in a SUBDIR must NOT satisfy the gate (GitHub never runs it)
 mkdir -p .github/workflows/disabled
 printf 'jobs:\n  g:\n    steps: [{run: bash scripts/check-truth.sh}]\n' > .github/workflows/disabled/x.yml
@@ -2140,6 +2175,30 @@ sys.exit(0 if ok else 1)" \
   ok "GS6: done --claim --json echoes advisories[]; neither ledger line carries them"
 else
   miss "GS6: done --json advisory echo broken, or advisories leaked into the ledger ($GS6OUT)"
+fi
+# GS7 (2026-08-02 audit gap): the gate table's FIRST row, text-nonempty
+# (G0), had no end-to-end arm -- its only pins were the table-order test
+# and the schema's minLength, both of which a gutted gate body leaves
+# green. A hard, override-less refusal with no arm is the vacuous class
+# one level up, so it gets one: empty and whitespace-only text refused,
+# nothing appended, plus a NEGATIVE CONTROL that ordinary text still files.
+GS7N=$(grep -c "" .truth/claims.jsonl)
+GS7A=$($T claim "" --tier P2 2>&1); GS7ARC=$?
+GS7B=$($T claim "   " --tier P2 2>&1); GS7BRC=$?
+GS7M=$(grep -c "" .truth/claims.jsonl)
+if [ "$GS7ARC" -ne 0 ] && [ "$GS7BRC" -ne 0 ] \
+   && printf '%s\n' "$GS7A" | grep -q "must be non-empty" \
+   && printf '%s\n' "$GS7B" | grep -q "must be non-empty" \
+   && [ "$GS7M" -eq "$GS7N" ]; then
+  ok "GS7: empty and whitespace-only claim text refused (G0), ledger unchanged"
+else
+  miss "GS7: text-nonempty gate did not refuse (rc=$GS7ARC/$GS7BRC, lines $GS7N->$GS7M)"
+fi
+if $T claim "gs7 negative control files ordinary sentence text" \
+     --tier P2 >/dev/null 2>&1; then
+  ok "GS7b: negative control -- ordinary text still files (G0 is not a blanket refusal)"
+else
+  miss "GS7b: the text-nonempty gate refused legitimate text"
 fi
 cd "$GS_PREV"
 rm -rf "$GS"

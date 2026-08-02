@@ -26,6 +26,8 @@ Current values pulled 2026-08-02 from the Tier C instruments
 
 | Gate / override | Adoption metric | Source | Current (2026-08-02) | Next review | Standing |
 |---|---|---|---|---|---|
+| `text-nonempty` (G0, no override) | refusal count — the gate has NO override flag, so there is no override to count; and a refusal appends nothing to fold (the ADR-035 note, INV-M precedent), so the count is **unmeasurable from the ledger by construction**. Named honestly rather than proxied | none possible from the ledger; standing evidence that it fires = the gate-table order pin (`test_gate_table_pre_execution_order_is_pinned`, core suite) + schema `text` `minLength: 1` mirrored by the FS-2 mutant conformance corpus | no counter, by construction · hand-exercised at this review in a scratch repo: empty and whitespace-only text both refuse and **no ledger line is written** (the append-nothing property, observed) · end-to-end arms **GS7/GS7b** (v0.9.33) assert the refusal and the ledger-unchanged property, red-proven by gutting the gate body | 2026-09-08 | armed, uncounted by construction |
+| `class-precheck` (G4/G1/G10/INV-B intake, no override) | refusal count — same shape: no override flag, and a refusal appends nothing, so **unmeasurable from the ledger by construction** | none possible from the ledger; standing evidence that it fires = canary **FAULT F (G1)** (a VERIFIED claim in a zero-commit repo is refused, end-to-end) + core-suite unit tests of `verified_intake_error` / `inferred_intake_error` (the INV-B, G10, G1 and INFERRED-without-basis branches) | no counter, by construction · FAULT F green in the suite run at close of the migration | 2026-09-08 | armed, uncounted by construction |
 | G8 near-duplicate (+ `--duplicate-ok`) | override rate: duplicate-ok filings / all claim filings (ADR-007's ~50% recalibration line, applied per ADR-018) | override-velocity `overridden_duplicates` ÷ ledger claim count | 11 / 198 = **5.6%** | 2026-09-08 | armed |
 | ADR-007 quantifier-scope (+ `--scope-ok`, ADR-032 decay) | `--scope-ok` volume; largest granted TTL; decay expiries vs genuine diverges | override-velocity `scope_basis_filings`, `max_scope_ttl_days`, `decay_expiries` | 8 filings · max TTL **3650 d** (historical — minutes item 3) · 0 expiries | 2026-08-08 | armed |
 | INV-M dead-tripwire family (ADR-024) | dead watches reaching the fold (target 0) — refusals are deliberately uncounted (a refusal appends nothing, ADR-035 note) | hand check at audit + canary FAULT T arms | 0 observed | 2026-08-08 | armed |
@@ -129,3 +131,24 @@ Probation: ADR-033 (dated, terms above). Recalibrated: nothing (G8
 kept at 0.6 on data). New registry-tracked gaps: G6's uncounted
 `--single-run`; ADR-038's counterless advisory. Next scheduled read of
 this table: the R11 monthly hand-audit due ~2026-08-08.
+
+### Addendum, 2026-08-02 — the registry was incomplete when it shipped
+
+The three independent audits of the P0–P6 migration
+(`docs/reviews/migration-audit-2026-08-02.md`) found the table claiming
+ADR-047 §1 coverage of "every Tier B blocking gate" while omitting two
+hard, override-less refusals — `text-nonempty` (G0) and `class-precheck`
+(G4) — because the first pass enumerated *counted overrides* and
+silently treated "has an override flag" as the membership rule. Both
+rows are added above with the honest metric (refusal count,
+unmeasurable from the ledger by construction) rather than an invented
+number; the registry now carries 13 rows, not the 11 the v0.9.31
+CHANGELOG entry states. One residual gap this surfaced — `text-nonempty`
+having no end-to-end behavioral arm, so a regression that dropped the
+row's *effect* while leaving its name in place would be caught by
+neither pin — **was closed the same day** by canary arms GS7/GS7b
+(v0.9.33): empty and whitespace-only text refused with the ledger
+unchanged, plus a negative control that ordinary text still files. The
+arm was red-proven by gutting `_gate_text_nonempty`'s body, which
+reddened GS7 alone (`rc=0/0, lines 8->10`) while the negative control
+stayed green. Nothing from this addendum carries to the R11 audit.

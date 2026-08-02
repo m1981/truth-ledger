@@ -4166,6 +4166,82 @@ class TestScanRenameBlindness(unittest.TestCase):
             self.assertIn(cid, r.stdout)
 
 
+class TestDoctorJson(unittest.TestCase):
+    """`truth doctor --json`: the contract layer's machine surface for
+    the installation check (one question, one surface -- consumers were
+    parsing text + exit code). The flag changes REPORTING only: the same
+    checks, in the same order, with the same exit code, rendered as one
+    object; and with the flag absent the text is what it always was."""
+
+    GATE_CHECK = "pre-commit hook enforces INV-A/INV-B"
+
+    def _text_rows(self, out):
+        """(level, check) per doctor text line, summary line excluded."""
+        rows = []
+        for line in out.splitlines():
+            for level in ("OK", "FAIL", "WARN"):
+                if line.startswith(level + " "):
+                    rows.append((level.lower(),
+                                 line[len(level):].strip().split(" -- ")[0]))
+                    break
+        return rows
+
+    def test_json_shape_counts_and_failing_check(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)          # deliberately UNWIRED: no hooks, no
+            r = _truth(d, "doctor", "--json")   # gitattributes, no discovery
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            obj = json.loads(r.stdout)
+            self.assertEqual(set(obj),
+                             {"ok", "warn", "fail", "failures", "warnings"})
+            for level in ("ok", "warn", "fail"):
+                for entry in obj[level]:
+                    self.assertEqual(set(entry), {"check", "detail"}, entry)
+                    self.assertIsInstance(entry["check"], str)
+                    self.assertIsInstance(entry["detail"], str)
+            # the counts are the lists' lengths -- a consumer may trust
+            # failures>0 <=> exit 1 without re-counting
+            self.assertEqual(obj["failures"], len(obj["fail"]))
+            self.assertEqual(obj["warnings"], len(obj["warn"]))
+            self.assertGreater(obj["failures"], 0)
+            names = [e["check"] for e in obj["fail"]]
+            self.assertIn(self.GATE_CHECK, names, names)
+            detail = [e["detail"] for e in obj["fail"]
+                      if e["check"] == self.GATE_CHECK][0]
+            self.assertIn("check-truth", detail)
+            # --json REPLACES the human render; no text leaks into it
+            self.assertNotIn("FAIL  ", r.stdout)
+            self.assertNotIn("doctor: ", r.stdout)
+
+    def test_plain_text_unchanged_and_renders_the_same_run(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            txt = _truth(d, "doctor")
+            js = _truth(d, "doctor", "--json")
+            self.assertEqual(txt.returncode, 1, txt.stdout + txt.stderr)
+            # the pre-existing text contract, character for character
+            self.assertIn(f"FAIL  {self.GATE_CHECK} -- ", txt.stdout)
+            obj = json.loads(js.stdout)
+            # the trailing summary, blank separator line included, and
+            # counting the same run the JSON counted
+            self.assertTrue(
+                txt.stdout.endswith(
+                    f"\n\ndoctor: {obj['failures']} failure(s), "
+                    f"{obj['warnings']} warning(s)\n"),
+                repr(txt.stdout[-80:]))
+            self.assertNotIn("{", txt.stdout)
+            # one run, two renders: the same (level, check) population,
+            # and within each level the JSON preserves the text's order
+            rows = self._text_rows(txt.stdout)
+            self.assertEqual(
+                set(rows),
+                {(lvl, e["check"]) for lvl in ("ok", "warn", "fail")
+                 for e in obj[lvl]})
+            for lvl in ("ok", "warn", "fail"):
+                self.assertEqual([e["check"] for e in obj[lvl]],
+                                 [c for l_, c in rows if l_ == lvl])
+
+
 class TestModulePurity(unittest.TestCase):
     """P3 (ADR-044): the PURE CORE banner as a theorem, not a comment.
 
@@ -4211,6 +4287,23 @@ class TestModulePurity(unittest.TestCase):
                     for m in mods),
                 f"truthlib/{name}.py imports subprocess -- shellio is the "
                 "only subprocess importer (ADR-044)")
+
+    def test_cli_never_imports_subprocess(self):
+        """ADR-044 amendment: shellio is the ONLY subprocess importer --
+        mechanically, cli included. The module table asserted this from
+        day one while cli.py imported subprocess for the ADR-014
+        acceptance oracle, and no test could catch it because cli is not
+        (and cannot be) in the PURE set: cli orchestrates I/O. So this
+        arm checks the ONE property the table names, on the one impure
+        module the table does not exempt. The oracle now runs through
+        shellio.run_accept_command."""
+        mods = self._truthlib_imports(self._tree("cli"))
+        self.assertFalse(
+            any(m == "subprocess" or m.startswith("subprocess.")
+                for m in mods),
+            "truthlib/cli.py imports subprocess -- shellio is the only "
+            "subprocess importer (ADR-044); route the execution through "
+            "a named shellio function instead")
 
     def test_pure_modules_respect_the_import_dag(self):
         for name in self.PURE:

@@ -95,6 +95,19 @@ def run_evidence(cmd):
     r = subprocess.run(cmd, shell=True, capture_output=True)
     return hashlib.sha256(r.stdout).hexdigest(), r.returncode
 
+def run_accept_command(command, cwd):
+    """ADR-014: execute the acceptance oracle at `done` time (SHELL --
+    subprocess).  Returns (returncode, combined_output) -- stdout+stderr
+    concatenated, which is everything cmd_done needs to decide and to
+    render the failure tail.  Lives here, not in cli, so the ADR-044
+    "shellio is the only subprocess importer" row is a fact the purity
+    test enforces rather than a claim the record makes; screening the
+    command against the allowlist stays the caller's (ADR-009) job and
+    happens BEFORE this is reached."""
+    r = subprocess.run(command, shell=True, cwd=cwd, capture_output=True,
+                       text=True)
+    return r.returncode, r.stdout + r.stderr
+
 def load_allowlist(rel=EVIDENCE_ALLOW_REL):
     """ADR-009: the evidence-command allowlist, or None when absent
     (the screen then fails closed for VERIFIED intake and recheck).

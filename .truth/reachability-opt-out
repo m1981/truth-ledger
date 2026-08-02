@@ -1,0 +1,31 @@
+# Reachability opt-out — CONSUMER POLICY (scripts/gate-reachability.sh).
+#
+# The sweep FAILS any check no root invokes: a gate that runs on nobody's
+# schedule runs after the incident. This file is the only way to say "yes,
+# and deliberately so" — one entry per line, `<path> -- <one-line reason>`.
+#
+# THIS FILE IS DELIBERATELY EMPTY, and empty is a statement, not an
+# omission: every check in this repository is reached by a root today.
+# The five that were not on 2026-08-02 — the fact-health, session-digest,
+# instruments and whisper gates, and the battery's own mutation gate —
+# were WIRED rather than excused (scripts/release-battery.sh arms 7-9),
+# because each had a schedule available to it and only lacked the line.
+# An ABSENT file would leave the sweep unable to tell a deliberate
+# exemption from an oversight and make it say so on every run; an empty
+# one arms the policy and states the position out loud.
+#
+# Fail modes are copied from .truth/generated-paths on purpose:
+#   ABSENT    — no policy; nothing is excused and an advisory is voiced.
+#   EMPTY     — armed and silent: everything here must be reachable.
+#   POPULATED — armed: the listed paths are reported, not failed.
+#
+# Two guards against the excuse outliving its reason, both enforced by the
+# sweep: an entry naming a path that is not a check FAILS, and an entry
+# naming a check that has SINCE become reachable FAILS. A standing excuse
+# nobody rechecks is the dark gate wearing a permission slip.
+#
+# Lines starting ':', '-' or '!' are refused (SI-1, as in
+# .truth/citation-scope): exemptions are enumerated positively, never as
+# exclusions, so nobody can waive a whole tree with one character.
+#
+# Add a line here the day a check genuinely has no root — and say why.
