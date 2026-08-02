@@ -2530,6 +2530,22 @@ class TestCrossSurfaceVersions(unittest.TestCase):
             "when the script's semantics change; the 'current CLI:' line "
             "moves every release (ADR-026).")
 
+    # P3/ADR-044: cli.py's docstring line 1 is what argparse renders as
+    # the --help description (main() reads its own module's __doc__), so
+    # it joins the lockstep or the two self-statements drift.
+    def test_cli_module_docstring_pins_cli_version(self):
+        with open(os.path.join(HERE, "..", "truthlib", "cli.py")) as f:
+            got = _VER_RE.search(f.readline())  # `"""truth vX.Y.Z -- ...`
+        self.assertIsNotNone(got, "truthlib/cli.py line 1 carries no "
+                             "version self-statement")
+        self.assertEqual(
+            got.group(1), _cli_version(),
+            "cross-surface drift (ADR-044): truthlib/cli.py's docstring "
+            f"line 1 states v{got.group(1)} but the entry docstring "
+            f"(scripts/truth line 2) states v{_cli_version()}; main() "
+            "renders cli.py's line as the argparse description, so the "
+            "two must move together (ADR-026 lockstep).")
+
     # ADR-026: the schema $id is a SCHEMA-CONTRACT version (two-component,
     # independent of the product version), bumped only when the record
     # SHAPE changes. It lapsed three times (v0.8.1 ts pattern, v0.9.0
@@ -4070,6 +4086,92 @@ class TestScanRenameBlindness(unittest.TestCase):
             self.assertIn(cid, r.stdout)
             r = _truth(d, "list", "--stale")
             self.assertIn(cid, r.stdout)
+
+
+class TestModulePurity(unittest.TestCase):
+    """P3 (ADR-044): the PURE CORE banner as a theorem, not a comment.
+
+    Each pure truthlib module is parsed with ast and refused: any
+    subprocess import, any `os.environ` attribute access, any open()
+    call (allowlist deliberately EMPTY -- pure modules receive file
+    content as data), any clock read (`datetime.now`, `time.time`;
+    parse_ts is fine -- it parses strings), and any import edge that
+    violates the DAG (a pure module never imports shellio or cli, and
+    each imports only the truthlib modules below it)."""
+
+    PURE = ("registry", "kernel", "evidence", "policy", "advisory")
+    # the import DAG, pure side: module -> truthlib modules it may import
+    DAG = {"registry": set(),
+           "kernel": {"registry"},
+           "evidence": {"registry", "kernel"},
+           "policy": {"registry", "kernel"},
+           "advisory": {"registry", "kernel", "evidence", "policy"}}
+    OPEN_ALLOWLIST = ()  # empty by design; justify any future entry here
+
+    def _tree(self, name):
+        import ast
+        path = os.path.join(HERE, "..", "truthlib", name + ".py")
+        with open(path, encoding="utf-8") as f:
+            return ast.parse(f.read(), filename=path)
+
+    def _truthlib_imports(self, tree):
+        import ast
+        mods = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for a in node.names:
+                    mods.add(a.name)
+            elif isinstance(node, ast.ImportFrom):
+                mods.add(node.module or "")
+        return mods
+
+    def test_pure_modules_never_import_subprocess(self):
+        for name in self.PURE:
+            mods = self._truthlib_imports(self._tree(name))
+            self.assertFalse(
+                any(m == "subprocess" or m.startswith("subprocess.")
+                    for m in mods),
+                f"truthlib/{name}.py imports subprocess -- shellio is the "
+                "only subprocess importer (ADR-044)")
+
+    def test_pure_modules_respect_the_import_dag(self):
+        for name in self.PURE:
+            got = {m.split(".", 1)[1] for m in
+                   self._truthlib_imports(self._tree(name))
+                   if m == "truthlib" or m.startswith("truthlib.")}
+            self.assertLessEqual(
+                got, self.DAG[name],
+                f"truthlib/{name}.py imports {sorted(got - self.DAG[name])} "
+                "-- outside its DAG row; pure modules never import shellio "
+                "or cli (ADR-044)")
+
+    def test_pure_modules_never_touch_env_files_or_clock(self):
+        import ast
+        for name in self.PURE:
+            for node in ast.walk(self._tree(name)):
+                if isinstance(node, ast.Attribute):
+                    base = node.value
+                    if isinstance(base, ast.Name):
+                        self.assertFalse(
+                            base.id == "os" and node.attr == "environ",
+                            f"truthlib/{name}.py reads os.environ "
+                            "(ADR-044: env is shellio's)")
+                        self.assertFalse(
+                            base.id == "datetime" and node.attr == "now",
+                            f"truthlib/{name}.py calls datetime.now "
+                            "(ADR-044: the clock is shellio's)")
+                        self.assertFalse(
+                            base.id == "time" and node.attr == "time",
+                            f"truthlib/{name}.py calls time.time "
+                            "(ADR-044: the clock is shellio's)")
+                if isinstance(node, ast.Call) \
+                        and isinstance(node.func, ast.Name) \
+                        and node.func.id == "open":
+                    self.assertIn(
+                        name, self.OPEN_ALLOWLIST,
+                        f"truthlib/{name}.py calls open() -- pure modules "
+                        "take file content as data (ADR-044; the "
+                        "allowlist is empty by design)")
 
 
 if __name__ == "__main__":

@@ -30,6 +30,7 @@ git config user.name fh-test
 mkdir -p scripts template/scripts .truth docs
 cp "$ROOT/scripts/fact-health.sh" scripts/fact-health.sh
 cp "$ROOT/template/scripts/truth" template/scripts/truth
+cp -R "$ROOT/template/truthlib" template/truthlib  # ADR-044: entry resolves ../truthlib
 cp "$ROOT/template/.truth/evidence-allow" .truth/evidence-allow
 cp "$ROOT/template/.truth/evidence-deny" .truth/evidence-deny
 cp "$ROOT/template/.truth/generated-paths" .truth/generated-paths

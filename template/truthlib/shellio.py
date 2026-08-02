@@ -1,0 +1,521 @@
+"""truthlib.shellio -- ALL I/O: git probes, files, clock, env,
+subprocess (C5 edge).
+
+The only truthlib module that imports subprocess.  Gathers facts and
+applies effects -- repo/ledger paths, the ADR-015 clock, the single
+append_records writer path, loaders, the ADR-011 human-ack ceremony, and
+the hook/CI wiring probes.  Imports kernel and registry only; its
+pre-existing sys.exit sites stay as-is this phase (ADR-044).
+"""
+import hashlib
+import io
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timedelta, timezone
+
+from truthlib.registry import *
+from truthlib.kernel import *
+
+def repo_root():
+    r = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit("truth: not inside a git repository")
+    return r.stdout.strip()
+
+def ledger_path():
+    return os.path.join(repo_root(), LEDGER_REL)
+
+def now_dt():
+    """The only place TRUTH_NOW is honored (test hook; never in prod).
+    ADR-015: the override is normalized to aware-UTC so now_iso() always
+    renders the canonical profile -- a naive or Z-suffix TRUTH_NOW must
+    not mint a record validate would then reject."""
+    override = os.environ.get("TRUTH_NOW")
+    if override:
+        dt = datetime.fromisoformat(override.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    return datetime.now(timezone.utc)
+
+def now_iso():
+    return now_dt().isoformat(timespec="microseconds")  # v0.4: second-
+    # granularity made same-second events tie, leaving order to the
+    # random id tie-break; microseconds make ts the real order key
+
+def head_commit():
+    r = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else None
+
+def commit_reachable(sha):
+    r = subprocess.run(["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+                       capture_output=True)
+    return r.returncode == 0
+
+def changed_files_since(anchor):
+    """Returns (changed_files or None, error or None).
+
+    --no-renames: with rename detection active, a `git mv` of a watched
+    file emits only the DESTINATION path, so the watched (old) path never
+    appears and the scan silently misses the change -- a rename must show
+    as delete+add so the tripwire fires on the old path."""
+    r = subprocess.run(["git", "diff", "--name-only", "--no-renames",
+                        f"{anchor}..HEAD"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return None, r.stderr.strip()
+    return r.stdout.splitlines(), None
+
+def tracked_files():
+    """INV-M fact-gathering: the tracked-file universe a literal
+    evidence_path must belong to. Works with zero commits (reads the
+    index, not HEAD)."""
+    r = subprocess.run(["git", "ls-files"], capture_output=True, text=True)
+    return r.stdout.splitlines() if r.returncode == 0 else []
+
+def actor():
+    return os.environ.get("TRUTH_ACTOR", os.environ.get("USER", "unknown"))
+
+def session():
+    explicit = os.environ.get("TRUTH_SESSION")
+    if explicit:
+        return explicit
+    # Fallback correlation without coordination: our own PID changes per
+    # command, but the invoking shell/harness is stable for a sitting, so
+    # ppid+date groups records filed from one operating context. This is
+    # forensic grouping, not identity -- set TRUTH_SESSION for real ids.
+    return f"s-{os.getppid()}-{now_dt():%Y%m%d}"
+
+def run_evidence(cmd):
+    r = subprocess.run(cmd, shell=True, capture_output=True)
+    return hashlib.sha256(r.stdout).hexdigest(), r.returncode
+
+def load_allowlist(rel=EVIDENCE_ALLOW_REL):
+    """ADR-009: the evidence-command allowlist, or None when absent
+    (the screen then fails closed for VERIFIED intake and recheck).
+    ADR-014 loads the acceptance allowlist through the same reader
+    (rel=ACCEPT_ALLOW_REL)."""
+    path = os.path.join(repo_root(), rel)
+    if not os.path.exists(path):
+        return None
+    out = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                out.append(line)
+    return out
+
+def load_denylist():
+    """ADR-022: the template-owned evidence deny baseline, or None if the
+    file is absent (an older deployment simply has no extra deny -- the
+    allowlist stays the boundary, so this layer fails open harmlessly)."""
+    return load_allowlist(EVIDENCE_DENY_REL)
+
+def human_ack_error(target_id, what):
+    """ADR-011: tombstones require TRUTH_HUMAN=1 plus either an
+    interactive typed-id confirmation or an id-specific TRUTH_HUMAN_ACK
+    (headless human use; documented in --help and .truth/README.md, and
+    deliberately NOT named in the agent-facing refusals below -- an
+    error message that names the bypass is an instruction to a
+    compliant agent, the exact failure F4's fix left open)."""
+    if os.environ.get("TRUTH_HUMAN") != "1":
+        return (f"truth: {what} is a human tombstone decision (G12). If "
+                "you are an agent: file `diverge` (or close with a basis) "
+                "saying it should die, and stop -- the human queue "
+                "decides. If you are a human: re-run this in your own "
+                "terminal.")
+    ack = os.environ.get("TRUTH_HUMAN_ACK")
+    if ack is not None:
+        if ack == target_id:
+            return None
+        return (f"truth: the acknowledgment names {ack!r}, not "
+                f"{target_id} -- it must cite the exact id it kills "
+                "(ADR-011); a lingering environment variable may not "
+                "authorize arbitrary tombstones")
+    if not sys.stdin.isatty():
+        return (f"truth: {what} is confirmed interactively -- re-run "
+                "this in your own terminal (ADR-011). Agents: file "
+                "`diverge` with a basis and stop; the human queue "
+                "decides.")
+    typed = input(f"type {target_id} to confirm {what}: ").strip()
+    if typed != target_id:
+        return "truth: confirmation mismatch -- nothing filed"
+    return None
+
+def _last_ledger_ts():
+    """The ts of the ledger's last well-formed line, or None."""
+    path = ledger_path()
+    if not os.path.exists(path):
+        return None
+    last = None
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                last = json.loads(line).get("ts")
+            except json.JSONDecodeError:
+                continue
+    return last
+
+def append_records(kinds_payloads):
+    """Append a batch of records in ONE write(2) call -- all or nothing.
+
+    Items are (kind, payload, prefix) triples. Every record is built
+    BEFORE any byte lands, then the batch is serialized into one buffer
+    and written with a single os.write on an O_APPEND fd: the
+    concurrent-append safety statement (paper sec 1) assumes
+    single-write-call O_APPEND atomicity, and that same assumption now
+    carries multi-record transactions -- cmd_done's claim+event pair is
+    "both records or neither" literally, not aspirationally (R2).
+    The sole writer path: append_record delegates here with n=1."""
+    ts = now_iso()
+    # ADR-015 clock-push (the HLC 'physical clock catch-up' half, and
+    # nothing more): a real-clock record must not sort before the ledger
+    # tail it causally follows. Small honest skew (same-machine append
+    # races, NTP steps) is absorbed by bumping 1 microsecond past the
+    # tail; skew beyond ADR-008's tolerance is NOT absorbed -- the
+    # honest clock is kept and order_check's existing regression warning
+    # surfaces it, so a forged far-future tail cannot drag every later
+    # record with it. TRUTH_NOW (test hook) disables the push: seeded
+    # backdating is the point of the hook (canary FAULT D).
+    if not os.environ.get("TRUTH_NOW"):
+        last = _last_ledger_ts()
+        if last and TS_RE.match(str(last)) and ts <= last:
+            last_dt = parse_ts(last)
+            if (last_dt - now_dt()).total_seconds() <= SKEW_TOLERANCE_SECONDS:
+                ts = (last_dt + timedelta(microseconds=1)) \
+                    .isoformat(timespec="microseconds")
+    recs = []
+    for kind, payload, prefix in kinds_payloads:
+        recs.append(make_record(kind, payload, actor(), session(), ts, prefix))
+        # The same clock-push idiom, applied WITHIN the batch: each later
+        # record sorts strictly after the one before it, so file order =
+        # ts order (ADR-015's total order never leans on the id tiebreak
+        # for records born in one transaction).
+        ts = (parse_ts(ts) + timedelta(microseconds=1)) \
+            .isoformat(timespec="microseconds")
+    path = ledger_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    # One write(2) call for the whole buffer: the buffered text layer can
+    # split anything longer than the stdio buffer across several write(2)
+    # calls, so the fd is written raw.
+    buf = b"".join((json.dumps(r, sort_keys=True) + "\n").encode("utf-8")
+                   for r in recs)
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+    try:
+        os.write(fd, buf)
+    finally:
+        os.close(fd)
+    return recs
+
+def append_record(kind, payload, prefix="tr-"):
+    return append_records([(kind, payload, prefix)])[0]
+
+def load_events(stream=None):
+    events = []
+    if stream is not None:
+        lines = stream.read().splitlines()
+    else:
+        path = ledger_path()
+        if not os.path.exists(path):
+            return events
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    for n, line in enumerate(lines, 1):
+        if not line.strip():
+            continue
+        try:
+            events.append((n, json.loads(line)))
+        except json.JSONDecodeError:
+            sys.exit(f"truth: line {n} is not valid JSON")
+    return events
+
+def load_generated_globs():
+    """Shell (ADR-037/SI-4): the consumer's generated-artifact globs.
+    Returns (globs, source, err), source in {'file','empty','absent'};
+    err carries the refusal for a pathspec-magic line and globs is then
+    None (R14a: loaders RETURN errors, callers decide -- _gate_generated
+    returns it per the gate-table contract, the citation twin sys.exits
+    at the verb; message and exit code byte-identical to the old
+    in-loader exit). utf-8-sig; magic line starts refused (SI-1)."""
+    path = os.path.join(repo_root(), GENERATED_PATHS_REL)
+    if not os.path.exists(path):
+        return [], "absent", None
+    globs = []
+    with open(path, encoding="utf-8-sig") as f:
+        for i, line in enumerate(f, 1):
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            if s[0] in ":-!":
+                return None, "file", (
+                    f"truth: {GENERATED_PATHS_REL} line {i} starts "
+                    f"with {s[0]!r} -- pathspec magic is refused; "
+                    "the list holds CLI globs (ADR-037/SI-1)")
+            globs.append(s)
+    return globs, ("file" if globs else "empty"), None
+
+# --- ADR-038: the dirty-watch shell probe (SHELL -- subprocess) -----------
+def working_tree_status():
+    """SI-2: NUL-separated unquoted status at the repo root. Returns
+    raw text or None when git cannot answer -- incl. an undecodable
+    byte in some unrelated untracked filename (text=True decodes
+    strictly; UnicodeDecodeError is a ValueError -- the R4 adversarial
+    review's catch: the advisory stays silent, it never gates and never
+    tracebacks past a successful append)."""
+    try:
+        # -uall: expand untracked DIRECTORIES into their files (default
+        # porcelain collapses them to 'ns/', hiding which file under a
+        # glob watch is the restale-at-birth vector)
+        r = subprocess.run(["git", "status", "--porcelain=v1", "-z",
+                            "--untracked-files=all"],
+                           capture_output=True, text=True, cwd=repo_root())
+    except (OSError, ValueError):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+# --- ADR-039: blast history (SHELL -- subprocess) -------------------------
+def blast_history():
+    """SI-2: (history, state), state in {'ok','shallow','unavailable'}.
+    Shallow clones truncate `git log` SILENTLY -- a quietly-cold
+    forecast would be the exact silent skip the design forbids, so
+    shallowness is probed first and nothing is stored for it (a floor
+    is not a bound). quotepath=off keeps names raw for match_paths."""
+    try:
+        sh = subprocess.run(["git", "rev-parse", "--is-shallow-repository"],
+                            capture_output=True, text=True, cwd=repo_root())
+        if sh.returncode == 0 and sh.stdout.strip() == "true":
+            return None, "shallow"
+        # --since-as-FILTER, never --since: plain --since STOPS the
+        # traversal at the first out-of-window commit, so one backdated
+        # commit near the tip empties the whole log -- a quietly-cold
+        # forecast stored as 0-under-ok, the exact 0-as-unknown ADR-039
+        # forbids (the R5 adversarial review's catch). On git < 2.36
+        # the option errors -> rc != 0 -> the loud unavailable path,
+        # which is the design's preferred failure mode.
+        r = subprocess.run(["git", "-c", "core.quotepath=off", "log",
+                            f"--since-as-filter={BLAST_WINDOW_DAYS}.days",
+                            "--format=%x01%H", "--name-only",
+                            "--no-renames"],
+                           capture_output=True, text=True, cwd=repo_root())
+    except (OSError, ValueError):
+        return None, "unavailable"
+    if r.returncode != 0:
+        return None, "unavailable"  # incl. unborn HEAD (exit 128)
+    return parse_name_log(r.stdout), "ok"
+
+# --- ADR-036: tombstone citation gate -------------------------------------
+def load_citation_scope():
+    """Shell: the consumer's citation-scope policy (SI-4). Returns
+    (globs, source, err), source in {'file','empty','default'}; err
+    carries the refusal for a pathspec-magic line (R14a: the loader
+    returns, the verb-level callers sys.exit it -- same message, same
+    exit code as the old in-loader exit). utf-8-sig (a BOM must not
+    deaden the first glob); a line starting ':', '-' or '!' is refused
+    -- scope lines are CLI globs filtered by match_paths(), never git
+    pathspecs (SI-1: one ':(exclude)' idiom line would silently invert
+    the sweep to everything-except)."""
+    path = os.path.join(repo_root(), CITATION_SCOPE_REL)
+    if not os.path.exists(path):
+        return list(CITATION_SCOPE_DEFAULT), "default", None
+    globs = []
+    with open(path, encoding="utf-8-sig") as f:
+        for i, line in enumerate(f, 1):
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            if s[0] in ":-!":
+                return None, "file", (
+                    f"truth: {CITATION_SCOPE_REL} line {i} starts "
+                    f"with {s[0]!r} -- pathspec magic is refused; "
+                    "scope lines are CLI globs (match_paths), never "
+                    "git pathspecs (ADR-036/SI-1)")
+            globs.append(s)
+    return globs, ("file" if globs else "empty"), None
+
+def citation_grep(cid):
+    """Shell: bare repo-wide `git grep -l -F <cid>` at the repo root
+    (SI-2: a subtree cwd truncates the sweep to rc=1 = 'clean'; no
+    pathspecs ever -- filtering is the core's job). rc contract PINNED:
+    0 = hits, 1 = clean, anything else or spawn failure = unavailable.
+    Returns (paths, None) or (None, reason)."""
+    try:
+        # -z: NUL-separated, UNQUOTED names (SI-2) -- default quotepath
+        # octal-quotes any non-ASCII path, which match_paths can never
+        # match, silently dropping the hit: fail-open on the fail-closed
+        # gate (the R2 adversarial review's catch, TG11). '--' pins cid
+        # to the pattern slot (a dash-leading argument is not an option).
+        r = subprocess.run(["git", "grep", "-z", "-l", "-F", "--", cid],
+                           capture_output=True, text=True, cwd=repo_root())
+    except OSError as e:
+        return None, f"git grep could not run ({e})"
+    if r.returncode == 0:
+        return [p for p in r.stdout.split("\x00") if p], None
+    if r.returncode == 1:
+        return [], None
+    return None, f"git grep exited {r.returncode}"
+
+def tracker_issues(a, native=None):
+    """The tracker adapter seam (E1, v0.4.1). The join is tracker-agnostic:
+    any source that yields a JSON array of issue objects with at least an
+    `id` (and ideally `title`) satisfies the contract. Sources, in order:
+
+      --stdin             pipe issues in:   <your-tracker-cmd> | truth ready --stdin
+      TRUTH_TRACKER_CMD   a shell command printing the JSON array
+      native work kernel  when the ledger holds issue records (ADR-002)
+      default             `bd ready --json` (Beads)
+
+    The ledger stands alone without any tracker; `ready` is its consumer,
+    not its dependency -- so failure here degrades, never tracebacks.
+    """
+    if getattr(a, "stdin_issues", False):
+        raw, src = sys.stdin.read(), "stdin"
+    else:
+        cmd = os.environ.get("TRUTH_TRACKER_CMD")
+        if cmd is None and native is not None:
+            return native
+        cmd = cmd or "bd ready --json"
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        if r.returncode != 0:
+            sys.exit(f"truth: tracker command failed ({cmd!r}, exit {r.returncode}).\n"
+                     "  The ledger works without a tracker -- fallback: truth list --live.\n"
+                     "  To wire one: set TRUTH_TRACKER_CMD to any command printing a JSON\n"
+                     "  array of {id, title} issues, or pipe: <tracker-cmd> | truth ready --stdin")
+        raw, src = r.stdout, repr(cmd)
+    try:
+        issues = json.loads(raw or "[]")
+    except json.JSONDecodeError:
+        sys.exit(f"truth: {src} output is not JSON -- tracker contract may "
+                 "have drifted (known E1 risk); report, do not patch around")
+    if not isinstance(issues, list):
+        sys.exit(f"truth: {src} output is JSON but not an array -- the "
+                 "adapter contract is a JSON array of issue objects")
+    return issues
+
+def events_at_ref(ref):
+    """The ledger's content at a git ref, folded-ready. Exit 2 on an
+    unreadable ref/path: a baseline over nothing is usage, not data."""
+    r = subprocess.run(["git", "show", f"{ref}:{LEDGER_REL}"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"truth: cannot read {LEDGER_REL} at {ref!r} -- "
+              f"{r.stderr.strip().splitlines()[-1] if r.stderr.strip() else 'git show failed'} "
+              "(exit 2: usage)", file=sys.stderr)
+        sys.exit(2)
+    return load_events(io.StringIO(r.stdout))
+
+def _short_sha(ref):
+    r = subprocess.run(["git", "rev-parse", "--short", ref],
+                       capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else "?"
+
+def git_hooks_dir(root):
+    """The hooks dir git actually consults: core.hooksPath when set, else
+    $GIT_DIR/hooks. Hooks live where core.hooksPath says, not where an
+    installer wrote them -- checking .git/hooks on a husky/lefthook repo
+    reports health the repo does not have (TL-1). Returns
+    (hooks_dir, hookspath_cfg); the cfg string lets doctor say WHY
+    .git/hooks was ignored."""
+    r = subprocess.run(["git", "rev-parse", "--git-dir"], capture_output=True,
+                       text=True, cwd=root)
+    gd = r.stdout.strip()
+    if not os.path.isabs(gd):
+        gd = os.path.join(root, gd)
+    hp_cfg = subprocess.run(["git", "config", "core.hooksPath"],
+                            capture_output=True, text=True,
+                            cwd=root).stdout.strip()
+    if hp_cfg:
+        hooks_dir = hp_cfg if os.path.isabs(hp_cfg) else os.path.join(root, hp_cfg)
+    else:
+        hooks_dir = os.path.join(gd, "hooks")
+    return hooks_dir, hp_cfg
+
+def find_gate_hook(hooks_dir, names, needle):
+    """The hook arm of the ADR-025 gate decision (factored out of doctor
+    so the R2 write-verb banner shares it -- one detection, no fork):
+    the first active hook under hooks_dir naming `needle`, or None.
+    Candidates are (path, must_be_executable): git requires +x in the
+    effective dir; manager-delegated user hooks (husky runs `.husky/<name>`
+    from the `_` shim dir via sh) commonly are not executable themselves.
+    isfile + try/except: a *directory* named `pre-commit`, or an
+    executable-not-readable hook, must yield a decision, not a traceback
+    (a doctor that crashes cannot decide the gate)."""
+    for name in names:
+        cands = [(os.path.join(hooks_dir, name), True)]
+        if os.path.basename(hooks_dir.rstrip(os.sep)) == "_":
+            cands.append((os.path.join(
+                os.path.dirname(hooks_dir.rstrip(os.sep)), name), False))
+        for hp, need_x in cands:
+            try:
+                if os.path.isfile(hp) \
+                        and (not need_x or os.access(hp, os.X_OK)) \
+                        and needle in open(hp, encoding="utf-8",
+                                           errors="replace").read():
+                    return hp
+            except OSError:
+                continue
+    return None
+
+def commit_gate_wired():
+    """R2 (roadmap-v3): the minimal ADR-025 commit-gate decision -- an
+    active check-truth pre-commit hook OR a CI config naming the gate
+    script -- shared with doctor's fuller report via git_hooks_dir/
+    find_gate_hook/ci_gate_names. Called at most once per CLI invocation
+    (main, write verbs only); file existence + grep, no network. Any
+    error deciding (no work tree, unreadable config, ...) counts as
+    wired: the banner is advisory noise and must never crash or block a
+    verb, so a weird repo state stays silent."""
+    try:
+        r = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            return True
+        root = r.stdout.strip()
+        hooks_dir, _ = git_hooks_dir(root)
+        if find_gate_hook(hooks_dir, ("pre-commit",), "check-truth"):
+            return True
+        return ci_gate_names("check-truth", root) is not None
+    except Exception:
+        return True
+
+def ci_gate_names(needle, root):
+    """ADR-025 (H6): does a known CI config name `needle` (the commit-gate
+    script, e.g. 'check-truth')? The README makes 'a local hook OR CI' the
+    one MUST, but doctor could see only the hook -- so a correctly
+    CI-gated repo got a FAIL and learned to ignore doctor. This lets doctor
+    decide the CI arm too. Best-effort with the SAME rigor as the
+    discovery-snippet grep: a CI file mentioning the gate is doctor's
+    evidence it runs where local hooks are absent, NOT proof the pipeline
+    fires on the right events -- exactly as the AGENTS.md grep is not proof
+    an agent reads it. Returns the repo-relative file, or None."""
+    files = []
+    for d in CI_GATE_DIRS:
+        dp = os.path.join(root, d)
+        if os.path.isdir(dp):
+            # TOP LEVEL only, *.yml/*.yaml only -- exactly what the CI runs.
+            # A `disabled/` subdir or a `truth.yml.disabled` rename is a
+            # gate the CI does NOT run, so it must not satisfy the MUST.
+            try:
+                entries = sorted(os.listdir(dp))
+            except OSError:
+                entries = []
+            for f in entries:
+                if f.endswith((".yml", ".yaml")) \
+                        and os.path.isfile(os.path.join(dp, f)):
+                    files.append(os.path.join(dp, f))
+    for rel in CI_GATE_FILES:
+        p = os.path.join(root, rel)
+        if os.path.isfile(p):
+            files.append(p)
+    for p in files:
+        try:
+            if needle in open(p, encoding="utf-8", errors="replace").read():
+                return os.path.relpath(p, root)
+        except OSError:
+            continue
+    return None

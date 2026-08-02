@@ -8,6 +8,42 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.28 (ADR-044: the package split -- truthlib/ modules behind the
+  same single-file entry; zero behavior change; the unchanged 243-arm
+  canary is the equivalence proof):
+  * template/truthlib/: the 4.6k-line CLI carved into concern modules
+    along the P2-shaped seams -- registry (vocabulary + lexicons),
+    kernel (canon, folds, order_check, validate mirror), evidence
+    (screens, recheck, reaffirm triage), policy (intake predicates,
+    ADR-001 matrix, invalidation strategies), gates (the ADR-034 table),
+    advisory (CC-1 assembly + the pure report family), shellio (ALL
+    subprocess/files/clock/env), cli (argparse + cmd_*). Pure file
+    moves and imports only: every refusal message, exit code, advisory
+    line and derived status byte-identical.
+  * scripts/truth stays the one loading surface: a thin entry that
+    resolves its own real path (the meta-repo symlink resolves through),
+    puts truthlib/'s parent on sys.path, and re-exports every module's
+    namespace -- `python3 scripts/truth <verb>` and every
+    SourceFileLoader consumer (core suite, v04 suite, canary snippets)
+    see the exact pre-split surface, monkeypatch seam included
+    (attribute assignments on the loaded module mirror into the
+    truthlib modules that bind the name).
+  * Purity is a theorem now: TestModulePurity parses each pure module
+    (registry, kernel, evidence, policy, advisory) with ast and refuses
+    subprocess imports, os.environ reads, open() calls (empty
+    allowlist), clock reads, and any import edge outside the DAG
+    (registry <- kernel <- evidence/policy <- advisory; shellio ->
+    kernel/registry only; gates' shellio use is the documented
+    exception; cli imports everything). Red-proven in the P3 run.
+  * Layout consumers updated: canary mkrepo + BFSH/BFU sandboxes,
+    test-fact-health/test-session-digest sandboxes, and the release
+    battery's canary trigger copy/watch truthlib/ beside the entry;
+    copier ships it automatically (template/ subdirectory).
+  * ADR-044 records the one settled decision this reopens (single-file
+    CLI) with the new evidence (measured hand-parity drift at 4.4k
+    lines), what is retained (no install, no deps, copier-copyable,
+    SourceFileLoader compat), and the zipapp escape hatch.
+
 v0.9.27 (ADR-043: the P2 contract layer -- status registry + vocab
   contract; no schema change; every existing refusal message, exit code
   and derived status byte-identical -- the licensed additions are

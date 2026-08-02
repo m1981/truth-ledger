@@ -153,7 +153,7 @@ fi
 # CLI BEHAVIOUR, so it can only regress when the CLI or the suite itself
 # moves. Run the check whose inputs changed -- not a speed hack: an
 # unchanged input cannot have regressed.
-if touches '^template/scripts/(truth|truth-canary\.sh)$|^template/\.truth/'; then
+if touches '^template/scripts/(truth|truth-canary\.sh)$|^template/truthlib/|^template/\.truth/'; then
   OUT=$(cd template/scripts && bash truth-canary.sh 2>&1)
   CAUGHT=$(printf '%s' "$OUT" | sed -n 's/^canary result: \([0-9]*\) caught.*/\1/p')
   if printf '%s' "$OUT" | grep -q "ALL CANARIES CAUGHT"; then

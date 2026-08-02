@@ -24,6 +24,7 @@ mkrepo() {
   mkdir -p scripts .truth prompts
   touch .truth/claims.jsonl
   cp "$HERE/truth" scripts/truth
+  cp -R "$HERE/../truthlib" truthlib  # ADR-044: the entry resolves ../truthlib from its own real path
   cp "$HERE/../.truth/evidence-allow" .truth/evidence-allow
   cp "$HERE/../.truth/evidence-deny" .truth/evidence-deny  # ADR-022 baseline
   cp "$HERE/../.truth/generated-paths" .truth/generated-paths  # ADR-037 (empty=silent)
@@ -2663,6 +2664,7 @@ BFSH="$(mktemp -d)"; TDIRS+=("$BFSH")
 git clone -q --depth 1 "file://$PWD" "$BFSH/shallow" 2>/dev/null
 ( cd "$BFSH/shallow" && mkdir -p .truth scripts \
   && cp "$BF/scripts/truth" scripts/truth \
+  && cp -R "$BF/truthlib" truthlib \
   && cp "$BF/.truth/evidence-allow" .truth/ \
   && cp "$BF/.truth/generated-paths" .truth/ 2>/dev/null; touch .truth/claims.jsonl
   BF3=$(TRUTH_ACTOR=canary TRUTH_SESSION=s-bf python3 scripts/truth claim \
@@ -2682,6 +2684,7 @@ BFU="$(mktemp -d)"; TDIRS+=("$BFU")
 ( cd "$BFU" && git init -q -b main . && git config user.email t@t \
   && git config user.name t && mkdir -p .truth scripts \
   && cp "$BF/scripts/truth" scripts/truth \
+  && cp -R "$BF/truthlib" truthlib \
   && cp "$BF/.truth/evidence-allow" .truth/ && touch .truth/claims.jsonl \
   && echo seed > s.txt && git add -A
   BF7=$(TRUTH_ACTOR=canary TRUTH_SESSION=s-bf python3 scripts/truth claim \

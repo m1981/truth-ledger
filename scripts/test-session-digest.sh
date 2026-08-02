@@ -35,6 +35,7 @@ mksb() {  # mksb <dir>
   git -C "$1" config user.email sd@test.local
   git -C "$1" config user.name sd-test
   cp "$ROOT/template/scripts/truth" "$1/scripts/truth"
+  cp -R "$ROOT/template/truthlib" "$1/truthlib"  # ADR-044: entry resolves ../truthlib
 }
 
 say "CASE 2 (dead CLI): corrupt ledger -> exit 0, empty stdout, ONE loud stderr line"
