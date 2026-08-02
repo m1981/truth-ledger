@@ -43,7 +43,7 @@ scripts/truth claim "operator ruling 2026-08: the 3650-day TTL on the retracted 
 
 **Re-file** (you want a set-level ADR-series sentinel again): the live
 lineage descendant already exists without any scope override
-(tr-7191f5a9, the 46-file count sentinel), so a re-file is only needed
+(tr-d1049451, the 46-file count sentinel), so a re-file is only needed
 if that one is retired; the honest shape is the default 30-day decay:
 
 ```sh
@@ -145,14 +145,14 @@ scripts/truth citations tr-4f48fd51   # -> tr-c6170e24 (same successor: the batt
 TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-4f48fd51 scripts/truth verdict tr-4f48fd51 retracted --basis "resolved by succession: superseded by tr-c6170e24"
 scripts/truth citations tr-4884ad97   # -> tr-7a10f167
 TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-4884ad97 scripts/truth verdict tr-4884ad97 retracted --basis "resolved by succession: superseded by tr-7a10f167"
-scripts/truth citations tr-36d503e6   # -> tr-4b486c66
-TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-36d503e6 scripts/truth verdict tr-36d503e6 retracted --basis "resolved by succession: superseded by tr-4b486c66"
-scripts/truth citations tr-5fe1899a   # -> tr-4b486c66 (same successor: the check-truth claim absorbed both)
-TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-5fe1899a scripts/truth verdict tr-5fe1899a retracted --basis "resolved by succession: superseded by tr-4b486c66"
-scripts/truth citations tr-efad36a4   # -> tr-7191f5a9
-TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-efad36a4 scripts/truth verdict tr-efad36a4 retracted --basis "resolved by succession: superseded by tr-7191f5a9"
-scripts/truth citations tr-84b4bef5   # -> tr-30512073
-TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-84b4bef5 scripts/truth verdict tr-84b4bef5 retracted --basis "resolved by succession: superseded by tr-30512073"
+scripts/truth citations tr-36d503e6   # -> tr-89f02452
+TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-36d503e6 scripts/truth verdict tr-36d503e6 retracted --basis "resolved by succession: superseded by tr-89f02452"
+scripts/truth citations tr-5fe1899a   # -> tr-89f02452 (same successor: the check-truth claim absorbed both)
+TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-5fe1899a scripts/truth verdict tr-5fe1899a retracted --basis "resolved by succession: superseded by tr-89f02452"
+scripts/truth citations tr-efad36a4   # -> tr-d1049451
+TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-efad36a4 scripts/truth verdict tr-efad36a4 retracted --basis "resolved by succession: superseded by tr-d1049451"
+scripts/truth citations tr-84b4bef5   # -> tr-b66ed08c
+TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-84b4bef5 scripts/truth verdict tr-84b4bef5 retracted --basis "resolved by succession: superseded by tr-b66ed08c"
 ```
 
 Eight further stale claims have no *named* successor edge but the same
@@ -206,10 +206,10 @@ ceremony changes (ADR-047 decision 3).
 ## Post-commit note
 
 Committing this phase will itself stale live sentinels by design: the
-ADR-count claim tr-7191f5a9 (ADR-047 makes the series 47 files), the
-explainer Scope-header claim tr-30512073 (the Scope line now reads
+ADR-count claim tr-d1049451 (ADR-047 makes the series 47 files), the
+explainer Scope-header claim tr-b66ed08c (the Scope line now reads
 v0.9.31 · ADR-001–047), and the version-pinned lockstep sentinels the
 whisper forecasts on any release bump (among them the check-truth
-lockstep claim tr-4b486c66, which names v0.9.30 in its text). Re-file
+lockstep claim tr-89f02452, which names v0.9.30 in its text). Re-file
 them as successors after the commit, from the session that commits, so
 the queue does not regrow — the same succession shape as (c).

@@ -341,7 +341,7 @@ proves execution, and only the sentinel's non-empty-diff dispatch
 produces a judgment that a test asserts what its id names. The two
 sentinel-recipe claims are deliberately a review trigger, never a gate
 — staling on every legitimate spec/manifest/test edit is their whole
-job (the `tr-7191f5a9` ADR-series precedent). Per this map's
+job (the `tr-d1049451` ADR-series precedent). Per this map's
 Provenance rule, the contract (id grammar, manifest shape, tested
 recipes, mandatory recipe rules) is not restated here — semantics
 source of truth: `docs/growth-gate/spec-coverage-manifests.md`.
