@@ -114,7 +114,7 @@ see, it cannot touch.
 The template repo runs its own ledger: `.truth/claims.jsonl` at the root,
 gated by the same committed hooks (`.githooks/`, activated via
 `core.hooksPath`). Load-bearing facts about this repo appear in its prose
-as claim ids (e.g. tr-dca73f8a below), filed with real evidence commands
+as claim ids (e.g. tr-6c6506fb below), filed with real evidence commands
 and independently verified by fresh dispatch-only sessions — never as
 restated counts, which this repo's own audit history shows always rot.
 `bash scripts/fact-health.sh` sweeps the live docs and judges every cited
@@ -155,6 +155,6 @@ external tracker? The seam is tracker-agnostic (v0.4.1): any tracker via
 (`my-tracker export | scripts/truth ready --stdin`), with Beads as the
 fallback default (`bd ready --json`) — note the native kernel outranks
 that default the moment any issue record exists (standing fact:
-tr-dca73f8a). With neither kernel
+tr-6c6506fb). With neither kernel
 records nor a tracker, the ledger still works standalone — a dashboard
 (`queue`, `list --live`) instead of a gate.

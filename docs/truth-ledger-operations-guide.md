@@ -360,7 +360,7 @@ freshness claim. Do **not** file per-record content claims to light
 records up: that manufactures churn and a false air of intentionality.
 
   *One deliberate exception, at the set level.* The ADR **series**
-  carries a single RECORD-integrity claim — `tr-3a6e778f`, watching
+  carries a single RECORD-integrity claim — `tr-609d8ac8`, watching
   `template/docs/adr/truth/*.md` (docs/adr/truth/ since v0.9.18) —
   asserting the series is dense (001-041,
   contiguous, endpoints present). Its predecessors also asserted that
@@ -387,9 +387,9 @@ watcher:
   | Living contract | Watching claim |
   |---|---|
   | `template/prompts/truth-verifier.md` — the verifier protocol | `tr-1820b1aa` (four-step shape + the `agree\|diverge\|cannot_verify` verdict form) |
-  | `docs/truth-ledger-explained.md` — the explainer | `tr-9e779082` (the Scope header agrees with the CLI on the version — deliberately narrow. Its predecessor asserted the whole page was version-synced and four verifiers falsified it via four different stamps: a glossary CLI stamp, the schema `$id`, the ADR counts, the glossary size. A two-string grep cannot carry a page-wide property, so the sentence was cut to what it proves — ADR-007, applied to this repo's own prose) |
+  | `docs/truth-ledger-explained.md` — the explainer | `tr-a62d0760` (the Scope header agrees with the CLI on the version — deliberately narrow. Its predecessor asserted the whole page was version-synced and four verifiers falsified it via four different stamps: a glossary CLI stamp, the schema `$id`, the ADR counts, the glossary size. A two-string grep cannot carry a page-wide property, so the sentence was cut to what it proves — ADR-007, applied to this repo's own prose) |
   | `template/docs/beads-integration-guide.md` — the ready/adapter seam | `tr-301931eb` (`bd ready --json` default + adapter seam) |
-  | `template/.truth/README.md` — the tracker-seam contract | `tr-ef37611b` (+ `tr-f4c6ec38`, `tr-c52e3e84`, `tr-fcdd4af2`) |
+  | `template/.truth/README.md` — the tracker-seam contract | `tr-ef37611b` (+ `tr-fc03d886`, `tr-c52e3e84`, `tr-ab10b5eb`) |
   | kuchnie's wired spec-coverage pairs, one per slug in its `docs/specs/sc-slugs.txt` — today `catalog/docs/specs/configurator-api.md` and `catalog/docs/specs/worktop-uu-seeding.md`, each with its sibling `.sc.txt` manifest | cfgapi `kuchnie:tr-fcca2d96` + `kuchnie:tr-40a5beb5`, wtuu `kuchnie:tr-22772c10` + `kuchnie:tr-a2acd399` in the **kuchnie ledger** (per pair: the spec↔manifest and tests↔manifest sentinels; sentinel recipe = the slug-scoped `SC-<slug>-[0-9]{3}` grep-and-diff). Consumer-side claims — the per-file `impact` loop below sees only this repo's ledger, so these pairs' DARK check runs in kuchnie |
 
 **GUARDED CONTROL SURFACES — the machinery's own levers (2026-08-01).**
