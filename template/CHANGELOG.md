@@ -8,6 +8,40 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.31 (ADR-047: gate governance -- the P6 phase and close of the
+  migration plan, decision D5; docs-only release, zero scripts/,
+  truthlib/, or .truth/ contract changes -- the v0.9.16-0.9.19
+  precedent):
+  * ADR-047 (docs/adr/truth/047-gate-adoption-metrics.md): every
+    Tier B blocking gate and counted override carries a named adoption
+    metric, a data source (a Tier C instrument or stats key), and a
+    next-review date; new gates enter PROPOSED with a metric or not at
+    all (the growth-gate discipline applied to the gate table);
+    reviews ride the existing R11 monthly hand-audit slot (zero new
+    ceremony); the retirement test is three questions -- opportunity
+    to fire, acted on when fired, failure still in the regime -- with
+    ADR-032's decay as the precedent (re-ask a judgment on a
+    schedule).
+  * Gate-metric registry (meta-repo, never templated:
+    docs/governance/gate-metrics.md): all 11 Tier B rows with live
+    instrument values, plus the FIRST REVIEW's minutes (2026-08-02,
+    applying D5): ADR-033's verbatim-repeat detector to DATED
+    PROBATION (zero firing opportunity yet -- reviewable at >=5
+    decay-expiry->re-file cycles, realistic 2026-10-08); G8 kept at
+    0.6 Jaccard on data (11/198 = 5.6% override rate, one legitimate
+    re-anchoring batch; re-review 2026-09-08); the 3650-day scope-TTL
+    traced to one retracted 2026-07-21 claim (historical outlier,
+    human re-justification queued).
+  * Operator handoff (docs/governance/operator-actions-2026-08.md):
+    the human-only actions with ready-to-run commands -- the TTL
+    ruling, one stale blast-stamping retraction, the 31-claim
+    superseded-predecessor pool (each preflighted clean via `truth
+    citations`), the 27-claim pre-migration diverged pool, and the
+    R11 audit's new first read.
+  * Wire-in: ops guide sec 4 (the monthly hand-audit opens on the
+    registry) + header stamps; loophole map header stamp (no loophole
+    moved). Lockstep surfaces bumped; no CLI, schema, or gate change.
+
 v0.9.30 (ADR-046: tiering and the envelope admission rule -- the P5
   phase of the migration plan, decision D4; the ONE migration phase
   that deliberately changes consumer-facing behavior: report surface is
