@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""truth v0.9.26 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.27 -- append-only claims ledger with a native work kernel.
 
 Facts are appended as JSONL records to .truth/claims.jsonl (INV-A:
 append-only, commit-gated by scripts/check-truth.sh); every status is
@@ -65,12 +65,30 @@ KINDS = ("claim", "verdict", "invalidation", "premise", "issue",
          "issue_event", "contradicts")
 STATUSES = ("unverified", "live", "stale", "diverged", "cannot_verify",
             "retracted", "disputed")
+# R13 (P2 contract layer): the two vocabularies every consumer used to
+# hand-copy, exported once. ACTIVE_STATUSES is the ADR-018 intake notion
+# of "active" ({live, unverified}); VERDICT_STATUS is the fold's
+# verdict->status map. The fold indexes VERDICT_STATUS directly, so an
+# unknown verdict still raises KeyError there -- deliberately unchanged
+# in this phase (three consumers had three unknown-verdict behaviors:
+# fold KeyError, half-life silent skip, stats uncounted; unifying them
+# is a semantics change, not an extraction).
+ACTIVE_STATUSES = frozenset(("live", "unverified"))
+VERDICT_STATUS = {"agree": "live", "diverge": "diverged",
+                  "cannot_verify": "cannot_verify", "retracted": "retracted"}
+# The satellites' citation-blocking contract (spec-health CLAIM_BAD /
+# fact-health BAD): the statuses that fail a prose citation outright.
+# Exported through `truth vocab` and deliberately consumed by NOTHING
+# else in this CLI -- the constant exists so the satellites source it at
+# runtime instead of hand-copying it (the R1 `disputed` drift incident:
+# the gated copies stayed correct, the hand copies did not).
+CITATION_BAD = frozenset(("stale", "diverged", "retracted", "disputed"))
 ISSUE_EVENTS = ("claimed", "released", "closed", "reopened", "cancelled")
 ISSUE_STATUSES = ("open", "claimed", "closed", "cancelled")
 # R2 (roadmap-v3): the verbs that append to the ledger -- exactly the set
 # whose records the ADR-025 commit gate would screen, so exactly the set
 # that warns when that gate is unwired. Read verbs (list, queue, ready,
-# stats, impact, dispatch, validate, doctor, issues, baseline) stay
+# stats, impact, dispatch, validate, doctor, issues, baseline, vocab) stay
 # silent; `validate --stdin` especially MUST stay exempt -- it runs
 # inside the commit gate itself.
 WRITE_VERBS = frozenset(("claim", "verdict", "invalidate-scan", "premise",
@@ -341,9 +359,11 @@ def fold(events):
         elif kind == "verdict":
             c = p.get("claim")
             if c in claims:
-                m = {"agree": "live", "diverge": "diverged",
-                     "cannot_verify": "cannot_verify", "retracted": "retracted"}
-                set_status(c, m[p["verdict"]], ev.get("ts"))
+                # R13: VERDICT_STATUS by direct index -- an unknown
+                # verdict raises KeyError exactly as the inline map did
+                # (extraction only; the unknown-verdict split across
+                # consumers is noted at the constant, not fixed here).
+                set_status(c, VERDICT_STATUS[p["verdict"]], ev.get("ts"))
                 if p["verdict"] == "agree" and p.get("anchor_commit") \
                         and claims[c]["status"] == "live":
                     claims[c]["anchor"] = p["anchor_commit"]
@@ -513,6 +533,79 @@ def apply_supersedes(premises, supersedes):
         out[iid] = kept
     return out
 
+# --- non-claim intake predicates (R14b) -----------------------------------
+# ADR-013 supersede and issue #4 contradicts intakes decide in the CORE,
+# the shell verbs gather and sys.exit -- the issue_event_error pattern,
+# applied to the two intakes that had stayed inline under the shell's
+# "makes no decisions" banner. Refusal strings are the exact bytes
+# cmd_premise/cmd_contradicts used to exit with.
+
+RETRACTED_NEEDS_ACK = "RETRACTED_NEEDS_ACK"
+# ^ sentinel, never printed: the ADR-011/ADR-017 human-ack ceremony is
+# I/O (env, tty), so it stays in the shell; the predicate only reports
+# that the ceremony is required.
+
+def supersede_error(issue, supersedes_id, claim_id, claims,
+                    premises_for_issue):
+    """ADR-013 intake gates: the fold is permissive (any recorded
+    redirect applies, for confluence); intake is strict so a redirect
+    that could never mean anything fails loudly. Rule ladder in filing
+    order: id shape, self-supersede, replacement-exists,
+    currently-a-premise (after redirects), still-passing, and the
+    ADR-017 (C3) retracted case -- retraction is a HUMAN terminal veto,
+    and redirecting a retracted premise out of an issue releases the
+    work that veto was blocking, so it needs the same authority: the
+    predicate returns RETRACTED_NEEDS_ACK and the shell runs
+    human_ack_error. The mechanical dead states (stale/diverged/
+    cannot_verify/missing) stay ungated: no human decided those, so a
+    low-friction redirect to the corrected claim is the intended flow.
+    Returns a refusal string, the sentinel, or None. Pure."""
+    if not ID_RE.match(supersedes_id):
+        return "truth: --supersedes must name a tr- claim id (ADR-013)"
+    if supersedes_id == claim_id:
+        return "truth: a claim cannot supersede itself (ADR-013)"
+    if claim_id not in claims:
+        return (f"truth: replacement claim {claim_id} is not in the "
+                "ledger -- file the corrected fact first (ADR-013)")
+    if supersedes_id not in premises_for_issue:
+        return (f"truth: {supersedes_id} is not currently a premise of "
+                f"{issue} (after redirects) -- nothing to supersede "
+                "(ADR-013)")
+    old = claims.get(supersedes_id)
+    if old and old["status"] in ACTIVE_STATUSES:
+        return (f"truth: premise {supersedes_id} is {old['status']} and "
+                "passes ready as-is -- supersede is for dead premises "
+                "(stale, diverged, retracted, cannot_verify, missing); "
+                "re-verify or diverge it first (ADR-013)")
+    if old and old["status"] == "retracted":
+        return RETRACTED_NEEDS_ACK
+    return None
+
+def contradicts_intake_error(a, b, claims, events):
+    """Issue #4 intake gates, filing order: self-edge, unknown id (a
+    then b), retracted endpoint, duplicate edge either direction. The
+    --basis requirement stays in the shell AFTER these checks (it reads
+    the flag, not the fold) -- same order as before the extraction.
+    Returns a refusal string or None. Pure."""
+    if a == b:
+        return "truth: a claim cannot contradict itself (issue #4)"
+    for cid in (a, b):
+        if cid not in claims:
+            return (f"truth: unknown claim {cid} -- a contradiction is "
+                    "declared between two EXISTING claims (issue #4)")
+        if claims[cid]["status"] == "retracted":
+            return (f"truth: {cid} is retracted -- the dispute is already "
+                    "resolved; an edge to a tombstone can never fire "
+                    "(issue #4)")
+    pair = {a, b}
+    for _, ev in events:
+        if ev.get("kind") == "contradicts" \
+                and {ev["payload"].get("a"), ev["payload"].get("b")} == pair:
+            return (f"truth: this contradiction is already declared "
+                    f"({ev['id']}) -- one edge per pair, either "
+                    "direction (issue #4)")
+    return None
+
 def native_ready_issues(issues):
     """Tracker-side readiness only: open AND every dep closed. Premise
     validity is deliberately NOT applied here -- it is applied by
@@ -542,7 +635,7 @@ def duplicate_conflicts(text, claims):
     strict elaboration (subset) is not a duplicate. Threshold >= 0.6."""
     return [(cid, e["claim"]["payload"].get("text", ""))
             for cid, e in claims.items()
-            if e["status"] in ("live", "unverified")
+            if e["status"] in ACTIVE_STATUSES
             and jaccard(text, e["claim"]["payload"].get("text", ""))
             >= DUPLICATE_THRESHOLD]
 
@@ -787,13 +880,23 @@ def blast_report(events, folded=None):
             "effective_floor": floor, "floor_source": src}
 
 def intake_advisories(events, tier, ttl_days_arg, scope_ok, evidence_class,
-                      payload, generated_ok=None, claims=None):
+                      payload, generated_ok=None, claims=None, *,
+                      generated_source, porcelain, shallow_state):
     """The post-append advisory set shared by `claim` and `done --claim`
     (ADR-034): FS-1 half-life note (moved post-append -- it advises, so
     it rides the block), ADR-032 default-expiry notice, the ADR-037
     recipe lints and generated-list-absent notice, and the v0.9.11
     hollow-VERIFIED exit warning. Returns the non-None messages, table
-    order; the renderer prefixes and escapes."""
+    order; the renderer prefixes and escapes.
+
+    PURE since P2 (R6): the shell gathers the three world-facts ONCE and
+    passes them as keyword-only data -- generated_source is the ADR-037
+    list state _gate_generated already stashed in ctx (None when the
+    filing carried no paths, unread then), porcelain is the raw
+    `git status --porcelain=v1 -z` text (or None), and shallow_state is
+    blast_history()'s state from _gate_blast's own probe. No subprocess,
+    file, clock, or env in here any more; the duplicate probes per
+    filing are gone with them."""
     msgs = []
     if ttl_days_arg:
         # FS-1: suggestion only, beside the author's choice -- TTLs stay
@@ -821,7 +924,7 @@ def intake_advisories(events, tier, ttl_days_arg, scope_ok, evidence_class,
     # committed-EMPTY list is conscious policy and stays silent (SI-4).
     msgs.extend(recipe_lints((payload.get("evidence") or {}).get("command")))
     if payload.get("evidence_paths") \
-            and load_generated_globs()[1] == "absent":
+            and generated_source == "absent":
         msgs.append(f"no {GENERATED_PATHS_REL} -- the generated-artifact "
                     "check is dark; commit the list (empty is a conscious "
                     "'nothing is generated') to arm or silence this "
@@ -832,31 +935,25 @@ def intake_advisories(events, tier, ttl_days_arg, scope_ok, evidence_class,
     # filing ahead of the content commit is legitimate when the author
     # intends an immediate re-verify, and a refusal here would teach
     # `git stash` as its bypass.
-    if payload.get("evidence_paths"):
-        status = working_tree_status()
-        if status:
-            for p in dirty_watch(parse_porcelain_z(status),
-                                 payload["evidence_paths"]):
-                msgs.append(f"dirty watch: {p} has uncommitted changes -- "
-                            "this claim stales on the commit that lands "
-                            "them (restale-at-birth, ADR-038). Commit the "
-                            "content first, then file.")
+    if payload.get("evidence_paths") and porcelain:
+        for p in dirty_watch(parse_porcelain_z(porcelain),
+                             payload["evidence_paths"]):
+            msgs.append(f"dirty watch: {p} has uncommitted changes -- "
+                        "this claim stales on the commit that lands "
+                        "them (restale-at-birth, ADR-038). Commit the "
+                        "content first, then file.")
     # ADR-039: the blast advisory -- an upper bound on stalings, voiced
     # only at or above the (self-calibrating) floor; shallow/unavailable
     # history is voiced loudly instead of quietly reading cold.
     if payload.get("evidence_paths"):
         f = payload.get("blast_forecast")
         if f is None:
-            shallow = False
-            try:
-                sh = subprocess.run(
-                    ["git", "rev-parse", "--is-shallow-repository"],
-                    capture_output=True, text=True, cwd=repo_root())
-                shallow = sh.returncode == 0 and sh.stdout.strip() == "true"
-            except (OSError, ValueError):
-                pass
+            # R6: the shallow/unavailable fact is _gate_blast's own
+            # blast_history state, passed through -- the duplicated
+            # inline rev-parse probe is gone.
             msgs.append("blast: shallow history -- a forecast would be a "
-                        "floor, not a bound; skipped (ADR-039)" if shallow
+                        "floor, not a bound; skipped (ADR-039)"
+                        if shallow_state == "shallow"
                         else "blast: history unavailable -- forecast "
                              "skipped (ADR-039)")
         elif claims is not None:
@@ -1312,8 +1409,6 @@ def half_life_observations(events):
     ordered = sorted(events, key=fold_key)  # ADR-016: total, content-derived
     state = {}   # cid -> {"tier", "status", "since": datetime|None}
     obs = []
-    verdict_map = {"agree": "live", "diverge": "diverged",
-                   "cannot_verify": "cannot_verify", "retracted": "retracted"}
     for _, ev in ordered:
         kind, p = ev.get("kind"), ev.get("payload", {})
         if kind == "claim":
@@ -1326,7 +1421,9 @@ def half_life_observations(events):
             if not e or e["status"] == "retracted":
                 continue
             new = ("stale" if kind == "invalidation"
-                   else verdict_map.get(p.get("verdict")))
+                   # R13: registry .get -- an unknown verdict still skips
+                   # silently here, exactly as the local map did.
+                   else VERDICT_STATUS.get(p.get("verdict")))
             if not new:
                 continue
             ts = parse_ts(ev.get("ts") or "")
@@ -1378,8 +1475,15 @@ def stats_report(events, now, folded=None):
         t = e["claim"]["payload"].get("cost_tier")
         by_tier.setdefault(t, {})[e["status"]] = \
             by_tier.setdefault(t, {}).get(e["status"], 0) + 1
-    verdicts = {"agree": 0, "diverge_genuine": 0, "diverge_mechanical": 0,
-                "cannot_verify": 0, "retracted": 0}
+    # R13: counter keys derive from VERDICTS (diverge splits by ADR-012
+    # subtype), in VERDICTS order -- the rendered key order is unchanged.
+    verdicts = {}
+    for v in VERDICTS:
+        if v == "diverge":
+            verdicts["diverge_genuine"] = 0
+            verdicts["diverge_mechanical"] = 0
+        else:
+            verdicts[v] = 0
     for _, ev in events:
         if ev.get("kind") != "verdict":
             continue
@@ -1412,7 +1516,7 @@ def stats_report(events, now, folded=None):
         if e["status"] != "retracted":
             for t in tags:
                 concerns[t] = concerns.get(t, 0) + 1
-        if e["status"] in ("live", "unverified") and not tags:
+        if e["status"] in ACTIVE_STATUSES and not tags:
             untagged += 1
     return {"claims_by_status": by_status, "claims_by_tier": by_tier,
             "verdicts": verdicts, "half_life": half_life,
@@ -1807,7 +1911,7 @@ def _evidence_paths_touched(entry, facts, now):
 INVALIDATORS = (_ttl_expired, _anchor_unreachable, _evidence_paths_touched)
 
 def decide_invalidation(entry, facts, now):
-    if entry["status"] not in ("live", "unverified"):
+    if entry["status"] not in ACTIVE_STATUSES:
         return None
     for strategy in INVALIDATORS:
         decision = strategy(entry, facts, now)
@@ -1857,7 +1961,7 @@ def impact_report(query_paths, claims, issues, premises):
             holders.setdefault(c, []).append(wid)
     rows = []
     for cid, e in sorted(claims.items()):
-        if e["status"] not in ("live", "unverified"):
+        if e["status"] not in ACTIVE_STATUSES:
             continue
         watched = e["claim"]["payload"].get("evidence_paths", [])
         touched = sorted({q for q in query_paths if match_paths(q, watched)})
@@ -1962,6 +2066,31 @@ def premise_check(status, tier):
             return False, None
         return True, "premise is cannot_verify (non-P0, passes per ADR-001)"
     return False, None  # stale | diverged | disputed | retracted | missing
+
+def vocab_report():
+    """P2 contract layer: the machine vocabulary -- every named set a
+    satellite or instrument would otherwise hand-copy, exported once.
+    premise_blocking / premise_warn are DERIVED by evaluating
+    premise_check over STATUSES x TIERS (blocking = refused for at least
+    one tier; warn = warned for at least one), so the vocab can never
+    drift from the ADR-001 matrix: it IS the matrix, evaluated.
+    citation_bad is the satellites' blocking contract (CITATION_BAD),
+    consumed by nothing else in this CLI. Pure."""
+    blocking, warn = [], []
+    for status in STATUSES:
+        results = [premise_check(status, tier) for tier in TIERS]
+        if any(not passes for passes, _ in results):
+            blocking.append(status)
+        if any(w for _, w in results):
+            warn.append(status)
+    return {"statuses": list(STATUSES),
+            "active": sorted(ACTIVE_STATUSES),
+            "verdicts": dict(VERDICT_STATUS),
+            "premise_blocking": blocking,
+            "premise_warn": warn,
+            "citation_bad": sorted(CITATION_BAD),
+            "tiers": list(TIERS),
+            "kinds": list(KINDS)}
 
 def join_ready(issues, claims, premises):
     """Annotate bd issues with premise validity; return (ready, all)."""
@@ -2607,11 +2736,15 @@ def _gate_inv_m(ctx):
 
 def load_generated_globs():
     """Shell (ADR-037/SI-4): the consumer's generated-artifact globs.
-    Returns (globs, source), source in {'file','empty','absent'}.
-    utf-8-sig; pathspec-magic line starts refused (SI-1)."""
+    Returns (globs, source, err), source in {'file','empty','absent'};
+    err carries the refusal for a pathspec-magic line and globs is then
+    None (R14a: loaders RETURN errors, callers decide -- _gate_generated
+    returns it per the gate-table contract, the citation twin sys.exits
+    at the verb; message and exit code byte-identical to the old
+    in-loader exit). utf-8-sig; magic line starts refused (SI-1)."""
     path = os.path.join(repo_root(), GENERATED_PATHS_REL)
     if not os.path.exists(path):
-        return [], "absent"
+        return [], "absent", None
     globs = []
     with open(path, encoding="utf-8-sig") as f:
         for i, line in enumerate(f, 1):
@@ -2619,11 +2752,12 @@ def load_generated_globs():
             if not s or s.startswith("#"):
                 continue
             if s[0] in ":-!":
-                sys.exit(f"truth: {GENERATED_PATHS_REL} line {i} starts "
-                         f"with {s[0]!r} -- pathspec magic is refused; "
-                         "the list holds CLI globs (ADR-037/SI-1)")
+                return None, "file", (
+                    f"truth: {GENERATED_PATHS_REL} line {i} starts "
+                    f"with {s[0]!r} -- pathspec magic is refused; "
+                    "the list holds CLI globs (ADR-037/SI-1)")
             globs.append(s)
-    return globs, ("file" if globs else "empty")
+    return globs, ("file" if globs else "empty"), None
 
 def _gate_generated(ctx):
     # ADR-037: a watch on a generated artifact restales on every
@@ -2631,7 +2765,9 @@ def _gate_generated(ctx):
     # (an INFERRED claim restales identically; the INV-M stance).
     if not ctx["paths"]:
         return None
-    globs, source = load_generated_globs()
+    globs, source, err = load_generated_globs()
+    if err:
+        return err  # R14a: the loader's refusal IS this gate's refusal
     ctx["generated_source"] = source
     if source != "file":
         return None
@@ -2679,6 +2815,7 @@ def _gate_blast(ctx):
     if not ctx["paths"]:
         return None
     history, state = blast_history()
+    ctx["blast_state"] = state  # R6: the advisory pass reuses this fact
     if state == "ok":
         ctx["blast_forecast"] = blast_forecast(ctx["paths"], history)
     return None
@@ -2708,14 +2845,21 @@ def run_intake_stage(stage, ctx):
             sys.exit(err)
 
 def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
-                        ttl_days, basis, single_run, duplicate_ok, claims,
+                        ttl_days, basis, single_run, duplicate_ok, claims, *,
                         scope_basis=None, unsafe_ok=False,
                         evidence_exit_basis=None, generated_basis=None):
     """Full claim intake, driven by the ADR-034 staged gate table --
     WITHOUT appending. Shared by `claim` and `done --claim` so
     claim-at-death goes through the identical intake, and so `done` can
     validate everything before it appends anything (ADR-002: both
-    records or neither)."""
+    records or neither). The basis tail is KEYWORD-ONLY (R7: four
+    adjacent sentence-or-None params -- a transposition type-checks and
+    stores a basis under the wrong key with the wrong decay).
+
+    Returns (payload, facts): facts exposes the ctx values the R6
+    advisory pass needs (generated_source from _gate_generated,
+    blast_state from _gate_blast) so the shell never re-probes what the
+    gate rows already gathered."""
     ctx = {"text": text, "evidence_class": evidence_class,
            "evidence_cmd": evidence_cmd, "paths": split_csv(paths_csv),
            "tier": tier, "ttl_days": ttl_days, "basis": basis,
@@ -2766,7 +2910,9 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
         run_intake_stage("post-execution", ctx)
     elif evidence_class == "INFERRED":
         payload["basis"] = basis
-    return payload
+    facts = {"generated_source": ctx.get("generated_source"),
+             "blast_state": ctx.get("blast_state")}
+    return payload, facts
 
 def cmd_claim(a):
     # 42010 concerns: hygiene-check the slugs BEFORE intake so a typo'd
@@ -2777,11 +2923,12 @@ def cmd_claim(a):
         sys.exit("truth: " + err)
     events = load_events()
     claims, _ = fold(events)
-    payload = build_claim_payload(a.text, a.evidence_class, a.evidence_cmd,
-                                  a.paths, a.tier, a.ttl_days, a.basis,
-                                  a.single_run, a.duplicate_ok, claims,
-                                  a.scope_ok, a.evidence_unsafe_ok,
-                                  a.evidence_exit_ok, a.generated_ok)
+    payload, facts = build_claim_payload(
+        a.text, a.evidence_class, a.evidence_cmd, a.paths, a.tier,
+        a.ttl_days, a.basis, a.single_run, a.duplicate_ok, claims,
+        scope_basis=a.scope_ok, unsafe_ok=a.evidence_unsafe_ok,
+        evidence_exit_basis=a.evidence_exit_ok,
+        generated_basis=a.generated_ok)
     if a.concern:
         # stored sorted+deduplicated: canonical form keeps the record's
         # canonical serialization (ADR-016 fold key) order-independent of
@@ -2791,7 +2938,12 @@ def cmd_claim(a):
     advisories = intake_advisories(events, a.tier, a.ttl_days, a.scope_ok,
                                    a.evidence_class, payload,
                                    generated_ok=a.generated_ok,
-                                   claims=claims)
+                                   claims=claims,
+                                   generated_source=facts["generated_source"],
+                                   porcelain=(working_tree_status()
+                                              if payload.get("evidence_paths")
+                                              else None),
+                                   shallow_state=facts["blast_state"])
     if a.json:
         out = dict(rec)
         if advisories:
@@ -2859,14 +3011,17 @@ def blast_history():
 # --- ADR-036: tombstone citation gate -------------------------------------
 def load_citation_scope():
     """Shell: the consumer's citation-scope policy (SI-4). Returns
-    (globs, source), source in {'file','empty','default'}. utf-8-sig (a
-    BOM must not deaden the first glob); a line starting ':', '-' or '!'
-    is refused -- scope lines are CLI globs filtered by match_paths(),
-    never git pathspecs (SI-1: one ':(exclude)' idiom line would
-    silently invert the sweep to everything-except)."""
+    (globs, source, err), source in {'file','empty','default'}; err
+    carries the refusal for a pathspec-magic line (R14a: the loader
+    returns, the verb-level callers sys.exit it -- same message, same
+    exit code as the old in-loader exit). utf-8-sig (a BOM must not
+    deaden the first glob); a line starting ':', '-' or '!' is refused
+    -- scope lines are CLI globs filtered by match_paths(), never git
+    pathspecs (SI-1: one ':(exclude)' idiom line would silently invert
+    the sweep to everything-except)."""
     path = os.path.join(repo_root(), CITATION_SCOPE_REL)
     if not os.path.exists(path):
-        return list(CITATION_SCOPE_DEFAULT), "default"
+        return list(CITATION_SCOPE_DEFAULT), "default", None
     globs = []
     with open(path, encoding="utf-8-sig") as f:
         for i, line in enumerate(f, 1):
@@ -2874,12 +3029,13 @@ def load_citation_scope():
             if not s or s.startswith("#"):
                 continue
             if s[0] in ":-!":
-                sys.exit(f"truth: {CITATION_SCOPE_REL} line {i} starts "
-                         f"with {s[0]!r} -- pathspec magic is refused; "
-                         "scope lines are CLI globs (match_paths), never "
-                         "git pathspecs (ADR-036/SI-1)")
+                return None, "file", (
+                    f"truth: {CITATION_SCOPE_REL} line {i} starts "
+                    f"with {s[0]!r} -- pathspec magic is refused; "
+                    "scope lines are CLI globs (match_paths), never "
+                    "git pathspecs (ADR-036/SI-1)")
             globs.append(s)
-    return globs, ("file" if globs else "empty")
+    return globs, ("file" if globs else "empty"), None
 
 def citation_grep(cid):
     """Shell: bare repo-wide `git grep -l -F <cid>` at the repo root
@@ -2927,7 +3083,9 @@ def citation_sweep(cid, orphan_basis):
     --cancel`: voices the SI-4 notices, fails CLOSED on unavailable git
     (the one earned exception -- the verb is terminal and the human is
     already mid-ceremony), returns the blocking paths (possibly [])."""
-    globs, source = load_citation_scope()
+    globs, source, err = load_citation_scope()
+    if err:
+        sys.exit(err)  # R14a: cli-level exit, loader message verbatim
     if source == "empty":
         return []
     if source == "default":
@@ -2954,7 +3112,9 @@ def cmd_citations(a):
     a multi-id ack stays refused on principle (ADR-011: one typed id
     authorizes one tombstone). Exit 0 = nothing cited inside the scope;
     CITATIONS_EXIT_CITED = at least one id is."""
-    globs, source = load_citation_scope()
+    globs, source, err = load_citation_scope()
+    if err:
+        sys.exit(err)  # R14a: cli-level exit, loader message verbatim
     if source == "default":
         print(f"truth: advisory: no {CITATION_SCOPE_REL} -- sweeping the "
               f"built-in default scope ({','.join(CITATION_SCOPE_DEFAULT)})",
@@ -3088,7 +3248,7 @@ def cmd_invalidate_scan(a):
     now = now_dt()
     hits = []
     for cid, entry in claims.items():
-        if entry["status"] not in ("live", "unverified"):
+        if entry["status"] not in ACTIVE_STATUSES:
             continue
         p = entry["claim"]["payload"]
         facts = {"head": head}
@@ -3223,44 +3383,23 @@ def cmd_reaffirm(a):
 def cmd_premise(a):
     payload = {"issue": a.issue, "claim": a.claim_id}
     if a.supersedes:
-        # ADR-013 intake gates: the fold is permissive (any recorded
-        # redirect applies, for confluence); intake is strict so a
-        # redirect that could never mean anything fails loudly.
-        if not ID_RE.match(a.supersedes):
-            sys.exit("truth: --supersedes must name a tr- claim id (ADR-013)")
-        if a.supersedes == a.claim_id:
-            sys.exit("truth: a claim cannot supersede itself (ADR-013)")
+        # R14b: the ADR-013 rule ladder lives in supersede_error (core);
+        # this shell gathers the folds, applies the one I/O effect (the
+        # ADR-017/C3 human ack for a retracted premise -- without it,
+        # any agent could spend a human's P0 block via a normal CLI
+        # verb, no forgery needed), and exits the refusal.
         events = load_events()
         claims, premises = fold(events)
         issues = fold_issues(events)
         premises = merge_premises(premises, issue_premises(issues))
         premises = apply_supersedes(premises, fold_supersedes(events))
-        if a.claim_id not in claims:
-            sys.exit(f"truth: replacement claim {a.claim_id} is not in the "
-                     "ledger -- file the corrected fact first (ADR-013)")
-        if a.supersedes not in premises.get(a.issue, []):
-            sys.exit(f"truth: {a.supersedes} is not currently a premise of "
-                     f"{a.issue} (after redirects) -- nothing to supersede "
-                     "(ADR-013)")
-        old = claims.get(a.supersedes)
-        if old and old["status"] in ("live", "unverified"):
-            sys.exit(f"truth: premise {a.supersedes} is {old['status']} and "
-                     "passes ready as-is -- supersede is for dead premises "
-                     "(stale, diverged, retracted, cannot_verify, missing); "
-                     "re-verify or diverge it first (ADR-013)")
-        # ADR-017 (C3): retraction is a HUMAN terminal veto (ADR-011).
-        # Redirecting a retracted premise out of an issue releases the
-        # work that veto was blocking -- the same class of act as the
-        # retraction, so it needs the same authority. The mechanical dead
-        # states (stale/diverged/cannot_verify/missing) stay ungated: no
-        # human decided those, so a low-friction redirect to the corrected
-        # claim is the intended flow. Without this, any agent could spend
-        # a human's P0 block via a normal CLI verb, no forgery needed.
-        if old and old["status"] == "retracted":
+        err = supersede_error(a.issue, a.supersedes, a.claim_id, claims,
+                              premises.get(a.issue, []))
+        if err == RETRACTED_NEEDS_ACK:
             err = human_ack_error(a.supersedes,
                                   "superseding a retracted premise")
-            if err:
-                sys.exit(err)
+        if err:
+            sys.exit(err)
         payload["supersedes"] = a.supersedes
     rec = append_record("premise", payload)
     print(json.dumps(rec) if a.json else rec["id"])
@@ -3268,23 +3407,10 @@ def cmd_premise(a):
 def cmd_contradicts(a):
     events = load_events()
     claims, _ = fold(events)
-    if a.claim_a == a.claim_b:
-        sys.exit("truth: a claim cannot contradict itself (issue #4)")
-    for cid in (a.claim_a, a.claim_b):
-        if cid not in claims:
-            sys.exit(f"truth: unknown claim {cid} -- a contradiction is "
-                     "declared between two EXISTING claims (issue #4)")
-        if claims[cid]["status"] == "retracted":
-            sys.exit(f"truth: {cid} is retracted -- the dispute is already "
-                     "resolved; an edge to a tombstone can never fire "
-                     "(issue #4)")
-    pair = {a.claim_a, a.claim_b}
-    for _, ev in events:
-        if ev.get("kind") == "contradicts" \
-                and {ev["payload"].get("a"), ev["payload"].get("b")} == pair:
-            sys.exit(f"truth: this contradiction is already declared "
-                     f"({ev['id']}) -- one edge per pair, either "
-                     "direction (issue #4)")
+    # R14b: the issue #4 checks live in contradicts_intake_error (core).
+    err = contradicts_intake_error(a.claim_a, a.claim_b, claims, events)
+    if err:
+        sys.exit(err)
     if not (a.basis or "").strip():
         sys.exit("truth: --basis is required: state WHY these cannot both "
                  "hold; the sentence is the attackable record (issue #4)")
@@ -3407,6 +3533,19 @@ def cmd_done(a):
     if a.cancel and a.reopen:
         sys.exit("truth: --cancel and --reopen are mutually exclusive")
     event = "cancelled" if a.cancel else "reopened" if a.reopen else "closed"
+    if event != "cancelled" and getattr(a, "orphan_ok", None):
+        sys.exit("truth: --orphan-ok only accompanies --cancel "
+                 "(ADR-036: the issue tombstone)")
+    # L2-F6 (licensed reorder): the --basis requirement and the
+    # transition check are pure of the tombstone ceremony, so they run
+    # BEFORE the human-ack prompt / citation sweep -- cmd_verdict's
+    # order, applied to its twin. Refusal strings unchanged.
+    if not a.basis:
+        sys.exit(f"truth: '{event}' requires --basis (cite what you did, "
+                 "never a vibe)")
+    err = issue_event_error(status, event)
+    if err:
+        sys.exit(f"truth: {err}")
     if event == "cancelled":
         err = human_ack_error(a.issue_id, "issue cancellation")
         if err:
@@ -3420,16 +3559,7 @@ def cmd_done(a):
                   f"{listing}\n  Swap each citation first, then cancel.",
                   file=sys.stderr)
             sys.exit(CITATIONS_EXIT_CITED)
-    elif getattr(a, "orphan_ok", None):
-        sys.exit("truth: --orphan-ok only accompanies --cancel "
-                 "(ADR-036: the issue tombstone)")
-    if not a.basis:
-        sys.exit(f"truth: '{event}' requires --basis (cite what you did, "
-                 "never a vibe)")
-    err = issue_event_error(status, event)
-    if err:
-        sys.exit(f"truth: {err}")
-    claim_payload = None
+    claim_payload, claim_facts = None, None
     if a.claim_text:
         if event != "closed":
             sys.exit("truth: --claim only accompanies a plain close "
@@ -3437,14 +3567,13 @@ def cmd_done(a):
         claims, _ = fold(events)
         # Validate and run evidence BEFORE any append: both records or
         # neither (ADR-002). build_claim_payload sys.exits on any failure.
-        claim_payload = build_claim_payload(a.claim_text, a.evidence_class,
-                                            a.evidence_cmd, a.paths, a.tier,
-                                            a.ttl_days, a.claim_basis,
-                                            a.single_run, a.duplicate_ok,
-                                            claims, a.scope_ok,
-                                            a.evidence_unsafe_ok,
-                                            a.evidence_exit_ok,
-                                            a.generated_ok)
+        claim_payload, claim_facts = build_claim_payload(
+            a.claim_text, a.evidence_class, a.evidence_cmd, a.paths,
+            a.tier, a.ttl_days, a.claim_basis, a.single_run,
+            a.duplicate_ok, claims, scope_basis=a.scope_ok,
+            unsafe_ok=a.evidence_unsafe_ok,
+            evidence_exit_basis=a.evidence_exit_ok,
+            generated_basis=a.generated_ok)
     # ADR-014: the acceptance oracle gates a plain close -- it runs after
     # the cheap intake checks and before ANY append (both-or-neither
     # extends to the oracle). --cancel/--reopen skip it: killing or
@@ -3496,22 +3625,39 @@ def cmd_done(a):
         + [("issue_event", event_payload, "tr-")]
     recs = append_records(batch)
     claim_rec = recs[0] if claim_payload else None
-    out = f"{a.issue_id} -> {event}"
-    if accept_note:
-        out += (" (acceptance passed)" if accept_note["executed"]
-                else " (acceptance NOT executed -- unscreened oracle)")
-    if claim_rec:
-        out += f"; filed {claim_rec['id']}"
-    print(out)
+    advisories = []
     if claim_payload:
         # ADR-034: claim-at-death shares build_claim_payload, so it earns
         # the identical post-append advisory block (ADR-032 decay notice,
         # hollow-VERIFIED warning, FS-1 note) -- one CC-1 block, stderr.
-        block = render_advisory_block(intake_advisories(
+        advisories = intake_advisories(
             events, a.tier, a.ttl_days, a.scope_ok, a.evidence_class,
-            claim_payload, generated_ok=a.generated_ok, claims=claims))
-        if block:
-            print(block, file=sys.stderr)
+            claim_payload, generated_ok=a.generated_ok, claims=claims,
+            generated_source=claim_facts["generated_source"],
+            porcelain=(working_tree_status()
+                       if claim_payload.get("evidence_paths") else None),
+            shallow_state=claim_facts["blast_state"])
+    if a.json:
+        # SI-3, extended to claim-at-death (P2): one machine-readable
+        # object -- the echoed claim record (NOT the ledger line) plus
+        # the advisory messages, so a --json consumer never loses them
+        # to swallowed stderr (the QB-011 class; cmd_claim's convention).
+        out_obj = {"issue": a.issue_id, "event": event,
+                   "claim": claim_rec, "accept": accept_note}
+        if advisories:
+            out_obj["advisories"] = advisories
+        print(json.dumps(out_obj))
+    else:
+        out = f"{a.issue_id} -> {event}"
+        if accept_note:
+            out += (" (acceptance passed)" if accept_note["executed"]
+                    else " (acceptance NOT executed -- unscreened oracle)")
+        if claim_rec:
+            out += f"; filed {claim_rec['id']}"
+        print(out)
+    block = render_advisory_block(advisories)
+    if block:
+        print(block, file=sys.stderr)
 
 def cmd_issues(a):
     events = load_events()
@@ -3742,6 +3888,20 @@ def cmd_validate(a):
         print("\n".join(errors), file=sys.stderr)
         sys.exit(1)
     print(f"validate: {len(events)} record(s) OK")
+
+def cmd_vocab(a):
+    """P2 contract layer: emit the machine vocabulary (vocab_report).
+    Read verb -- deliberately NOT in WRITE_VERBS, so no commit-gate
+    banner: the satellites call this on every sweep, and banner noise
+    there would train `2>/dev/null`, hiding real advisories."""
+    rep = vocab_report()
+    if a.json:
+        print(json.dumps(rep))
+        return
+    for key, val in rep.items():
+        body = (",".join(f"{k}->{v}" for k, v in val.items())
+                if isinstance(val, dict) else ",".join(val))
+        print(f"{key}: {body}")
 
 def cmd_stats(a):
     events = load_events()
@@ -4109,25 +4269,38 @@ def cmd_doctor(a):
 
 # ---------------------------------------------------------------- main
 
+def add_claim_intake_flags(p):
+    """R7: the claim-intake flags `claim` and `done --claim` share
+    verbatim, declared once so the two surfaces cannot drift (done had
+    already lost --json and never gained --concern by hand-copy).
+    Deliberately per-verb, NOT here: claim's `text` positional; --basis
+    vs --claim-basis (done's claim basis must not shadow the close's own
+    --basis); --concern (not on done -- decision D4; the concerns
+    surface's removal path is P5); --json; and the four override flags
+    whose done-side help deliberately reads 'see `truth claim ...`'
+    (--scope-ok, --evidence-unsafe-ok, --generated-ok,
+    --evidence-exit-ok)."""
+    p.add_argument("--class", dest="evidence_class", default="UNVERIFIED",
+                   choices=EVIDENCE_CLASSES)
+    p.add_argument("--evidence-cmd", help="re-runnable command whose output is the evidence")
+    p.add_argument("--paths", help="comma-separated globs the evidence depends on")
+    p.add_argument("--tier", default="P2", choices=TIERS)
+    p.add_argument("--ttl-days", type=int, default=None,
+                   help="expiry for facts the repo cannot invalidate (G10)")
+    p.add_argument("--single-run", action="store_true",
+                   help="skip the determinism double-run (expensive commands; "
+                        "accepts false-divergence risk, G6)")
+    p.add_argument("--duplicate-ok", action="store_true",
+                   help="file despite similarity to an active claim (G8)")
+
 def main():
     ap = argparse.ArgumentParser(prog="truth", description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     c = sub.add_parser("claim", help="file a claim (one command, end to end)")
     c.add_argument("text")
-    c.add_argument("--class", dest="evidence_class", default="UNVERIFIED",
-                   choices=EVIDENCE_CLASSES)
-    c.add_argument("--evidence-cmd", help="re-runnable command whose output is the evidence")
-    c.add_argument("--paths", help="comma-separated globs the evidence depends on")
-    c.add_argument("--tier", default="P2", choices=TIERS)
-    c.add_argument("--ttl-days", type=int, default=None,
-                   help="expiry for facts the repo cannot invalidate (G10)")
+    add_claim_intake_flags(c)  # R7: shared verbatim with `done --claim`
     c.add_argument("--basis", help="reasoning basis (required for INFERRED)")
-    c.add_argument("--single-run", action="store_true",
-                   help="skip the determinism double-run (expensive commands; "
-                        "accepts false-divergence risk, G6)")
-    c.add_argument("--duplicate-ok", action="store_true",
-                   help="file despite similarity to an active claim (G8)")
     c.add_argument("--scope-ok", metavar="SENTENCE",
                    help="one sentence: why the evidence command's scope "
                         "covers the claim's universal quantifier (ADR-007; "
@@ -4277,15 +4450,8 @@ def main():
                          "event, counted in the override report")
     dn.add_argument("--claim", dest="claim_text",
                     help="text of the completion fact to file atomically")
-    dn.add_argument("--class", dest="evidence_class", default="UNVERIFIED",
-                    choices=EVIDENCE_CLASSES)
-    dn.add_argument("--evidence-cmd")
-    dn.add_argument("--paths")
-    dn.add_argument("--tier", default="P2", choices=TIERS)
-    dn.add_argument("--ttl-days", type=int, default=None)
+    add_claim_intake_flags(dn)  # R7: shared verbatim with `claim`
     dn.add_argument("--claim-basis", help="basis for an INFERRED completion claim")
-    dn.add_argument("--single-run", action="store_true")
-    dn.add_argument("--duplicate-ok", action="store_true")
     dn.add_argument("--scope-ok", metavar="SENTENCE",
                     help="see `truth claim --scope-ok` (ADR-007)")
     dn.add_argument("--evidence-unsafe-ok", action="store_true",
@@ -4300,6 +4466,11 @@ def main():
                          "CANNOT run (unscreened or unscreenable); stamped "
                          "executed=false on the event. Never overrides an "
                          "oracle that ran and failed (ADR-014)")
+    dn.add_argument("--json", action="store_true",
+                    help="print one JSON object {issue, event, claim, "
+                         "accept, advisories} -- the SI-3 machine surface "
+                         "extended to claim-at-death (advisories ride the "
+                         "echo, never the ledger line)")
     dn.set_defaults(fn=cmd_done)
 
     iss = sub.add_parser("issues", help="list work items with derived status; "
@@ -4388,6 +4559,14 @@ def main():
     val = sub.add_parser("validate", help="schema-check every ledger record")
     val.add_argument("--stdin", action="store_true", help="read ledger from stdin")
     val.set_defaults(fn=cmd_validate)
+
+    vb = sub.add_parser("vocab", help="the machine vocabulary (P2 "
+                        "contract): statuses, active set, verdict->status "
+                        "map, ADR-001 premise derivations, and the "
+                        "satellites' citation-blocking set -- one "
+                        "greppable line per key, or --json")
+    vb.add_argument("--json", action="store_true")
+    vb.set_defaults(fn=cmd_vocab)
 
     args = ap.parse_args()
     # R2 (roadmap-v3): loud fail-open. An unwired commit gate means INV-A/

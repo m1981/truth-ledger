@@ -8,6 +8,60 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.27 (ADR-043: the P2 contract layer -- status registry + vocab
+  contract; no schema change; every existing refusal message, exit code
+  and derived status byte-identical -- the licensed additions are
+  `truth vocab` and `done --json`, plus one licensed reorder in `done`):
+  * Registry (R13): ACTIVE_STATUSES and VERDICT_STATUS module constants
+    replace six hand-copied ("live", "unverified") tuples and three
+    inline verdict->status maps; the stats verdict counters derive from
+    VERDICTS (key order unchanged). Unknown-verdict behavior stays
+    deliberately split per consumer (fold KeyError, half-life silent
+    skip, stats uncounted) -- unifying it is a semantics change, not an
+    extraction; noted at the constant.
+  * `truth vocab [--json]` -- new READ verb (no commit-gate banner):
+    exports statuses, active set, verdict map, premise_blocking /
+    premise_warn DERIVED by evaluating premise_check over STATUSES x
+    TIERS (the vocab IS the ADR-001 matrix, evaluated), and
+    citation_bad = CITATION_BAD, the satellites' blocking contract,
+    consumed by nothing else in the CLI. spec-health's CLAIM_BAD and
+    fact-health's BAD now fetch it at runtime and fail LOUD (exit 2)
+    when the call fails -- the R1 `disputed` hand-copy drift class is
+    structurally closed: removing disputed from the constant reddened
+    canary VC1, the S2D spec arm, and the fact-health disputed case
+    together in the P2 red-run. That cascade is the contract.
+  * Shared intake flags (R7): add_claim_intake_flags declares the seven
+    flags `claim` and `done --claim` share verbatim; the four override
+    flags whose done-side help reads "see `truth claim ...`" stay
+    per-verb, and per decision D4 --concern is NOT added to done (its
+    removal path is P5). `done` gains `--json`: one object {issue,
+    event, claim, accept, advisories} -- the SI-3 guarantee extended to
+    claim-at-death; advisories ride the echo, never the ledger line
+    (canary GS6). build_claim_payload's four-sentence basis tail is
+    keyword-only now, and it returns (payload, facts).
+  * Loaders return, never exit (R14a): load_citation_scope and
+    load_generated_globs return (globs, source, err); _gate_generated
+    returns the error per the gate-table contract, the citation verbs
+    sys.exit it at the cli level -- messages and exit codes verbatim
+    (canary TG10/RC unchanged).
+  * Non-claim intakes decide in the core (R14b): supersede_error (the
+    ADR-013 rule ladder, with the RETRACTED_NEEDS_ACK sentinel -- the
+    ADR-011/017 human ack itself is I/O and stays in the shell) and
+    contradicts_intake_error; cmd_premise/cmd_contradicts are thin
+    gather-call-exit shells. Refusal bytes identical.
+  * intake_advisories is PURE (R6): generated_source, porcelain and
+    shallow_state arrive as keyword-only data gathered ONCE by the
+    shell, reusing what _gate_generated and _gate_blast already stashed
+    in ctx; the duplicated inline shallow-probe subprocess is gone.
+  * cmd_done check ordering (L2-F6, the licensed fix): a missing
+    --basis or invalid transition now refuses BEFORE the human-ack
+    prompt and citation sweep, matching cmd_verdict's order; the
+    refusal strings are unchanged.
+  * Core suite 257 -> 286 (TestStatusRegistry, TestSupersedeError,
+    TestContradictsIntakeError, TestIntakeAdvisories, TestBlastReport,
+    TestCitationBlockPaths, TestLoadersReturnErr, all red-proven);
+    canary 240 -> 243 (FAULT VC 2 arms + GS6). Fold untouched.
+
 v0.9.26 (ADR-040: an audited evidence-allowlist default; no schema
   change, no gate semantics change):
   * The shipped `.truth/evidence-allow` loses rg, file and date. A

@@ -17,6 +17,14 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 CLAIMS_JSON="$(scripts/truth list --json)"
+# P2 contract layer: the citation-blocking set comes from the CLI at
+# runtime (CITATION_BAD via `truth vocab`), never hand-copied -- the R1
+# `disputed` drift class is structurally impossible. Fail LOUD: a sweep
+# run against a guessed vocabulary would be the drift re-armed (F1 rule).
+if ! VOCAB_JSON="$(scripts/truth vocab --json)"; then
+  echo "spec-health: 'truth vocab --json' failed -- the citation-blocking set is unavailable; refusing to sweep with a guessed vocabulary (exit 2: environment, not governance)" >&2
+  exit 2
+fi
 if ! ISSUES_JSON="$(scripts/truth issues --json 2>/dev/null)"; then
   echo "spec-health: 'truth issues --json' failed; treating issue records as absent (wk- ids will report missing)" >&2
   ISSUES_JSON='[]'
@@ -24,7 +32,7 @@ fi
 SPEC_FILES="$(find . \( -path ./attic -o -path "*/node_modules" -o -path "*/.venv" -o -name archive \) -prune \
                    -o -type f -path "*docs/specs/*.md" -print | sort)"
 
-export CLAIMS_JSON ISSUES_JSON SPEC_FILES
+export CLAIMS_JSON VOCAB_JSON ISSUES_JSON SPEC_FILES
 
 python3 - <<'PY'
 import json, os, re, sys
@@ -32,7 +40,9 @@ import json, os, re, sys
 claims = {r["id"]: r for r in json.loads(os.environ["CLAIMS_JSON"])}
 issues = {r["id"]: r for r in json.loads(os.environ["ISSUES_JSON"])}
 
-CLAIM_BAD = {"stale", "diverged", "retracted", "disputed"}
+# Sourced from the CLI's own CITATION_BAD (truth vocab --json), fetched
+# above -- one contract, consumed at runtime (P2 contract layer).
+CLAIM_BAD = set(json.loads(os.environ["VOCAB_JSON"])["citation_bad"])
 ID_RE = re.compile(r"\b(?:tr|wk)-[0-9a-f]{8}\b")
 
 failures = warnings = 0

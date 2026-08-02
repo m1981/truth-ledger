@@ -56,6 +56,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 CLAIMS_JSON="$(python3 template/scripts/truth list --json)"
+# P2 contract layer: the blocking set is the CLI's own CITATION_BAD
+# (truth vocab --json), fetched at runtime -- never hand-copied (the R1
+# `disputed` drift class). Fail LOUD: sweeping with a guessed vocabulary
+# would be the drift re-armed (F1 rule).
+if ! VOCAB_JSON="$(python3 template/scripts/truth vocab --json)"; then
+  echo "fact-health: 'truth vocab --json' failed -- the citation-blocking set is unavailable; refusing to sweep with a guessed vocabulary (exit 2: environment, not governance)" >&2
+  exit 2
+fi
 # Frozen reference (see SCOPE above): excluded from the live corpus.
 FILES="$(git ls-files 'README.md' 'AGENTS.md' 'docs/*.md' 'docs/**/*.md' \
   | grep -v '^docs/archive/' \
@@ -63,13 +71,15 @@ FILES="$(git ls-files 'README.md' 'AGENTS.md' 'docs/*.md' 'docs/**/*.md' \
   | grep -v '^docs/roadmap-v3\.md$' \
   | grep -v '^docs/field-notes' \
   | sort -u)"
-export CLAIMS_JSON FILES
+export CLAIMS_JSON VOCAB_JSON FILES
 
 python3 - <<'PY'
 import json, os, re, sys
 
 claims = {r["id"]: r for r in json.loads(os.environ["CLAIMS_JSON"])}
-BAD = {"stale", "diverged", "retracted", "disputed"}
+# Sourced from the CLI's own CITATION_BAD (truth vocab --json), fetched
+# above -- one contract, consumed at runtime (P2 contract layer).
+BAD = set(json.loads(os.environ["VOCAB_JSON"])["citation_bad"])
 # Known deployments. An ALLOWLIST, not a free prefix: the first cut let
 # any word before a colon mean "foreign", so `successor:tr-...` or a
 # typo'd `kuchnia:` silently escaped judgment, and a local dead id in a

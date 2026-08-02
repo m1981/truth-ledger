@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor + ADR-028 FAULT IF future-dated-issue transition coherence + ADR-009/M4 FAULT SD screen-gates-execution ordering + v0.9.12 R3/ADR-030 FAULT RA reaffirm-mismatch-never-auto-filed + v0.9.13 R6/ADR-031 unified duplicate-id rule: B1/B3-B5 expect the one message, FAULT K2 later-ts distinct duplicate flips to refused + v0.9.14 R12/ADR-032 FAULT SD-decay --scope-ok default-expiry (4 arms incl. negative control) + R13/ADR-033 FAULT OV override-velocity verbatim-repeat advisory (2 arms incl. negative control) + v0.9.20/ADR-034 FAULT GS staged gate table + CC-1 advisory block (5 arms incl. negative control) + v0.9.21/ADR-035 FAULT X positive-claim exit gate (8 arms incl. negative control + validate mirror) + v0.9.22/ADR-036 FAULT TG tombstone citation gate (11 arms incl. scope policy, fail-closed, preflight, unicode quotepath) + v0.9.23/ADR-037 FAULT RC recipe lints + generated-paths (10 arms incl. per-segment, carve-outs, decay, quote-split, dropped-override) + v0.9.24/ADR-038 FAULT DW dirty-watch advisory (7 arms incl. untracked-under-glob, rename, unicode, UU-conflict) + v0.9.25/ADR-039 FAULT BF blast forecast + churn report (7 arms incl. window boundary, shallow, unborn-HEAD) + ADR-010 FAULT SEP separation instrument (3 arms incl. negative control) + P1 review R1 FAULT S2D disputed-citer spec fails + R3 SC dead-sensor scream and claimed-count false-match immunity + L3-F7 FAULT GE check-truth environment lane (2 arms incl. negative control)).
+# truth-canary.sh v0.9.0 -- seeded-fault acceptance suite (v0.9.0 issue #4 C1-C5 contradicts/DISPUTED + SC session-close survival gate + v0.7.1 issue #5 W5-W8 impact --inverse + v0.7.0 ADR-014 AC1-AC7 acceptance oracles + v0.6.4 ADR-013 R10 premise supersede +seeded faults + TL hardening + adapter seam + bd normalization + ADR-002 work kernel + ADR-006 issue-fold hardening + INV-M dead-tripwire intake checks + ADR-005 impact verb + spec-health/doc-health incl. degradation paths + v0.6 solo-regime hardening: ADR-007 Q-faults, ADR-008 B-faults, ADR-009 E-faults, ADR-010 V-faults, ADR-011 H-faults, ADR-012 M1 + v0.6.2 review-finding faults: F1 arg-deny E5, F2 ts-evasion B3/B4, F3 scope-signal Q5/Q6 + v0.6.3 TL-2 work-kernel discovery warn + ADR-023 H5 FAULT T dormant-glob-materializes arm + ADR-024 FAULT T unreachable-glob-refused arm + ADR-025 FAULT DG doctor-decides-hook-or-CI + ADR-027 FAULT AN1-AN5 anchor_commit/commit git-SHA-prefix floor + ADR-028 FAULT IF future-dated-issue transition coherence + ADR-009/M4 FAULT SD screen-gates-execution ordering + v0.9.12 R3/ADR-030 FAULT RA reaffirm-mismatch-never-auto-filed + v0.9.13 R6/ADR-031 unified duplicate-id rule: B1/B3-B5 expect the one message, FAULT K2 later-ts distinct duplicate flips to refused + v0.9.14 R12/ADR-032 FAULT SD-decay --scope-ok default-expiry (4 arms incl. negative control) + R13/ADR-033 FAULT OV override-velocity verbatim-repeat advisory (2 arms incl. negative control) + v0.9.20/ADR-034 FAULT GS staged gate table + CC-1 advisory block (5 arms incl. negative control) + v0.9.21/ADR-035 FAULT X positive-claim exit gate (8 arms incl. negative control + validate mirror) + v0.9.22/ADR-036 FAULT TG tombstone citation gate (11 arms incl. scope policy, fail-closed, preflight, unicode quotepath) + v0.9.23/ADR-037 FAULT RC recipe lints + generated-paths (10 arms incl. per-segment, carve-outs, decay, quote-split, dropped-override) + v0.9.24/ADR-038 FAULT DW dirty-watch advisory (7 arms incl. untracked-under-glob, rename, unicode, UU-conflict) + v0.9.25/ADR-039 FAULT BF blast forecast + churn report (7 arms incl. window boundary, shallow, unborn-HEAD) + ADR-010 FAULT SEP separation instrument (3 arms incl. negative control) + P1 review R1 FAULT S2D disputed-citer spec fails + R3 SC dead-sensor scream and claimed-count false-match immunity + L3-F7 FAULT GE check-truth environment lane (2 arms incl. negative control) + v0.9.27 P2 contract layer: FAULT VC vocab-verb contract (2 arms) + GS6 done --claim --json advisory echo).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
@@ -2141,6 +2141,34 @@ if printf '%s\n' "$GS5ERR" | grep -q "^truth: advisory:"; then
 else
   ok "GS5: negative control -- a clean filing prints zero advisory lines"
 fi
+# GS6 (P2, SI-3 at claim-at-death): done --claim --json emits one object
+# {issue, event, claim, accept, advisories}; the advisory messages ride
+# the ECHO, never either ledger line (the GS3 contract, done edition).
+$T issue "gs6 work closing with a scoped claim" >/dev/null 2>&1
+GS6ID=$(python3 -c "
+import json
+last = None
+for l in open('.truth/claims.jsonl'):
+    r = json.loads(l)
+    if r.get('kind') == 'issue': last = r['id']
+print(last)")
+$T start "$GS6ID" >/dev/null 2>&1
+GS6OUT=$($T done "$GS6ID" --basis "gs6 close" \
+         --claim "the gs6 data marker sits committed in f.txt" \
+         --class VERIFIED --evidence-cmd "cat f.txt" --paths f.txt \
+         --duplicate-ok --scope-ok "single-file scope is the whole domain" \
+         --json 2>/dev/null)
+if printf '%s\n' "$GS6OUT" | python3 -c "
+import json, sys
+o = json.load(sys.stdin)
+ok = (o.get('event') == 'closed' and (o.get('claim') or {}).get('id')
+      and any('ADR-032' in a for a in o.get('advisories', [])))
+sys.exit(0 if ok else 1)" \
+   && ! tail -2 .truth/claims.jsonl | grep -q '"advisories"'; then
+  ok "GS6: done --claim --json echoes advisories[]; neither ledger line carries them"
+else
+  miss "GS6: done --json advisory echo broken, or advisories leaked into the ledger ($GS6OUT)"
+fi
 cd "$GS_PREV"
 rm -rf "$GS"
 
@@ -2671,6 +2699,47 @@ fi
 rm -rf "$BFU"
 cd "$BF_PREV"
 rm -rf "$BF"
+
+# ---- FAULT VC (P2 contract layer, v0.9.27): the vocab verb --------------
+# `truth vocab` exports the machine vocabulary; spec-health/fact-health
+# source their citation-blocking set from it at runtime, so the R1
+# hand-copy drift class is structurally closed: removing `disputed` from
+# CITATION_BAD reddens VC1 AND the S2D / fact-health disputed arms
+# together (proven in the P2 red-run) -- that cascade is the contract.
+say "FAULT VC (P2): vocab --json exports the contract; the read verb stays banner-free"
+VC="$(mktemp -d)"; TDIRS+=("$VC"); VC_PREV="$PWD"
+mkrepo "$VC"
+echo "data" > f.txt
+git add -A && git commit -qm "vc: init" --no-verify -q
+VC1OUT=$($T vocab --json 2>/dev/null)
+if printf '%s\n' "$VC1OUT" | python3 -c "
+import json, sys
+v = json.load(sys.stdin)
+ok = ('disputed' in v['citation_bad']
+      and set(v['active']) == {'live', 'unverified'}
+      and set(v['verdicts']) == {'agree', 'diverge', 'cannot_verify',
+                                 'retracted'}
+      and set(v['citation_bad']) <= set(v['statuses'])
+      and 'disputed' in v['premise_blocking']
+      and 'unverified' in v['premise_warn'])
+sys.exit(0 if ok else 1)"; then
+  ok "VC1: vocab --json parses; citation_bad carries disputed; the sets cohere"
+else
+  miss "VC1: vocab contract broken: $VC1OUT"
+fi
+# VC2: one greppable line per key, and NO commit-gate banner -- this
+# sandbox is deliberately unwired, so a write verb would print it; the
+# satellites poll vocab on every sweep and banner noise would train
+# 2>/dev/null (the exemption a read verb earns by changing nothing).
+VC2ERR=$($T vocab 2>&1 >/dev/null)
+VC2OUT=$($T vocab 2>/dev/null)
+if [ -z "$VC2ERR" ] && printf '%s\n' "$VC2OUT" | grep -q "^citation_bad: .*disputed"; then
+  ok "VC2: plain output greppable (citation_bad line) and zero stderr on an unwired clone"
+else
+  miss "VC2: plain vocab output or read-verb silence broken (stderr=[$VC2ERR])"
+fi
+cd "$VC_PREV"
+rm -rf "$VC"
 
 # ---- FAULT UM (union merge): the headline sync path, driven for real ----
 # Union-merge confluence was only ever validated by in-process permutation

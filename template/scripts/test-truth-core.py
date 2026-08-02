@@ -204,6 +204,45 @@ class TestPremiseMatrix(unittest.TestCase):
         self.assertIsNotNone(tm.premise_check("cannot_verify", "P1")[1])
         self.assertIsNone(tm.premise_check("live", "P1")[1])
 
+class TestStatusRegistry(unittest.TestCase):
+    """R13 (P2 contract layer): the exported vocabularies are closed --
+    every status is classified, the registry sets stay inside STATUSES,
+    and the verdict map covers exactly VERDICTS."""
+
+    def test_every_status_is_classified_by_premise_check(self):
+        # (passes, warn) without raising, for every STATUSES x TIERS cell
+        for status in tm.STATUSES:
+            for tier in tm.TIERS:
+                passes, warn = tm.premise_check(status, tier)
+                self.assertIsInstance(passes, bool, (status, tier))
+                self.assertTrue(warn is None or isinstance(warn, str),
+                                (status, tier))
+
+    def test_active_statuses_are_a_proper_subset_of_statuses(self):
+        self.assertTrue(tm.ACTIVE_STATUSES < set(tm.STATUSES),
+                        "ACTIVE_STATUSES must be a proper subset of "
+                        "STATUSES -- a member outside the vocabulary is "
+                        "a registry corruption")
+
+    def test_verdict_status_covers_verdicts_into_statuses(self):
+        self.assertEqual(set(tm.VERDICT_STATUS), set(tm.VERDICTS))
+        self.assertTrue(set(tm.VERDICT_STATUS.values()) <= set(tm.STATUSES))
+
+    def test_vocab_report_derives_from_the_matrix(self):
+        v = tm.vocab_report()
+        self.assertIn("disputed", v["citation_bad"],
+                      "the R1 incident's exact drift: disputed must be "
+                      "in the satellites' blocking contract")
+        self.assertTrue(set(v["citation_bad"]) <= set(v["statuses"]))
+        self.assertTrue(set(v["active"]) <= set(v["statuses"]))
+        # premise_blocking/premise_warn are premise_check EVALUATED, so
+        # spot-check the ADR-001 cells they must reflect
+        self.assertIn("retracted", v["premise_blocking"])
+        self.assertIn("disputed", v["premise_blocking"])
+        self.assertNotIn("live", v["premise_blocking"])
+        self.assertIn("unverified", v["premise_warn"])
+        self.assertIn("cannot_verify", v["premise_warn"])
+
 # --------------------------------------------------------- primitives
 
 class TestPrimitives(unittest.TestCase):
@@ -1396,6 +1435,104 @@ class TestSupersedes(unittest.TestCase):
         prem = {"w": ["tr-000000d1"]}
         self.assertEqual(tm.apply_supersedes(prem, {}), prem)
 
+# ------------------- non-claim intake predicates (R14b, P2 contract layer)
+
+class TestSupersedeError(unittest.TestCase):
+    """The ADR-013 rule ladder, decided in the core -- each refusal
+    branch reachable in-process for the first time."""
+    W = "wk-00000001"
+
+    def test_bad_id_shape_refused(self):
+        err = tm.supersede_error(self.W, "wk-00000009", "tr-000000bb",
+                                 {}, [])
+        self.assertIn("--supersedes must name a tr- claim id", err)
+
+    def test_self_supersede_refused(self):
+        err = tm.supersede_error(self.W, "tr-000000aa", "tr-000000aa",
+                                 {}, [])
+        self.assertIn("cannot supersede itself", err)
+
+    def test_missing_replacement_refused(self):
+        err = tm.supersede_error(self.W, "tr-000000aa", "tr-000000bb",
+                                 {}, [])
+        self.assertIn("replacement claim tr-000000bb is not in the ledger",
+                      err)
+
+    def test_not_currently_a_premise_refused(self):
+        claims = {"tr-000000bb": {"status": "live"}}
+        err = tm.supersede_error(self.W, "tr-000000aa", "tr-000000bb",
+                                 claims, [])
+        self.assertIn(f"not currently a premise of {self.W}", err)
+
+    def test_still_passing_premise_refused(self):
+        for status in tm.ACTIVE_STATUSES:
+            claims = {"tr-000000aa": {"status": status},
+                      "tr-000000bb": {"status": "live"}}
+            err = tm.supersede_error(self.W, "tr-000000aa", "tr-000000bb",
+                                     claims, ["tr-000000aa"])
+            self.assertIn("passes ready as-is", err, status)
+
+    def test_retracted_premise_returns_the_ack_sentinel(self):
+        # ADR-017 (C3): the human gate itself is I/O and stays in the
+        # shell -- the predicate only reports that it is required.
+        claims = {"tr-000000aa": {"status": "retracted"},
+                  "tr-000000bb": {"status": "live"}}
+        self.assertEqual(
+            tm.supersede_error(self.W, "tr-000000aa", "tr-000000bb",
+                               claims, ["tr-000000aa"]),
+            tm.RETRACTED_NEEDS_ACK)
+
+    def test_dead_premise_passes(self):
+        for status in ("stale", "diverged", "cannot_verify"):
+            claims = {"tr-000000aa": {"status": status},
+                      "tr-000000bb": {"status": "live"}}
+            self.assertIsNone(
+                tm.supersede_error(self.W, "tr-000000aa", "tr-000000bb",
+                                   claims, ["tr-000000aa"]), status)
+        # a MISSING old premise (in the premise list, not the fold) is
+        # dead-for-supersede too
+        self.assertIsNone(
+            tm.supersede_error(self.W, "tr-000000aa", "tr-000000bb",
+                               {"tr-000000bb": {"status": "live"}},
+                               ["tr-000000aa"]))
+
+class TestContradictsIntakeError(unittest.TestCase):
+    """Issue #4 intake checks, decided in the core, filing order."""
+    CLAIMS = {"tr-000000aa": {"status": "live"},
+              "tr-000000bb": {"status": "live"},
+              "tr-000000cc": {"status": "retracted"}}
+
+    def test_self_edge_refused(self):
+        self.assertIn("cannot contradict itself",
+                      tm.contradicts_intake_error("tr-000000aa",
+                                                  "tr-000000aa",
+                                                  self.CLAIMS, []))
+
+    def test_unknown_id_refused_either_side(self):
+        err = tm.contradicts_intake_error("tr-000000aa", "tr-0000dead",
+                                          self.CLAIMS, [])
+        self.assertIn("unknown claim tr-0000dead", err)
+        err = tm.contradicts_intake_error("tr-0000dead", "tr-000000bb",
+                                          self.CLAIMS, [])
+        self.assertIn("unknown claim tr-0000dead", err)
+
+    def test_retracted_endpoint_refused(self):
+        err = tm.contradicts_intake_error("tr-000000aa", "tr-000000cc",
+                                          self.CLAIMS, [])
+        self.assertIn("tr-000000cc is retracted", err)
+
+    def test_duplicate_edge_refused_either_direction(self):
+        edge = rec("contradicts", {"a": "tr-000000bb", "b": "tr-000000aa",
+                                   "basis": "x"}, rid="tr-000000ee")
+        err = tm.contradicts_intake_error("tr-000000aa", "tr-000000bb",
+                                          self.CLAIMS, events(edge))
+        self.assertIn("already declared (tr-000000ee)", err)
+
+    def test_clean_pair_passes(self):
+        self.assertIsNone(
+            tm.contradicts_intake_error("tr-000000aa", "tr-000000bb",
+                                        self.CLAIMS, []))
+
 # ------------------------------------------------- impact query (ADR-005)
 
 class TestImpact(unittest.TestCase):
@@ -2572,7 +2709,7 @@ class TestAppendRecords(unittest.TestCase):
                     paths=None, tier="P2", ttl_days=None, claim_basis=None,
                     single_run=False, duplicate_ok=False, scope_ok=None,
                     evidence_unsafe_ok=False, evidence_exit_ok=None,
-                    generated_ok=None, accept_unsafe_ok=False)
+                    generated_ok=None, accept_unsafe_ok=False, json=False)
                 out, err = io.StringIO(), io.StringIO()
                 with contextlib.redirect_stdout(out), \
                         contextlib.redirect_stderr(err):
@@ -2853,6 +2990,195 @@ class TestBlastForecast(unittest.TestCase):
         # flags stone-cold watches as hot (R5 review, F2)
         cold = {f"tr-{i:08x}": claim_with(0) for i in range(30)}
         self.assertEqual(tm.effective_blast_floor(cold), (1, "calibrated"))
+
+class TestIntakeAdvisories(unittest.TestCase):
+    """R6 (P2 purity hoist): intake_advisories is pure -- the shell
+    gathers generated_source / porcelain / shallow_state once and passes
+    plain data; these tests feed facts and assert the composition."""
+
+    def _adv(self, evts=(), tier="P2", ttl=None, scope_ok=None,
+             cls="UNVERIFIED", payload=None, generated_ok=None,
+             claims=None, generated_source=None, porcelain=None,
+             shallow_state=None):
+        return tm.intake_advisories(list(evts), tier, ttl, scope_ok, cls,
+                                    payload if payload is not None
+                                    else claim_p(),
+                                    generated_ok=generated_ok,
+                                    claims=claims,
+                                    generated_source=generated_source,
+                                    porcelain=porcelain,
+                                    shallow_state=shallow_state)
+
+    def test_clean_filing_is_silent(self):
+        self.assertEqual(self._adv(), [])
+
+    def test_fs1_half_life_note_beside_a_chosen_ttl(self):
+        evts = []
+        for i in range(tm.HALF_LIFE_MIN_OBS):
+            cid = f"tr-00000a{i:02d}"
+            evts += [
+                rec("claim", claim_p(cost_tier="P2"), rid=cid,
+                    ts="2026-07-01T00:00:00.000000+00:00"),
+                rec("verdict", {"claim": cid, "verdict": "agree",
+                                "basis": "b"}, rid=f"tr-00000b{i:02d}",
+                    ts="2026-07-02T00:00:00.000000+00:00"),
+                rec("invalidation", {"claim": cid, "commit": "c" * 7,
+                                     "reason": "evidence paths changed"},
+                    rid=f"tr-00000c{i:02d}",
+                    ts="2026-07-04T00:00:00.000000+00:00"),
+            ]
+        msgs = self._adv(evts=events(*evts), ttl=10)
+        self.assertTrue(any("ledger median half-life for P2: 2.0d" in m
+                            and "you chose 10d" in m for m in msgs), msgs)
+
+    def test_scope_override_decay_notice(self):
+        msgs = self._adv(scope_ok="single-file scope covers it")
+        self.assertTrue(any("--scope-ok override filed with no --ttl-days"
+                            in m for m in msgs), msgs)
+
+    def test_dropped_generated_override_is_voiced(self):
+        # --generated-ok stated, nothing stored: the basis must not
+        # vanish silently (ADR-037) -- and it must not decay
+        msgs = self._adv(generated_ok="the artifact is the deliverable")
+        self.assertTrue(any("the basis was NOT" in m and "stored" in m
+                            for m in msgs), msgs)
+        self.assertFalse(any("--generated-ok override filed" in m
+                             for m in msgs), msgs)
+
+    def test_dark_generated_list_notice(self):
+        payload = claim_p(evidence_paths=["f.txt"], blast_forecast=0)
+        msgs = self._adv(payload=payload, claims={},
+                         generated_source="absent")
+        self.assertTrue(any("generated-artifact check is dark" in m
+                            for m in msgs), msgs)
+        msgs = self._adv(payload=payload, claims={},
+                         generated_source="empty")
+        self.assertFalse(any("check is dark" in m for m in msgs), msgs)
+
+    def test_dirty_watch_lines_from_porcelain_data(self):
+        payload = claim_p(evidence_paths=["f.txt"], blast_forecast=0)
+        msgs = self._adv(payload=payload, claims={},
+                         generated_source="empty",
+                         porcelain=" M f.txt\x00?? other.txt\x00")
+        self.assertTrue(any(m.startswith("dirty watch: f.txt")
+                            for m in msgs), msgs)
+        self.assertFalse(any("other.txt" in m for m in msgs), msgs)
+
+    def test_blast_advisory_at_or_above_the_floor(self):
+        hot = claim_p(evidence_paths=["w.txt"], blast_forecast=20)
+        msgs = self._adv(payload=hot, claims={}, generated_source="empty")
+        self.assertTrue(any("blast: watch matched 20 commits" in m
+                            and "floor 15, fallback" in m
+                            for m in msgs), msgs)
+        cold = claim_p(evidence_paths=["w.txt"], blast_forecast=3)
+        msgs = self._adv(payload=cold, claims={}, generated_source="empty")
+        self.assertFalse(any(m.startswith("blast:") for m in msgs), msgs)
+
+    def test_missing_forecast_voices_the_gathered_state(self):
+        payload = claim_p(evidence_paths=["w.txt"])
+        msgs = self._adv(payload=payload, claims={},
+                         generated_source="empty", shallow_state="shallow")
+        self.assertTrue(any("blast: shallow history" in m for m in msgs),
+                        msgs)
+        msgs = self._adv(payload=payload, claims={},
+                         generated_source="empty",
+                         shallow_state="unavailable")
+        self.assertTrue(any("blast: history unavailable" in m
+                            for m in msgs), msgs)
+
+    def test_exit_warning_suppressed_by_a_stored_basis(self):
+        p = verified_p(blast_forecast=0)
+        p["evidence"]["returncode"] = 1
+        bare = self._adv(cls="VERIFIED", payload=p, claims={},
+                         generated_source="empty")
+        self.assertTrue(any("evidence command exited 1" in m
+                            for m in bare), bare)
+        p2 = dict(p, evidence_exit_basis="diff-style probe")
+        excused = self._adv(cls="VERIFIED", payload=p2, claims={},
+                            generated_source="empty")
+        self.assertFalse(any("evidence command exited" in m
+                             for m in excused), excused)
+
+class TestBlastReport(unittest.TestCase):
+    """L4-F5: the churn instrument's pure report, pinned exactly."""
+
+    def test_fixture_events_to_exact_report(self):
+        c1 = rec("claim", claim_p(evidence_paths=["a.py"],
+                                  blast_forecast=3), rid="tr-00000b01")
+        c2 = rec("claim", claim_p(evidence_paths=["b.py"],
+                                  blast_forecast=1), rid="tr-00000b02")
+        c3 = rec("claim", claim_p(), rid="tr-00000b03")  # pathless: out
+        i1 = rec("invalidation", {"claim": "tr-00000b01", "commit": "c" * 7,
+                                  "touched": ["a.py"]}, rid="tr-00000b11",
+                 ts="2026-07-02T00:00:00.000000+00:00")
+        i2 = rec("invalidation", {"claim": "tr-00000b01", "commit": "c" * 7,
+                                  "touched": ["a.py", "x.py"]},
+                 rid="tr-00000b12",
+                 ts="2026-07-03T00:00:00.000000+00:00")
+        self.assertEqual(
+            tm.blast_report(events(c1, c2, c3, i1, i2)),
+            {"rows": [{"claim": "tr-00000b01", "observed": 2,
+                       "forecast": 3},
+                      {"claim": "tr-00000b02", "observed": 0,
+                       "forecast": 1}],
+             "staler_ranking": [{"path": "a.py", "invalidations": 2},
+                                {"path": "x.py", "invalidations": 1}],
+             "effective_floor": tm.BLAST_ADVISORY_FLOOR,
+             "floor_source": "fallback"})
+
+class TestCitationBlockPaths(unittest.TestCase):
+    """L4-F5: hits x globs -> blocking paths, incl. the structural
+    LEDGER_REL exclusion (TG9's core half)."""
+
+    def test_scope_filter_and_ledger_exclusion(self):
+        hits = ["docs/notes/aside.md", "docs/specs/z.md", tm.LEDGER_REL,
+                "docs/specs/a.md"]
+        self.assertEqual(
+            tm.citation_block_paths(hits, ["docs/specs/**"]),
+            ["docs/specs/a.md", "docs/specs/z.md"])  # sorted, in-scope
+        # the ledger never blocks, even under a scope that covers it
+        self.assertEqual(
+            tm.citation_block_paths([tm.LEDGER_REL], [".truth/**"]), [])
+        self.assertEqual(
+            tm.citation_block_paths([], ["docs/specs/**"]), [])
+
+class TestLoadersReturnErr(unittest.TestCase):
+    """R14a: the policy-file loaders RETURN a pathspec-magic refusal
+    instead of sys.exiting two frames below the gate table."""
+
+    def _load(self, rel, content, fn):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, ".truth"), exist_ok=True)
+            with open(os.path.join(d, rel), "w", encoding="utf-8") as f:
+                f.write(content)
+            orig = tm.repo_root
+            tm.repo_root = lambda: d
+            try:
+                return fn()
+            finally:
+                tm.repo_root = orig
+
+    def test_generated_globs_magic_line_returns_error(self):
+        globs, source, err = self._load(tm.GENERATED_PATHS_REL,
+                                        ":(exclude)docs/**\n",
+                                        tm.load_generated_globs)
+        self.assertIsNone(globs)
+        self.assertIn("pathspec magic is refused", err)
+        globs, source, err = self._load(tm.GENERATED_PATHS_REL,
+                                        "gen/**\n", tm.load_generated_globs)
+        self.assertEqual((globs, source, err), (["gen/**"], "file", None))
+
+    def test_citation_scope_magic_line_returns_error(self):
+        globs, source, err = self._load(tm.CITATION_SCOPE_REL,
+                                        "!docs/**\n", tm.load_citation_scope)
+        self.assertIsNone(globs)
+        self.assertIn("pathspec magic is refused", err)
+        globs, source, err = self._load(tm.CITATION_SCOPE_REL,
+                                        "docs/specs/**\n",
+                                        tm.load_citation_scope)
+        self.assertEqual((globs, source, err),
+                         (["docs/specs/**"], "file", None))
 
 class TestCommitGateBanner(unittest.TestCase):
     """R2: loud fail-open -- an unwired ADR-025 commit gate is announced
