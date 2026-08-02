@@ -153,6 +153,12 @@ scripts/truth citations tr-efad36a4   # -> tr-d1049451
 TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-efad36a4 scripts/truth verdict tr-efad36a4 retracted --basis "resolved by succession: superseded by tr-d1049451"
 scripts/truth citations tr-84b4bef5   # -> tr-b66ed08c
 TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-84b4bef5 scripts/truth verdict tr-84b4bef5 retracted --basis "resolved by succession: superseded by tr-b66ed08c"
+scripts/truth citations tr-7191f5a9   # -> tr-d1049451 (intermediate generation, staled by the P6 commit)
+TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-7191f5a9 scripts/truth verdict tr-7191f5a9 retracted --basis "resolved by succession: superseded by tr-d1049451"
+scripts/truth citations tr-30512073   # -> tr-b66ed08c (intermediate generation, staled by the P6 commit)
+TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-30512073 scripts/truth verdict tr-30512073 retracted --basis "resolved by succession: superseded by tr-b66ed08c"
+scripts/truth citations tr-4b486c66   # -> tr-89f02452 (intermediate generation, staled by the P6 commit)
+TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-4b486c66 scripts/truth verdict tr-4b486c66 retracted --basis "resolved by succession: superseded by tr-89f02452"
 ```
 
 Eight further stale claims have no *named* successor edge but the same
@@ -203,13 +209,14 @@ re-pull the instrument values, and append minutes. The 2026-08-02
 first-review minutes there are the baseline to diff against. Zero other
 ceremony changes (ADR-047 decision 3).
 
-## Post-commit note
+## Post-commit note — RESOLVED 2026-08-02 by the closing session
 
-Committing this phase will itself stale live sentinels by design: the
-ADR-count claim tr-d1049451 (ADR-047 makes the series 47 files), the
-explainer Scope-header claim tr-b66ed08c (the Scope line now reads
-v0.9.31 · ADR-001–047), and the version-pinned lockstep sentinels the
-whisper forecasts on any release bump (among them the check-truth
-lockstep claim tr-89f02452, which names v0.9.30 in its text). Re-file
-them as successors after the commit, from the session that commits, so
-the queue does not regrow — the same succession shape as (c).
+The P6 release bump did stale the previous sentinel generation as this
+note predicted; the closing session filed and citation-swapped the
+successors the same day, and an independent verifier session
+(s-verifier-p6-pins) agreed all three: tr-d1049451 (ADR-series 001–047),
+tr-b66ed08c (explainer Scope at v0.9.31), tr-89f02452 (check-truth at
+the v0.9.31 lockstep line). The three staled intermediates were appended
+to the (c) retraction block above. Nothing further is owed here; the
+standing rule stays: every release bump re-runs this succession
+ceremony from the committing session.
