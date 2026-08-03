@@ -145,10 +145,10 @@ scripts/truth citations tr-4f48fd51   # -> tr-b350781e (same successor: the batt
 TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-4f48fd51 scripts/truth verdict tr-4f48fd51 retracted --basis "resolved by succession: superseded by tr-b350781e"
 scripts/truth citations tr-4884ad97   # -> tr-7a10f167
 TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-4884ad97 scripts/truth verdict tr-4884ad97 retracted --basis "resolved by succession: superseded by tr-7a10f167"
-scripts/truth citations tr-36d503e6   # -> tr-84b79439
-TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-36d503e6 scripts/truth verdict tr-36d503e6 retracted --basis "resolved by succession: superseded by tr-84b79439"
-scripts/truth citations tr-5fe1899a   # -> tr-84b79439 (same successor: the check-truth claim absorbed both)
-TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-5fe1899a scripts/truth verdict tr-5fe1899a retracted --basis "resolved by succession: superseded by tr-84b79439"
+scripts/truth citations tr-36d503e6   # -> tr-9dd3323b
+TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-36d503e6 scripts/truth verdict tr-36d503e6 retracted --basis "resolved by succession: superseded by tr-9dd3323b"
+scripts/truth citations tr-5fe1899a   # -> tr-9dd3323b (same successor: the check-truth claim absorbed both)
+TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-5fe1899a scripts/truth verdict tr-5fe1899a retracted --basis "resolved by succession: superseded by tr-9dd3323b"
 scripts/truth citations tr-efad36a4   # -> tr-126f0629
 TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-efad36a4 scripts/truth verdict tr-efad36a4 retracted --basis "resolved by succession: superseded by tr-126f0629"
 scripts/truth citations tr-84b4bef5   # -> tr-010f7e96
@@ -157,8 +157,8 @@ scripts/truth citations tr-7191f5a9   # -> tr-126f0629 (intermediate generation,
 TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-7191f5a9 scripts/truth verdict tr-7191f5a9 retracted --basis "resolved by succession: superseded by tr-126f0629"
 scripts/truth citations tr-30512073   # -> tr-010f7e96 (intermediate generation, staled by the P6 commit)
 TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-30512073 scripts/truth verdict tr-30512073 retracted --basis "resolved by succession: superseded by tr-010f7e96"
-scripts/truth citations tr-4b486c66   # -> tr-84b79439 (intermediate generation, staled by the P6 commit)
-TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-4b486c66 scripts/truth verdict tr-4b486c66 retracted --basis "resolved by succession: superseded by tr-84b79439"
+scripts/truth citations tr-4b486c66   # -> tr-9dd3323b (intermediate generation, staled by the P6 commit)
+TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-4b486c66 scripts/truth verdict tr-4b486c66 retracted --basis "resolved by succession: superseded by tr-9dd3323b"
 ```
 
 Eight further stale claims have no *named* successor edge but the same
@@ -215,7 +215,7 @@ The P6 release bump did stale the previous sentinel generation as this
 note predicted; the closing session filed and citation-swapped the
 successors the same day, and an independent verifier session
 (s-verifier-p6-pins) agreed all three: tr-126f0629 (ADR-series 001–047),
-tr-010f7e96 (explainer Scope at v0.9.31), tr-84b79439 (check-truth at
+tr-010f7e96 (explainer Scope at v0.9.31), tr-9dd3323b (check-truth at
 the v0.9.31 lockstep line). The three staled intermediates were appended
 to the (c) retraction block above. Nothing further is owed here; the
 standing rule stays: every release bump re-runs this succession
