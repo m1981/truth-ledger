@@ -2641,6 +2641,182 @@ fi
 cd "$RX_PREV"
 rm -rf "$RX"
 
+# ---- FAULT ST (ADR-050, v0.9.35): the staling breakdown -----------------
+# A synthetic ledger whose answer is known BY CONSTRUCTION: four claims,
+# seven invalidation records forming five episodes, and four resolving
+# verdicts hand-built to land one in each arm plus a second mechanical
+# via `reaffirm_cleared`. Two negative controls: a verdict on a claim
+# with no open staling must count NOTHING (ST5 proves it by deleting the
+# line and demanding an identical report), and a ledger of pure agrees
+# must report zero rather than something (ST4).
+say "FAULT ST (ADR-050): the staling breakdown must reproduce a hand-built ledger's known answer"
+ST="$(mktemp -d)"; TDIRS+=("$ST"); ST_PREV="$PWD"
+mkrepo "$ST"
+echo "data" > f.txt
+git add -A && git commit -qm "st: init" --no-verify -q
+st_line() { printf '{"id":"%s","kind":"%s","ts":"2026-07-01T00:00:%02d.000000+00:00","actor":"t","session":"s","payload":%s}\n' "$1" "$2" "$4" "$3"; }
+st_claim() { st_line "$1" claim "{\"text\":\"st fixture claim $1\",\"evidence_class\":\"UNVERIFIED\",\"cost_tier\":\"P2\",\"ttl_days\":null}" "$2"; }
+{
+  st_claim tr-0000c001 1
+  st_claim tr-0000c002 2
+  st_claim tr-0000c003 3
+  st_claim tr-0000c004 4
+  # episode 1: staled by a .py watch, cleared by reaffirm's own basis
+  st_line tr-0000a001 invalidation '{"claim":"tr-0000c001","commit":"abc1234","reason":"evidence paths changed","touched":["f.py"]}' 5
+  st_line tr-0000b001 verdict '{"claim":"tr-0000c001","verdict":"agree","basis":"reaffirm: hash-match, no judgment re-run"}' 6
+  # episode 2: staled by a .md watch, cleared by a human re-reading
+  st_line tr-0000a002 invalidation '{"claim":"tr-0000c002","commit":"abc1234","reason":"evidence paths changed","touched":["d.md"]}' 7
+  st_line tr-0000b002 verdict '{"claim":"tr-0000c002","verdict":"agree","basis":"re-read the doc; the sentence still holds"}' 8
+  # episode 3: two path kinds, and the fact really had moved
+  st_line tr-0000a003 invalidation '{"claim":"tr-0000c003","commit":"abc1234","reason":"evidence paths changed","touched":["g.py","h.md"]}' 9
+  st_line tr-0000b003 verdict '{"claim":"tr-0000c003","verdict":"diverge","basis":"the number moved"}' 10
+  # episode 4: opened once, re-staled TWICE while still open (not three
+  # stalings), cleared mechanically by the reaffirm_cleared record
+  st_line tr-0000a004 invalidation '{"claim":"tr-0000c001","commit":"abc1234","reason":"evidence paths changed","touched":["f.py"]}' 11
+  st_line tr-0000a005 invalidation '{"claim":"tr-0000c001","commit":"abc1234","reason":"evidence paths changed","touched":["f.py"]}' 12
+  st_line tr-0000a006 invalidation '{"claim":"tr-0000c001","commit":"abc1234","reason":"evidence paths changed","touched":["f.py"]}' 13
+  # NEGATIVE CONTROL: c4 has never been invalidated, so this agree
+  # answers no staling and must land in no column at all
+  st_line tr-0000b004 verdict '{"claim":"tr-0000c004","verdict":"agree","basis":"first verification, nothing was stale"}' 14
+  st_line tr-0000b005 verdict '{"claim":"tr-0000c001","verdict":"agree","basis":"hand-written basis, machine-cleared record","reaffirm_cleared":{"prior_anchor":"abc1234","touched":["f.py"]}}' 15
+  # episode 5: pathless (a TTL expiry names no touched file) and left open
+  st_line tr-0000a007 invalidation '{"claim":"tr-0000c004","commit":"abc1234","reason":"ttl expired","reason_code":"ttl"}' 16
+} > .truth/claims.jsonl
+
+ST_JSON=$($T staling --json 2>/dev/null)
+if printf '%s\n' "$ST_JSON" | python3 -c "
+import json, sys
+r = json.load(sys.stdin)
+want = {'mechanical_agree': 2, 'human_agree': 1, 'true_stale': 1,
+        'false_stale': 3, 'resolved': 4, 'unresolved': 1}
+sys.exit(0 if all(r.get(k) == v for k, v in want.items()) else 1)"; then
+  ok "ST1: the three arms reproduce the hand-built answer (2 mechanical, 1 human, 1 true, 4 resolved, 1 unresolved)"
+else
+  miss "ST1: staling breakdown wrong: $ST_JSON"
+fi
+
+if printf '%s\n' "$ST_JSON" | python3 -c "
+import json, sys
+r = json.load(sys.stdin)
+sys.exit(0 if (r['invalidations'] == 7 and r['restaled'] == 2
+               and r['stalings'] == 5
+               and r['stalings'] == r['resolved'] + r['unresolved']) else 1)"; then
+  ok "ST2: seven invalidation records fold to FIVE stalings (two re-staled an already-stale claim), and stalings == resolved + unresolved"
+else
+  miss "ST2: episode accounting wrong (a re-scan of an unanswered staling was counted as a new one): $ST_JSON"
+fi
+
+if printf '%s\n' "$ST_JSON" | python3 -c "
+import json, sys
+r = json.load(sys.stdin)
+sys.exit(0 if (r['by_path_kind'] == [{'kind': '.py', 'stalings': 3},
+                                     {'kind': '.md', 'stalings': 2}]
+               and r['pathless'] == 1) else 1)"; then
+  ok "ST3: path kinds rank .py=3 over .md=2, and the pathless staling is counted separately, never invented as a kind"
+else
+  miss "ST3: watched-path-kind breakdown wrong: $ST_JSON"
+fi
+
+# ST4 (NEGATIVE CONTROL): a ledger with verdicts but no invalidation has
+# no stalings to break down. An implementation that counted verdicts
+# instead of answered stalings reddens here.
+ST_N="$(mktemp -d)"; TDIRS+=("$ST_N")
+cp .truth/claims.jsonl "$ST_N/keep.jsonl"
+{
+  st_claim tr-0000c001 1
+  st_line tr-0000b001 verdict '{"claim":"tr-0000c001","verdict":"agree","basis":"reaffirm: hash-match, no judgment re-run"}' 6
+  st_line tr-0000b002 verdict '{"claim":"tr-0000c001","verdict":"agree","basis":"a human read it"}' 8
+  st_line tr-0000b003 verdict '{"claim":"tr-0000c001","verdict":"diverge","basis":"it moved"}' 10
+} > .truth/claims.jsonl
+ST4_JSON=$($T staling --json 2>/dev/null)
+ST4_TXT=$($T staling 2>/dev/null)
+if printf '%s\n' "$ST4_JSON" | python3 -c "
+import json, sys
+r = json.load(sys.stdin)
+sys.exit(0 if all(r[k] == 0 for k in
+                  ('invalidations', 'restaled', 'stalings', 'resolved',
+                   'unresolved', 'mechanical_agree', 'human_agree',
+                   'true_stale', 'false_stale', 'pathless'))
+         and r['by_path_kind'] == [] else 1)" \
+   && printf '%s\n' "$ST4_TXT" | grep -q "no invalidations in range"; then
+  ok "ST4 (negative control): three verdicts and no invalidation report ZERO stalings, and say so in plain text"
+else
+  miss "ST4: a verdict answering no staling was counted: $ST4_JSON"
+fi
+
+# ST5 (NEGATIVE CONTROL): the same property proved by deletion. Drop the
+# one verdict on the never-invalidated claim; the report must come out
+# BYTE-IDENTICAL. If the fold credited it to any column, this reddens.
+cp "$ST_N/keep.jsonl" .truth/claims.jsonl
+grep -v '"first verification, nothing was stale"' .truth/claims.jsonl \
+  > "$ST_N/pruned.jsonl"
+ST5_BEFORE=$($T staling --json 2>/dev/null)
+ST5_LINES=$(wc -l < "$ST_N/pruned.jsonl" | tr -d ' ')
+cp "$ST_N/pruned.jsonl" .truth/claims.jsonl
+ST5_AFTER=$($T staling --json 2>/dev/null)
+if [ "$ST5_LINES" -eq 15 ] && [ -n "$ST5_BEFORE" ] \
+   && [ "$ST5_BEFORE" = "$ST5_AFTER" ]; then
+  ok "ST5 (negative control): deleting the verdict on the never-invalidated claim leaves the report identical -- it was credited to nothing"
+else
+  miss "ST5: the report moved when a staling-less verdict was removed (pruned to $ST5_LINES lines)"
+fi
+
+# ST6: the arms above must be reading a LEGAL ledger, not junk that only
+# this verb tolerates (a check that examined nothing is a failure), and
+# the read verb must stay banner-free on this deliberately unwired clone
+# (the FAULT VC rule: satellites poll read verbs and stderr noise trains
+# 2>/dev/null).
+cp "$ST_N/keep.jsonl" .truth/claims.jsonl
+ST6_V=0; $T validate >/dev/null 2>&1 || ST6_V=$?
+ST6_ERR=$($T staling 2>&1 >/dev/null)
+if [ "$ST6_V" -eq 0 ] && [ -z "$ST6_ERR" ] \
+   && $T staling 2>/dev/null | grep -q "^the fact had NOT changed: 3 (mechanical 2, human 1)$"; then
+  ok "ST6: the fixture passes validate (16 legal records), the read verb prints no banner, and the plain line is greppable"
+else
+  miss "ST6: fixture illegal (validate rc=$ST6_V), banner leaked [$ST6_ERR], or plain output changed shape"
+fi
+# ST7/ST8 (ADR-050 decision 4): ORDER. A ledger whose append order and
+# whose fold order genuinely disagree -- the union-merge shape, where a
+# verdict was appended before an invalidation that predates it. The verb
+# must walk the fold's (ts, id, canon) order (a staling is a status
+# transition, and status is DEFINED by that order), while
+# --append-order reproduces the file walk. The two answers must DIFFER,
+# or the fixture has no teeth and the flag is a no-op.
+{
+  st_claim tr-0000c001 1
+  st_line tr-0000a001 invalidation '{"claim":"tr-0000c001","commit":"abc1234","reason":"evidence paths changed","touched":["f.py"]}' 10
+  st_line tr-0000b001 verdict '{"claim":"tr-0000c001","verdict":"diverge","basis":"appended first, but dated later"}' 12
+  st_line tr-0000a002 invalidation '{"claim":"tr-0000c001","commit":"abc1234","reason":"evidence paths changed","touched":["f.py"]}' 11
+  st_line tr-0000b002 verdict '{"claim":"tr-0000c001","verdict":"agree","basis":"reaffirm: hash-match, no judgment re-run"}' 13
+} > .truth/claims.jsonl
+ST7_JSON=$($T staling --json 2>/dev/null)
+ST8_JSON=$($T staling --append-order --json 2>/dev/null)
+if printf '%s\n' "$ST7_JSON" | python3 -c "
+import json, sys
+r = json.load(sys.stdin)
+sys.exit(0 if (r['order'] == 'fold' and r['resolved'] == 1
+               and r['restaled'] == 1 and r['stalings'] == 1
+               and r['mechanical_agree'] == 0
+               and r['true_stale'] == 1) else 1)"; then
+  ok "ST7: the verb walks FOLD order -- the back-dated invalidation joins the open episode instead of opening a second one (ADR-016/ADR-050)"
+else
+  miss "ST7: staling did not sort by fold_key: $ST7_JSON"
+fi
+if printf '%s\n' "$ST8_JSON" | python3 -c "
+import json, sys
+r = json.load(sys.stdin)
+sys.exit(0 if (r['order'] == 'append' and r['resolved'] == 2
+               and r['restaled'] == 0 and r['stalings'] == 2
+               and r['mechanical_agree'] == 1
+               and r['true_stale'] == 1) else 1)" \
+   && [ "$ST7_JSON" != "$ST8_JSON" ]; then
+  ok "ST8: --append-order reproduces the raw FILE walk, and its answer DIFFERS from the fold walk (the fixture has teeth, the flag is not a no-op)"
+else
+  miss "ST8: append-order walk wrong or identical to the fold walk: $ST8_JSON"
+fi
+cd "$ST_PREV"
+rm -rf "$ST" "$ST_N"
+
 # ---- FAULT RC (ADR-037, v0.9.23): recipe lints + generated-paths --------
 say "FAULT RC (ADR-037): recipe rot classes warn; generated-artifact watches refuse"
 RC="$(mktemp -d)"; TDIRS+=("$RC"); RC_PREV="$PWD"

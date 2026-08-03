@@ -557,6 +557,29 @@ agrees only -- later ones are dominated by hash-match reaffirms, which
 are legitimately fast. Gated by scripts/test-instruments.sh (the
 retired canary SEP arms); no schema change.
 
+**The staling breakdown** (ADR-050, `truth staling [--since ts]
+[--json]`): what the path-touched-means-stale rule actually cost on
+YOUR ledger. Every staling that a later verdict answered, split into
+*the fact had NOT changed* — a false alarm, sub-split by whether a
+machine cleared it (an ADR-030 hash-match reaffirm) or a human had to
+re-read the evidence — against *it HAD*; plus the kinds of watched path
+that triggered them (file suffix, the only classification a template
+can make without guessing at a consumer's layout). A staling is one
+EPISODE, not one invalidation record: re-scans of an already-stale
+claim are reported separately as `restaled`, and episodes with no
+verdict yet stay visible as `unresolved` instead of being assigned an
+answer. The walk is the FOLD's `(ts, id, canon)` order (ADR-016) —
+a staling is a status transition, and status is defined by that order;
+`--append-order` walks the raw file instead and exists only to
+reproduce measurements taken that way before the verb existed (the two
+disagree on union-merged ledgers, which is what forced this ADR, and
+the walk used is stamped on the output). A read verb, in the CLI rather
+than in Tier C (ADR-046's
+argued exception: this prices the kernel's own rule, and only the
+consumer can run it). Never a gate — a false-stale rate is a number to
+decide on, not a defect to refuse. Canary FAULT ST (6 arms, two
+negative controls and two order arms).
+
 ## Daily operation
 
 Daily (~2 min): `scripts/truth queue` — empty means carry on.
@@ -570,6 +593,11 @@ you file without `--ttl-days` gets a default 30-day expiry (ADR-032), so
 expect scope overrides to surface for re-file about a month out — a
 re-file that re-fires the ADR-007 gate, not a silent renewal.
 Weekly (~30 s): `scripts/truth-canary.sh`.
+Monthly, beside the hand-audit: `scripts/truth staling` — the false:true
+staling ratio and the mechanically-healable share (ADR-050). It is the
+number that says whether your watches are pointed at the right files;
+if it never changes a decision, ADR-050's own retirement test says the
+report should go.
 The override-velocity report (ADR-033) -- scope-ok filings,
 override-decay expiries, dup-overrides, unscreened filings, the max
 scope TTL, and a non-blocking advisory when a scope justification is

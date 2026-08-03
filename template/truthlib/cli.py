@@ -999,6 +999,51 @@ def cmd_stats(a):
     print(f"queue: {report['queue_size']} item(s)"
           + (f", oldest {age}d" if age is not None else ""))
 
+def cmd_staling(a):
+    """ADR-050: the staling breakdown -- how much of this ledger's
+    invalidation traffic was a false alarm, and which kind of watched
+    path caused it. Read verb (not in WRITE_VERBS): it derives nothing
+    the fold owns and files nothing. Same `--since` window convention as
+    `stats` -- the shell filters, the pure report counts what it is
+    given."""
+    events = load_events()
+    if a.since:
+        events = [(n, ev) for n, ev in events
+                  if (ev.get("ts") or "") >= a.since]
+    # ADR-050/ADR-016: a staling is a STATUS transition, and status is
+    # defined by the fold's total order -- so the shell sorts before the
+    # pure fold counts. --append-order walks the raw file instead, the
+    # only supported use being reproduction of a measurement taken that
+    # way before this verb existed. The order is stamped on the output:
+    # two orders can disagree, so a number that does not say which one
+    # produced it is not a result.
+    order = "append" if a.append_order else "fold"
+    if order == "fold":
+        events = sorted(events, key=fold_key)
+    report = staling_report(events)
+    report["order"] = order
+    if a.json:
+        print(json.dumps(report, indent=2))
+        return
+    if not report["stalings"]:
+        print("staling: no invalidations in range -- nothing to break down")
+        return
+    print(f"stalings: {report['stalings']} "
+          f"({report['invalidations']} invalidation record(s), "
+          f"{report['restaled']} re-staled an already-stale claim) "
+          f"[{order} order]")
+    print(f"resolved: {report['resolved']}, "
+          f"unresolved: {report['unresolved']}")
+    print(f"the fact had NOT changed: {report['false_stale']} "
+          f"(mechanical {report['mechanical_agree']}, "
+          f"human {report['human_agree']})")
+    print(f"the fact HAD changed: {report['true_stale']}")
+    kinds = ", ".join(f"{r['kind']}={r['stalings']}"
+                      for r in report["by_path_kind"]) or "none"
+    print(f"triggered by: {kinds}"
+          + (f" (+{report['pathless']} with no watched path)"
+             if report["pathless"] else ""))
+
 def cmd_doctor(a):
     """G4: check the INSTALLATION, which the sandboxed canary cannot."""
     root = repo_root()
@@ -1444,6 +1489,24 @@ def main():
                      help="only count events with ts >= this ISO timestamp")
     stt.add_argument("--json", action="store_true")
     stt.set_defaults(fn=cmd_stats)
+
+    stl = sub.add_parser("staling", help="what the path-touched-means-"
+                         "stale rule cost (ADR-050): every resolved "
+                         "staling split into the fact had NOT changed "
+                         "(mechanically re-confirmed / re-read by a "
+                         "human) vs it HAD, plus which kind of watched "
+                         "path triggered them")
+    stl.add_argument("--since", metavar="ISO_TS",
+                     help="only count events with ts >= this ISO timestamp")
+    stl.add_argument("--append-order", dest="append_order",
+                     action="store_true",
+                     help="walk the raw FILE (append) order instead of the "
+                          "fold's (ts, id, canon) order -- reproduction "
+                          "only, for measurements taken that way before "
+                          "this verb existed (ADR-050); the two disagree "
+                          "on union-merged ledgers")
+    stl.add_argument("--json", action="store_true")
+    stl.set_defaults(fn=cmd_staling)
 
     r = sub.add_parser("ready", help="unblocked issues filtered by premise "
                        "validity (ADR-001); source: --stdin, TRUTH_TRACKER_CMD, "

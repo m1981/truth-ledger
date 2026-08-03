@@ -729,6 +729,131 @@ def retraction_cause_report(events):
             "successors_named": named,
             "successors_missing": missing}
 
+# --- ADR-050: the staling breakdown --------------------------------------
+# Derived from the ONE home of the reaffirm basis string (evidence.py), so
+# the marker this report keys on cannot drift from the one `reaffirm`
+# writes -- the ADR-018/021 hand-copy lesson applied to a literal.
+REAFFIRM_BASIS_PREFIX = REAFFIRM_BASIS.split(":", 1)[0] + ":"
+
+def watched_path_kind(path):
+    """ADR-050: the structural KIND of a watched path -- its lowercased
+    file suffix, or `<none>` for a suffix-less basename (`Makefile`,
+    `scripts/truth`, `.gitignore`: a LEADING dot names a dotfile, it is
+    not a suffix, hence the `base[1:]` scan). Deliberately structural:
+    the template cannot know which directories a consumer calls
+    "specification" and which "implementation", and a shipped guess
+    would be wrong in most repos. The suffix is the language-agnostic
+    proxy the Estler reading needs (prose vs code) and it is derivable
+    from the record alone. Pure."""
+    base = path.rsplit("/", 1)[-1]
+    if "." in base[1:]:
+        return "." + base.rsplit(".", 1)[-1].lower()
+    return "<none>"
+
+def _staling_bucket(payload):
+    """ADR-050: which of the three arms a staling's resolving verdict
+    lands in. `agree` says the fact had NOT changed -- the staling was a
+    false alarm -- and splits by WHO paid for that answer: a machine
+    (the `reaffirm:` basis, or a `reaffirm_cleared` record; ADR-030's
+    mechanical half) or a human re-reading the evidence. Every other
+    verdict -- diverge, cannot_verify, retracted -- says the fact moved.
+    Pure."""
+    if payload.get("verdict") != "agree":
+        return "true_stale"
+    if (payload.get("basis") or "").startswith(REAFFIRM_BASIS_PREFIX) \
+            or payload.get("reaffirm_cleared") is not None:
+        return "mechanical_agree"
+    return "human_agree"
+
+def staling_report(events):
+    """ADR-050: what a path-touched-means-stale rule actually cost --
+    the false/true split of every resolved staling, and which KIND of
+    watched path triggered them. Pure: reads records, no clock, no fold,
+    no I/O (retraction_cause_report's shape).
+
+    One staling is one EPISODE, not one invalidation record: a claim
+    already stale that is invalidated again did not stale twice, and
+    counting the repeat would inflate the denominator with re-scans of
+    an unanswered question. Those repeats are reported separately as
+    `restaled`. An episode opens at the first invalidation and closes at
+    the NEXT verdict on that claim; episodes still open when the stream
+    ends are `unresolved` and are counted in NEITHER numerator (their
+    answer is not in yet -- assigning them would be inventing it).
+
+    ORDER: the events are read in the ORDER GIVEN and never re-sorted
+    here -- the shell owns the order, as it owns every other fact this
+    core is handed (ADR-043). The shipped caller (`truth staling`) sorts
+    by fold_key first, because a staling IS a status transition and
+    ADR-016's (ts, id, canon) order is what DEFINES status; walking the
+    raw file instead measures append order, which on a union-merged
+    ledger interleaves branch blocks whose wall-clock order differs.
+    That is not hypothetical: the pilot's first staling measurement was
+    self-diverged for exactly this (kuchnie tr-0e4c30d7, superseding
+    tr-13d16cc0 with tr-e1225a78) after the two orders disagreed on
+    ~3.5% of its stalings. `truth staling --append-order` keeps the
+    file-order walk reachable so those pre-ADR-050 numbers stay
+    reproducible; nothing else should use it. fold() remains the sole
+    authority on status.
+
+    Returns a dict:
+      * invalidations / restaled / stalings -- raw records, repeats
+        inside an open episode, and episodes (resolved + unresolved);
+      * mechanical_agree / human_agree / true_stale -- the three arms;
+      * false_stale -- mechanical + human, the alarm that cost work and
+        found nothing;
+      * resolved / unresolved -- the denominator and the remainder;
+      * by_path_kind -- stalings per watched_path_kind of the OPENING
+        invalidation's `touched` list, descending. An episode touching
+        two kinds counts under both, so the column sums to >= stalings;
+      * pathless -- episodes whose opening invalidation named no touched
+        path at all (TTL expiry, unreachable anchor), which is why the
+        by_path_kind column can also sum to LESS than stalings.
+    """
+    pending, kinds = {}, {}
+    counts = {"mechanical_agree": 0, "human_agree": 0, "true_stale": 0}
+    invalidations = restaled = pathless = 0
+    for _, ev in events:
+        kind = ev.get("kind")
+        if kind not in ("invalidation", "verdict"):
+            continue
+        p = ev.get("payload") or {}
+        cid = p.get("claim")
+        if not isinstance(cid, str):
+            continue  # a malformed record is not a staling either way
+        if kind == "invalidation":
+            invalidations += 1
+            if cid in pending:
+                restaled += 1
+                continue
+            pending[cid] = True
+            ks = {watched_path_kind(t) for t in (p.get("touched") or [])
+                  if isinstance(t, str)}
+            if not ks:
+                pathless += 1
+            for k in ks:
+                kinds[k] = kinds.get(k, 0) + 1
+        elif cid in pending:
+            # the NEXT verdict on a stale claim answers the staling; a
+            # verdict on a claim with no open episode answers nothing
+            # and must not be counted (the negative controls, ST4/ST5).
+            del pending[cid]
+            counts[_staling_bucket(p)] += 1
+    resolved = sum(counts.values())
+    return {"invalidations": invalidations,
+            "restaled": restaled,
+            "stalings": resolved + len(pending),
+            "resolved": resolved,
+            "unresolved": len(pending),
+            "mechanical_agree": counts["mechanical_agree"],
+            "human_agree": counts["human_agree"],
+            "true_stale": counts["true_stale"],
+            "false_stale": (counts["mechanical_agree"]
+                            + counts["human_agree"]),
+            "pathless": pathless,
+            "by_path_kind": [{"kind": k, "stalings": n} for k, n in
+                             sorted(kinds.items(),
+                                    key=lambda kv: (-kv[1], kv[0]))]}
+
 def vocab_report():
     """P2 contract layer: the machine vocabulary -- every named set a
     satellite or instrument would otherwise hand-copy, exported once.

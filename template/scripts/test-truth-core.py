@@ -3240,6 +3240,216 @@ class TestRetractionCauseValidateMirror(unittest.TestCase):
                                kind="issue_event")
             self.assertTrue(any("ADR-049" in e for e in errs), (k, errs))
 
+class TestStalingReport(unittest.TestCase):
+    """ADR-050: the staling breakdown -- the episode fold, the three
+    arms, the watched-path kind, and the things that must NOT count."""
+
+    C1 = "tr-00000001"
+    C2 = "tr-00000002"
+
+    def inval(self, cid=C1, touched=("f.py",), rid="tr-000000i1",
+              ts=TS, **extra):
+        p = {"claim": cid, "commit": "abc1234", "reason": "paths changed"}
+        if touched is not None:
+            p["touched"] = list(touched)
+        p.update(extra)
+        return rec("invalidation", p, rid=rid, ts=ts)
+
+    def verdict(self, verdict="agree", cid=C1, rid="tr-000000v1", ts=TS,
+                **extra):
+        p = {"claim": cid, "verdict": verdict, "basis": "read it"}
+        p.update(extra)
+        return rec("verdict", p, rid=rid, ts=ts)
+
+    def reaffirm(self, cid=C1, rid="tr-000000v1", ts=TS):
+        return self.verdict(cid=cid, rid=rid, ts=ts, basis=tm.REAFFIRM_BASIS)
+
+    # -- the marker cannot drift from the writer ---------------------
+    def test_prefix_is_derived_from_the_one_reaffirm_basis(self):
+        # The report keys on a PREFIX of the exact string `reaffirm`
+        # writes; deriving it (not copying it) is what makes a reworded
+        # basis impossible to miss (ADR-018/021 hand-copy lesson).
+        self.assertTrue(tm.REAFFIRM_BASIS.startswith(tm.REAFFIRM_BASIS_PREFIX))
+        self.assertEqual(tm.REAFFIRM_BASIS_PREFIX, "reaffirm:")
+
+    # -- the three arms ----------------------------------------------
+    def test_three_arms_split_by_who_paid_for_the_answer(self):
+        r = tm.staling_report(events(
+            self.inval(rid="tr-000000i1"),
+            self.reaffirm(rid="tr-000000v1"),               # mechanical
+            self.inval(rid="tr-000000i2"),
+            self.verdict(rid="tr-000000v2"),                # human
+            self.inval(rid="tr-000000i3"),
+            self.verdict("diverge", rid="tr-000000v3"),     # true
+        ))
+        self.assertEqual(r["mechanical_agree"], 1)
+        self.assertEqual(r["human_agree"], 1)
+        self.assertEqual(r["true_stale"], 1)
+        self.assertEqual(r["false_stale"], 2)
+        self.assertEqual(r["resolved"], 3)
+        self.assertEqual(r["unresolved"], 0)
+        self.assertEqual(r["stalings"], 3)
+
+    def test_reaffirm_cleared_is_mechanical_whatever_the_basis_says(self):
+        # ADR-030 F2: the auto-cleared record is the second, independent
+        # mark of the mechanical arm -- a hand-edited basis must not be
+        # able to launder an auto-agree into the human column.
+        r = tm.staling_report(events(
+            self.inval(),
+            self.verdict(reaffirm_cleared={"prior_anchor": "abc1234",
+                                           "touched": ["f.py"]})))
+        self.assertEqual(r["mechanical_agree"], 1)
+        self.assertEqual(r["human_agree"], 0)
+
+    def test_every_non_agree_verdict_says_the_fact_moved(self):
+        for v in ("diverge", "cannot_verify", "retracted"):
+            r = tm.staling_report(events(self.inval(), self.verdict(v)))
+            self.assertEqual(r["true_stale"], 1, v)
+            self.assertEqual(r["false_stale"], 0, v)
+
+    # -- what must NOT count (negative controls) ---------------------
+    def test_a_verdict_on_a_claim_that_never_staled_counts_nothing(self):
+        r = tm.staling_report(events(
+            rec("claim", claim_p(), rid=self.C1),
+            self.verdict(rid="tr-000000v1"),
+            self.reaffirm(rid="tr-000000v2")))
+        self.assertEqual(r["resolved"], 0)
+        self.assertEqual(r["stalings"], 0)
+        self.assertEqual((r["mechanical_agree"], r["human_agree"],
+                          r["true_stale"]), (0, 0, 0))
+
+    def test_a_verdict_on_a_DIFFERENT_claim_does_not_close_the_episode(self):
+        # The pending set is keyed by claim: interleaved traffic from
+        # another claim must not be able to answer this one's staling.
+        r = tm.staling_report(events(
+            self.inval(cid=self.C1, rid="tr-000000i1"),
+            self.reaffirm(cid=self.C2, rid="tr-000000v1"),
+            self.verdict("diverge", cid=self.C1, rid="tr-000000v2")))
+        self.assertEqual(r["true_stale"], 1)
+        self.assertEqual(r["mechanical_agree"], 0)
+        self.assertEqual(r["unresolved"], 0)
+
+    def test_a_verdict_BEFORE_the_invalidation_answers_nothing(self):
+        r = tm.staling_report(events(
+            self.verdict(rid="tr-000000v1"),
+            self.inval(rid="tr-000000i1")))
+        self.assertEqual(r["resolved"], 0)
+        self.assertEqual(r["unresolved"], 1)
+        self.assertEqual(r["stalings"], 1)
+
+    def test_an_open_episode_is_counted_in_neither_numerator(self):
+        r = tm.staling_report(events(self.inval()))
+        self.assertEqual(r["unresolved"], 1)
+        self.assertEqual(r["resolved"], 0)
+        self.assertEqual(r["false_stale"] + r["true_stale"], 0)
+
+    # -- episodes vs records ------------------------------------------
+    def test_a_repeat_invalidation_does_not_stale_the_claim_twice(self):
+        r = tm.staling_report(events(
+            self.inval(rid="tr-000000i1"),
+            self.inval(rid="tr-000000i2", touched=("g.md",)),
+            self.reaffirm()))
+        self.assertEqual(r["invalidations"], 2)
+        self.assertEqual(r["restaled"], 1)
+        self.assertEqual(r["stalings"], 1)
+        self.assertEqual(r["mechanical_agree"], 1)
+        # the repeat's paths are NOT attributed: the episode's trigger is
+        # the invalidation that opened it
+        self.assertEqual(r["by_path_kind"], [{"kind": ".py", "stalings": 1}])
+
+    def test_stalings_equals_resolved_plus_unresolved_always(self):
+        r = tm.staling_report(events(
+            self.inval(cid=self.C1, rid="tr-000000i1"),
+            self.reaffirm(cid=self.C1),
+            self.inval(cid=self.C1, rid="tr-000000i2"),
+            self.inval(cid=self.C2, rid="tr-000000i3")))
+        self.assertEqual(r["stalings"], r["resolved"] + r["unresolved"])
+        self.assertEqual(r["invalidations"], 3)
+        self.assertEqual(r["restaled"], 0)
+
+    # -- the watched-path kind ----------------------------------------
+    def test_path_kind_is_the_suffix_and_a_dotfile_has_none(self):
+        self.assertEqual(tm.watched_path_kind("a/b/c.PY"), ".py")
+        self.assertEqual(tm.watched_path_kind("docs/x.tar.gz"), ".gz")
+        self.assertEqual(tm.watched_path_kind("Makefile"), "<none>")
+        self.assertEqual(tm.watched_path_kind("scripts/truth"), "<none>")
+        self.assertEqual(tm.watched_path_kind(".gitignore"), "<none>")
+
+    def test_a_multi_kind_staling_counts_under_each_kind_once(self):
+        r = tm.staling_report(events(
+            self.inval(touched=("a.py", "b.py", "c.md")),
+            self.reaffirm()))
+        self.assertEqual(r["stalings"], 1)
+        self.assertEqual(r["by_path_kind"],
+                         [{"kind": ".md", "stalings": 1},
+                          {"kind": ".py", "stalings": 1}])
+
+    def test_kinds_rank_by_count_then_name(self):
+        r = tm.staling_report(events(
+            self.inval(cid=self.C1, rid="tr-000000i1", touched=("a.md",)),
+            self.inval(cid=self.C2, rid="tr-000000i2",
+                       touched=("b.md", "c.py")),
+        ))
+        self.assertEqual([k["kind"] for k in r["by_path_kind"]],
+                         [".md", ".py"])
+        self.assertEqual(r["by_path_kind"][0]["stalings"], 2)
+
+    def test_a_pathless_staling_is_visible_not_dropped(self):
+        # TTL expiry and unreachable-anchor invalidations name no path;
+        # they must stay in the denominator (F1 fail-loud) instead of
+        # silently vanishing from a report about paths.
+        r = tm.staling_report(events(
+            self.inval(touched=None, reason="ttl expired",
+                       reason_code="ttl"),
+            self.verdict("retracted")))
+        self.assertEqual(r["stalings"], 1)
+        self.assertEqual(r["pathless"], 1)
+        self.assertEqual(r["by_path_kind"], [])
+        self.assertEqual(r["true_stale"], 1)
+
+    # -- shape and purity ---------------------------------------------
+    def test_empty_ledger_is_shaped_and_all_zero(self):
+        r = tm.staling_report(events(rec("claim", claim_p())))
+        for k in ("invalidations", "restaled", "stalings", "resolved",
+                  "unresolved", "mechanical_agree", "human_agree",
+                  "true_stale", "false_stale", "pathless"):
+            self.assertEqual(r[k], 0, k)
+        self.assertEqual(r["by_path_kind"], [])
+
+    def test_fold_order_and_append_order_disagree_on_a_merged_ledger(self):
+        # ADR-050 decision 4, the case that cost the pilot a self-diverge:
+        # a verdict APPENDED before an invalidation that predates it (the
+        # union-merge shape). Walking the file counts two episodes and a
+        # mechanical clear; walking fold_key -- the order that DEFINES
+        # status -- counts one episode, one re-stale, and no mechanical.
+        # The shipped verb sorts; this test pins that the choice matters.
+        late = "2026-07-01T00:00:12.000000+00:00"
+        early = "2026-07-01T00:00:11.000000+00:00"
+        evs = events(
+            self.inval(rid="tr-0000000a", ts="2026-07-01T00:00:10.000000+00:00"),
+            self.verdict("diverge", rid="tr-0000000b", ts=late),
+            self.inval(rid="tr-0000000c", ts=early),
+            self.reaffirm(rid="tr-0000000d",
+                          ts="2026-07-01T00:00:13.000000+00:00"))
+        appended = tm.staling_report(evs)
+        folded = tm.staling_report(sorted(evs, key=tm.fold_key))
+        self.assertEqual((appended["stalings"], appended["restaled"],
+                          appended["mechanical_agree"]), (2, 0, 1))
+        self.assertEqual((folded["stalings"], folded["restaled"],
+                          folded["mechanical_agree"]), (1, 1, 0))
+        self.assertNotEqual(appended, folded)
+
+    def test_report_is_pure_and_reads_the_stream_in_the_order_given(self):
+        # Same input, same answer, no clock and no fold in the signature
+        # (ADR-050: order-sensitive BY DESIGN -- reversing the stream is
+        # a different history, and the report must say so rather than
+        # silently normalizing it away).
+        evs = events(self.inval(), self.reaffirm())
+        self.assertEqual(tm.staling_report(evs), tm.staling_report(evs))
+        rev = tm.staling_report(list(reversed(evs)))
+        self.assertEqual(rev["resolved"], 0)
+        self.assertEqual(rev["unresolved"], 1)
+
 class TestRecipeLints(unittest.TestCase):
     """ADR-037: pure lint decisions on the screen's own token stream."""
 
