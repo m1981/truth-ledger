@@ -59,6 +59,67 @@ def supersede_error(issue, supersedes_id, claim_id, claims,
         return RETRACTED_NEEDS_ACK
     return None
 
+RETRACTION_CAUSE_TREE = (
+    "  --cause restated  the sentence is STILL TRUE; a successor states "
+    "it better\n"
+    "                    (requires --successor <tr-id>)\n"
+    "  --cause expired   it WAS true and the world moved past it\n"
+    "  --cause wrong     it was NEVER true, or its evidence never "
+    "demonstrated it")
+
+def retraction_cause_error(cause, successor, claim_id, claims):
+    """ADR-049: a retraction records WHY, and the why carries an
+    obligation. Two yes/no questions about the retracted SENTENCE fix
+    the value (still true? ever true?), so the vocabulary is a truth
+    table, not a survey -- see RETRACTION_CAUSES.
+
+    The one blocking rule -- and the reason the field is admitted under
+    ADR-046 at all -- is that `restated` MUST name a successor: a claim
+    that still holds is a live belief, and killing it with nothing to
+    carry the fact forward is the deletion this gate exists to refuse
+    (it is exactly the operation the user-proposed `moved` cause would
+    have blessed). The other two causes say the fact itself is gone, so
+    a successor is optional there -- 10 of the meta-ledger's causal
+    retractions are `wrong` WITH a corrected successor, and refusing
+    that pattern would be a false refusal.
+
+    No override flag exists, deliberately: unlike the ADR-036 sweep,
+    which can be wrong about the world, this gate asks a question only
+    the retracting human can answer and which is always answerable. An
+    `--cause-ok` would be the invisible opt-out ADR-032 declined for
+    `--no-ttl`. Rule ladder is filing order. Returns a refusal string
+    or None. Pure -- `claims` arrives as data."""
+    if not cause:
+        return ("truth: a retraction must record WHY (ADR-049). Answer "
+                "two questions about the sentence you are killing:\n"
+                f"{RETRACTION_CAUSE_TREE}\n"
+                "  Nothing was filed.")
+    if cause not in RETRACTION_CAUSES:
+        return (f"truth: unknown retraction cause {cause!r} -- one of "
+                f"{'/'.join(RETRACTION_CAUSES)} (ADR-049)")
+    if successor is not None:
+        if not ID_RE.match(successor):
+            return "truth: --successor must name a tr- claim id (ADR-049)"
+        if successor == claim_id:
+            return ("truth: a claim cannot be its own successor "
+                    "(ADR-049)")
+        if successor not in claims:
+            return (f"truth: successor {successor} is not in the ledger "
+                    "-- file the replacement fact FIRST, then retract "
+                    "(ADR-049)")
+        if claims[successor]["status"] == "retracted":
+            return (f"truth: successor {successor} is itself retracted "
+                    "-- a tombstone cannot carry a fact forward "
+                    "(ADR-049)")
+    elif cause == "restated":
+        return ("truth: --cause restated says the fact still holds, so "
+                "something must still state it -- name the replacement "
+                "with --successor <tr-id>. If no claim carries the fact "
+                "forward, either file one first, or the fact did NOT "
+                "survive and the cause is `expired`/`wrong` (ADR-049). "
+                "Nothing was filed.")
+    return None
+
 def contradicts_intake_error(a, b, claims, events):
     """Issue #4 intake gates, filing order: self-edge, unknown id (a
     then b), retracted endpoint, duplicate edge either direction. The

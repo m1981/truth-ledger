@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "truth-ledger-record.v0.16",
+  "$id": "truth-ledger-record.v0.17",
   "title": "Truth ledger record",
   "description": "One line of .truth/claims.jsonl. The ledger is append-only and event-sourced: status is never stored, only derived by folding records in (ts, id) order. v0.5 adds the ADR-002 work kernel kinds: `issue` (wk- envelope id) and `issue_event`. This schema is the durable contract; scripts/truth validate implements a stdlib mirror of it. The $id carries a two-component SCHEMA-CONTRACT version, independent of the product version and bumped only when the record SHAPE changes (a new kind, field, or constraint) -- ADR-026; a shape-fingerprint test forces the bump. The schema is a NECESSARY-not-sufficient gate: it fixes structure, but ADR-009's evidence-screen SEMANTICS (that a screened=true was actually screened, that a command is safe to re-execute) are enforced OPERATIONALLY at filing and recheck, not here -- so the schema is deliberately silent on them (ADR-027). ENVELOPE ADMISSION RULE (ADR-046): a payload field is admitted only if the fold or a blocking gate reads it; report-only data lives in Tier C instruments, never in records. Grandfathered under the rule: the override bases (scope_basis, generated_ok_basis, evidence_exit_basis, orphan_basis, overridden_duplicates) and ttl_default all pass -- gates read or stamp them; `concerns` and `blast_forecast` FAIL it and are legacy-admitted only: kept for records filed before ADR-046 (append-only history is never rewritten), CLOSED to new records.",
   "type": "object",
@@ -292,6 +292,19 @@
                 "type": "string",
                 "minLength": 1,
                 "description": "ADR-036: the human's stated reason a retraction may orphan scope-covered citations of the id; the validate mirror additionally refuses it on any non-retracted verdict (cross-field rule this schema deliberately does not encode, ADR-027)"
+              },
+              "cause": {
+                "enum": [
+                  "restated",
+                  "expired",
+                  "wrong"
+                ],
+                "description": "ADR-049: why a retraction killed the belief -- the complete truth table of two questions about the sentence (still true? ever true?). ABSENT IS VALID FOREVER: pre-ADR-049 retractions carry no cause and append-only history is never rewritten; the field is REQUIRED AT INTAKE instead, the safe direction (validate never refuses what a normal verb produced). The cross-field rules -- cause only on a retraction, and 'restated' requiring a successor -- are mirror-only (ADR-027)"
+              },
+              "successor": {
+                "type": "string",
+                "pattern": "^tr-[0-9a-f]{8}$",
+                "description": "ADR-049: the claim that carries the fact forward past this retraction. Required by intake and by the validate mirror when cause is 'restated'; optional otherwise. CLAIM-level and distinct from ADR-013's per-issue premise `supersedes`"
               }
             }
           }

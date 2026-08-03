@@ -48,6 +48,23 @@ BLAST_MIN_OBSERVATIONS = 20
 EVIDENCE_CLASSES = ("VERIFIED", "INFERRED", "UNVERIFIED")
 TIERS = ("P0", "P1", "P2")
 VERDICTS = ("agree", "diverge", "cannot_verify", "retracted")
+# ADR-049: the retraction cause. NOT a list of observed flavours -- the
+# complete truth table of two yes/no questions about the retracted
+# SENTENCE ("is it still true?", "was it ever true?"): 2x2 minus the
+# impossible cell (still true but never true) = exactly three, so the
+# set is exhaustive and mutually exclusive by construction, not by
+# survey. Order is the decision order the --help tree prints.
+#   restated -- still true; a successor states it better (SUCCESSOR
+#               REQUIRED: the gate that earns this field its ADR-046
+#               envelope admission)
+#   expired  -- was true, the world moved past it (the user-proposed
+#               `fixed` and `version` both land here: they differ only
+#               in WHO moved the world, which nothing reads)
+#   wrong    -- never true, or its evidence never demonstrated it
+# `moved` is deliberately absent -- see ADR-049's non-goals. Absent
+# entirely on pre-ADR-049 records: readers render that `unrecorded`
+# (retraction_cause_report), never silently drop it.
+RETRACTION_CAUSES = ("restated", "expired", "wrong")
 KINDS = ("claim", "verdict", "invalidation", "premise", "issue",
          "issue_event", "contradicts")
 STATUSES = ("unverified", "live", "stale", "diverged", "cannot_verify",

@@ -607,6 +607,40 @@ def validate_events(events):
             if "subtype" in p and p["subtype"] != "mechanical":
                 errors.append(f"line {n}: verdict subtype must be "
                               "'mechanical' when present (ADR-012)")
+            # ADR-049: the retraction cause. ABSENT IS TOLERATED, FOREVER
+            # -- pre-ADR-049 retractions carry no cause, the ledger is
+            # append-only, and `validate` runs INSIDE the commit gate, so
+            # a mirror that refused history would brick every consumer
+            # repo that already holds one. Required at INTAKE, optional
+            # here: intake stricter than validate is the SAFE direction
+            # (v0.9.32 fixed the unsafe one -- validate stricter than
+            # intake let a normal verb wedge the gate). The enum and the
+            # successor shape are shared with the schema and ride the
+            # FS-2 corpus; the cross-field rules below are mirror-only
+            # (ADR-027, the orphan_basis precedent) and are canary-held.
+            if "cause" in p:
+                if p["cause"] not in RETRACTION_CAUSES:
+                    errors.append(
+                        f"line {n}: verdict cause must be one of "
+                        f"{'/'.join(RETRACTION_CAUSES)} when present "
+                        "(ADR-049)")
+                elif p.get("verdict") != "retracted":
+                    errors.append(f"line {n}: cause on a "
+                                  f"{p.get('verdict')!r} verdict -- only a "
+                                  "retraction kills a belief (ADR-049)")
+                elif p["cause"] == "restated" and not p.get("successor"):
+                    errors.append(f"line {n}: cause 'restated' without a "
+                                  "successor -- the fact is said to still "
+                                  "hold, so a claim must carry it forward "
+                                  "(ADR-049)")
+            if "successor" in p:
+                if not ID_RE.match(str(p["successor"])):
+                    errors.append(f"line {n}: verdict successor ref not "
+                                  "tr-hex8 (ADR-049)")
+                elif p.get("verdict") != "retracted":
+                    errors.append(f"line {n}: successor on a "
+                                  f"{p.get('verdict')!r} verdict -- only a "
+                                  "retraction hands a fact on (ADR-049)")
             # ADR-027: schema requires verdict.anchor_commit be a string
             # >=7; the mirror had no length check (was weaker than schema).
             if "anchor_commit" in p and (not isinstance(p["anchor_commit"], str)
@@ -678,6 +712,16 @@ def validate_events(events):
                                   f"{p.get('event')!r} issue_event -- only "
                                   "a cancellation orphans citations "
                                   "(ADR-036)")
+            # ADR-049 is scoped to CLAIM retraction: a cancelled issue is
+            # work abandoned, not a belief killed, and "was the sentence
+            # ever true" has no referent there. Refused in the mirror so
+            # the field cannot creep onto the other tombstone verb
+            # without an ADR (mirror-only, ADR-027).
+            for k in ("cause", "successor"):
+                if k in p:
+                    errors.append(f"line {n}: {k} on an issue_event -- "
+                                  "ADR-049 records why a CLAIM died; a "
+                                  "cancelled issue says why in its basis")
             if "accept" in p:
                 acc = p["accept"]
                 if not isinstance(acc, dict) \

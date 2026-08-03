@@ -576,7 +576,7 @@ fi
 say "FAULT H (G12): a verdict after retraction must not resurrect the claim"
 CID_H=$($T claim "this claim is simply wrong" --tier P2)
 # ADR-011: headless human retraction acknowledges the exact id
-TRUTH_HUMAN=1 TRUTH_HUMAN_ACK="$CID_H" $T verdict "$CID_H" retracted --basis "human: factually wrong, tombstoned" >/dev/null
+TRUTH_HUMAN=1 TRUTH_HUMAN_ACK="$CID_H" $T verdict "$CID_H" retracted --cause wrong --basis "human: factually wrong, tombstoned" >/dev/null
 if $T verdict "$CID_H" agree --basis "resurrection attempt" >/dev/null 2>&1; then
   miss "tool accepted a verdict on a retracted claim"
 else
@@ -976,25 +976,25 @@ fi
 # ---- FAULT M (v0.4) + H1-H3 (ADR-011): tombstone confirmation ladder ------
 say "FAULT M (G12 enforced): retraction without TRUTH_HUMAN=1 must be refused"
 CID_M=$($T claim "a claim a verifier wants dead" --tier P2)
-if $T verdict "$CID_M" retracted --basis "verifier overreach" >/dev/null 2>&1; then
+if $T verdict "$CID_M" retracted --cause wrong --basis "verifier overreach" >/dev/null 2>&1; then
   miss "non-human retraction accepted"
 else
   ok "retraction refused without TRUTH_HUMAN=1"
 fi
 say "FAULT H1 (ADR-011): TRUTH_HUMAN=1 alone, headless, must be refused"
-if TRUTH_HUMAN=1 $T verdict "$CID_M" retracted --basis "agent set the env var" >/dev/null 2>&1; then
+if TRUTH_HUMAN=1 $T verdict "$CID_M" retracted --cause wrong --basis "agent set the env var" >/dev/null 2>&1; then
   miss "env-var-only retraction accepted with no TTY and no acknowledgment"
 else
   ok "headless TRUTH_HUMAN=1 without acknowledgment refused"
 fi
 say "FAULT H3 (ADR-011): an acknowledgment naming a different id must be refused"
-if TRUTH_HUMAN=1 TRUTH_HUMAN_ACK="tr-deadbeef" $T verdict "$CID_M" retracted --basis "stale ack" >/dev/null 2>&1; then
+if TRUTH_HUMAN=1 TRUTH_HUMAN_ACK="tr-deadbeef" $T verdict "$CID_M" retracted --cause wrong --basis "stale ack" >/dev/null 2>&1; then
   miss "retraction accepted under an acknowledgment naming another id"
 else
   ok "mismatched TRUTH_HUMAN_ACK refused (lingering exports cannot kill arbitrary claims)"
 fi
 say "FAULT H2 (ADR-011): id-specific acknowledgment must be accepted"
-if TRUTH_HUMAN=1 TRUTH_HUMAN_ACK="$CID_M" $T verdict "$CID_M" retracted --basis "human confirms" >/dev/null 2>&1; then
+if TRUTH_HUMAN=1 TRUTH_HUMAN_ACK="$CID_M" $T verdict "$CID_M" retracted --cause wrong --basis "human confirms" >/dev/null 2>&1; then
   ok "human-confirmed retraction accepted (exact-id acknowledgment)"
 else
   miss "human-confirmed retraction refused"
@@ -1556,7 +1556,7 @@ say "FAULT R11 (ADR-017, C3): superseding a RETRACTED premise needs the human ga
 CID_R11=$($T claim "r11 database is safe to drop" --class UNVERIFIED --tier P0)
 WK_R11=$($T issue "r11 premised on a to-be-retracted fact" --premise "$CID_R11")
 TRUTH_HUMAN=1 TRUTH_HUMAN_ACK="$CID_R11" $T verdict "$CID_R11" retracted \
-  --basis "canary: human veto" >/dev/null 2>&1
+  --cause wrong --basis "canary: human veto" >/dev/null 2>&1
 CID_R11B=$($T claim "r11 corrected statement" --class UNVERIFIED --tier P0)
 # (a) an agent (no TRUTH_HUMAN) must NOT redirect a retracted premise
 if $T premise "$WK_R11" "$CID_R11B" --supersedes "$CID_R11" >/dev/null 2>&1; then
@@ -1731,7 +1731,7 @@ else
   ok "active claim watching lone.txt removes it from dark"
 fi
 TRUTH_HUMAN=1 TRUTH_HUMAN_ACK="$CID_W7" $T verdict "$CID_W7" retracted \
-  --basis "canary: fixture retired" >/dev/null 2>&1
+  --cause expired --basis "canary: fixture retired" >/dev/null 2>&1
 if $T impact --inverse 2>/dev/null | grep -qx "lone.txt"; then
   ok "retracted claim's watch died: lone.txt dark again"
 else
@@ -1913,7 +1913,7 @@ fi
 
 say "FAULT C2 (issue #4): retracting one side resolves the dispute -- the other returns live"
 TRUTH_HUMAN=1 TRUTH_HUMAN_ACK="$CID_C2" $T verdict "$CID_C2" retracted \
-  --basis "canary: beta loses" >/dev/null 2>&1
+  --cause wrong --basis "canary: beta loses" >/dev/null 2>&1
 if $T list --live | grep -q "$CID_C1" && ! $T list --disputed | grep -q "$CID_C1"; then
   ok "surviving side live again after the retraction"
 else
@@ -2323,7 +2323,7 @@ TG_ID=$($T claim "f.txt holds the data marker" --class VERIFIED \
 echo "grounded on $TG_ID" > docs/specs/spec-a.md
 git add -A && git commit -qm "tg: spec" --no-verify -q
 TG1ERR=$(TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$TG_ID $T verdict "$TG_ID" retracted \
-         --basis kill 2>&1); TG1RC=$?
+         --cause wrong --basis kill 2>&1); TG1RC=$?
 if [ "$TG1RC" -eq 6 ] && printf '%s\n' "$TG1ERR" | grep -q "docs/specs/spec-a.md" \
    && ! printf '%s\n' "$TG1ERR" | grep -q "orphan-ok"; then
   ok "TG1: cited retraction refused (exit 6), file listed, bypass unnamed"
@@ -2336,7 +2336,7 @@ TG_ID2=$($T claim "f.txt still carries its committed data line" \
 sed -i.bak "s/$TG_ID/$TG_ID2/" docs/specs/spec-a.md && rm -f docs/specs/spec-a.md.bak
 git add -A && git commit -qm "tg: swap" --no-verify -q
 if TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$TG_ID $T verdict "$TG_ID" retracted \
-     --basis kill >/dev/null 2>&1; then
+     --cause wrong --basis kill >/dev/null 2>&1; then
   ok "TG2: after the citation swaps to a successor, the retraction proceeds"
 else
   miss "TG2: swap did not unblock the retraction"
@@ -2345,7 +2345,7 @@ echo "see also $TG_ID2" > docs/notes/aside.md
 git add -A && git commit -qm "tg: note" --no-verify -q
 printf 'docs/specs/**\n' > .truth/citation-scope
 if TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$TG_ID2 $T verdict "$TG_ID2" retracted \
-     --basis kill --orphan-ok "spec cites it as history by policy" \
+     --cause wrong --basis kill --orphan-ok "spec cites it as history by policy" \
      >/dev/null 2>&1 \
    && tail -1 .truth/claims.jsonl | grep -q orphan_basis; then
   ok "TG3: --orphan-ok proceeds past an in-scope citation and stores the basis"
@@ -2358,7 +2358,7 @@ TG_ID3=$($T claim "f.txt keeps holding that same data line today" \
 echo "outside-scope mention of $TG_ID3" >> docs/notes/aside.md
 git add -A && git commit -qm "tg: outside" --no-verify -q
 if TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$TG_ID3 $T verdict "$TG_ID3" retracted \
-     --basis kill >/dev/null 2>&1; then
+     --cause wrong --basis kill >/dev/null 2>&1; then
   ok "TG4: a citation OUTSIDE the scope file's globs does not block"
 else
   miss "TG4: out-of-scope citation blocked a retraction"
@@ -2370,7 +2370,7 @@ mkdir -p shim
 printf '#!/usr/bin/env bash\nif [ "$1" = grep ]; then exit 128; fi\nexec /usr/bin/git "$@"\n' > shim/git
 chmod +x shim/git
 TG5ERR=$(TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$TG_ID4 PATH="$PWD/shim:$PATH" \
-         $T verdict "$TG_ID4" retracted --basis kill 2>&1); TG5RC=$?
+         $T verdict "$TG_ID4" retracted --cause wrong --basis kill 2>&1); TG5RC=$?
 if [ "$TG5RC" -ne 0 ] && printf '%s\n' "$TG5ERR" | grep -q "cannot verify citations"; then
   ok "TG5: git-grep unavailable refuses loudly (fails CLOSED)"
 else
@@ -2387,7 +2387,7 @@ else
 fi
 TG7RC=0
 ( cd docs && TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$TG_ID4 \
-  python3 ../scripts/truth verdict "$TG_ID4" retracted --basis kill \
+  python3 ../scripts/truth verdict "$TG_ID4" retracted --cause wrong --basis kill \
   >/dev/null 2>&1 ) || TG7RC=$?
 if [ "$TG7RC" -eq 6 ]; then
   ok "TG7: the sweep still refuses from a subdirectory (SI-2 cwd anchor)"
@@ -2396,7 +2396,7 @@ else
 fi
 printf 'nosuch-dir/**\n' > .truth/citation-scope
 TG8ERR=$(TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$TG_ID4 $T verdict "$TG_ID4" retracted \
-         --basis kill 2>&1 >/dev/null); TG8RC=$?
+         --cause wrong --basis kill 2>&1 >/dev/null); TG8RC=$?
 if [ "$TG8RC" -eq 0 ] && printf '%s\n' "$TG8ERR" | grep -q "dead scope"; then
   ok "TG8: dead scope voices the loud notice and the sweep proceeds"
 else
@@ -2407,7 +2407,7 @@ TG_ID5=$($T claim "the ledger records its own id references in bases" \
          2>/dev/null)
 printf '.truth/**\n' > .truth/citation-scope
 if TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$TG_ID5 $T verdict "$TG_ID5" retracted \
-     --basis "superseded; predecessor $TG_ID5 recorded here" \
+     --cause wrong --basis "superseded; predecessor $TG_ID5 recorded here" \
      >/dev/null 2>&1; then
   ok "TG9: with the scope covering .truth/**, the ledger's own citation of the id still never blocks (structural exclusion)"
 else
@@ -2427,7 +2427,7 @@ printf 'cited by %s\n' "$TG_ID6" > "docs/specs/spéc-ü.md"
 git add -A && git commit -qm "tg: unicode spec" --no-verify -q
 TG11RC=0
 TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$TG_ID6 $T verdict "$TG_ID6" retracted \
-  --basis kill >/dev/null 2>&1 || TG11RC=$?
+  --cause wrong --basis kill >/dev/null 2>&1 || TG11RC=$?
 if [ "$TG11RC" -eq 6 ]; then
   ok "TG11: a NON-ASCII-named citing file still blocks (git grep -z, SI-2 -- quotepath cannot hide it)"
 else
@@ -2453,6 +2453,193 @@ else
 fi
 cd "$TG_PREV"
 rm -rf "$TG"
+
+# ---- FAULT RX (ADR-049, v0.9.34): the retraction cause ------------------
+# A retraction records WHY, and the why carries an obligation: `restated`
+# (the fact still holds) must name a successor, because deleting a live
+# belief with nothing carrying it forward is the operation this gate
+# exists to refuse. The check is PURE and runs BEFORE the ADR-011
+# ceremony and before the ADR-036 sweep, so a malformed invocation never
+# consumes a typed-id confirmation. No override flag exists.
+say "FAULT RX (ADR-049): a retraction must record why, and 'restated' must name a successor"
+RX="$(mktemp -d)"; TDIRS+=("$RX"); RX_PREV="$PWD"
+mkrepo "$RX"
+mkdir -p docs/specs
+echo "data" > f.txt
+# Declare the citation scope explicitly, anchored on a tracked file: the
+# ADR-036 sweep runs on every retraction here, and an UNDECLARED scope
+# voices its default-scope advisory (a live one voices the dead-scope
+# notice) on each. RX7 is a negative control asserting the good
+# retraction is advisory-SILENT, so the sandbox must not carry an
+# unrelated ADR-036 notice for it to trip over. `docs/specs/**` is the
+# built-in default, so RX9's cited spec stays inside the scope and the
+# ordering arm keeps its teeth.
+echo "rx scope anchor (cites no ledger id)" > docs/specs/anchor.md
+printf 'docs/specs/**\n' > .truth/citation-scope
+git add -A && git commit -qm "rx: init" --no-verify -q
+RX_ID=$($T claim "f.txt holds the rx data marker" --tier P2)
+RX_LINES_BEFORE=$(wc -l < .truth/claims.jsonl | tr -d ' ')
+
+RX1ERR=$(TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$RX_ID $T verdict "$RX_ID" retracted \
+         --basis "no reason given" 2>&1); RX1RC=$?
+if [ "$RX1RC" -ne 0 ] \
+   && printf '%s\n' "$RX1ERR" | grep -q "ADR-049" \
+   && printf '%s\n' "$RX1ERR" | grep -q -- "--cause restated" \
+   && printf '%s\n' "$RX1ERR" | grep -q -- "--cause expired" \
+   && printf '%s\n' "$RX1ERR" | grep -q -- "--cause wrong" \
+   && [ "$(wc -l < .truth/claims.jsonl | tr -d ' ')" -eq "$RX_LINES_BEFORE" ]; then
+  ok "RX1: a causeless retraction is refused, the two-question tree is printed, nothing appended"
+else
+  miss "RX1: causeless retraction not refused correctly (rc=$RX1RC)"
+fi
+
+# RX2: the ADR-011 surface rule -- this refusal must not teach the human
+# ceremony's bypass, and there is no ADR-049 bypass for it to teach
+# either (no --cause-ok exists anywhere in the CLI's surface).
+if ! printf '%s\n' "$RX1ERR" | grep -q "TRUTH_HUMAN" \
+   && ! $T verdict --help 2>&1 | grep -q -- "--cause-ok"; then
+  ok "RX2: the cause refusal names no env-var ritual, and no --cause-ok override exists to name"
+else
+  miss "RX2: the cause refusal leaked the human-gate bypass, or an override flag was added"
+fi
+
+# RX3: ORDER + human-gate integrity. The pure cause check runs FIRST, so
+# a well-formed --cause does NOT weaken the ceremony (each rung still
+# refuses), and a missing --cause is refused by ADR-049 -- not swallowed
+# by, and not swallowing, the ADR-011 ladder.
+RX3A=0; $T verdict "$RX_ID" retracted --cause wrong --basis b >/dev/null 2>&1 || RX3A=$?
+RX3B=0; TRUTH_HUMAN=1 $T verdict "$RX_ID" retracted --cause wrong --basis b \
+        >/dev/null 2>&1 || RX3B=$?
+RX3C=0; TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-deadbeef $T verdict "$RX_ID" retracted \
+        --cause wrong --basis b >/dev/null 2>&1 || RX3C=$?
+RX3D=$($T verdict "$RX_ID" retracted --basis b 2>&1); RX3DRC=$?
+if [ "$RX3A" -ne 0 ] && [ "$RX3B" -ne 0 ] && [ "$RX3C" -ne 0 ] \
+   && [ "$RX3DRC" -ne 0 ] && printf '%s\n' "$RX3D" | grep -q "ADR-049" \
+   && [ "$(wc -l < .truth/claims.jsonl | tr -d ' ')" -eq "$RX_LINES_BEFORE" ]; then
+  ok "RX3: every ADR-011 rung still refuses with a valid --cause, and a missing cause refuses BEFORE the ceremony (order held, nothing appended)"
+else
+  miss "RX3: the human gate weakened or the gate order inverted (rc=$RX3A/$RX3B/$RX3C/$RX3DRC)"
+fi
+
+# RX4: `restated` says the fact still holds -- with nothing to carry it
+# forward the retraction is refused. This is the user-proposed `moved`
+# case, made mechanical: fix the recipe on a successor, do not tombstone
+# a live belief.
+RX4ERR=$(TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$RX_ID $T verdict "$RX_ID" retracted \
+         --cause restated --basis "recipe drifted; fact holds" 2>&1); RX4RC=$?
+if [ "$RX4RC" -ne 0 ] && printf '%s\n' "$RX4ERR" | grep -q -- "--successor" \
+   && [ "$(wc -l < .truth/claims.jsonl | tr -d ' ')" -eq "$RX_LINES_BEFORE" ]; then
+  ok "RX4: 'restated' with no successor is refused (a live fact may not be deleted), nothing appended"
+else
+  miss "RX4: restated-without-successor was accepted (rc=$RX4RC)"
+fi
+
+# RX5: successor integrity -- shape, self-reference, unknown id, and a
+# successor that is itself a tombstone.
+RX_DEAD=$($T claim "f.txt rx marker, doomed successor candidate" --tier P2 --duplicate-ok 2>/dev/null)
+TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$RX_DEAD $T verdict "$RX_DEAD" retracted \
+  --cause wrong --basis "kill the candidate" >/dev/null 2>&1
+RX5A=0; TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$RX_ID $T verdict "$RX_ID" retracted \
+        --cause restated --successor not-an-id --basis b >/dev/null 2>&1 || RX5A=$?
+RX5B=0; TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$RX_ID $T verdict "$RX_ID" retracted \
+        --cause restated --successor "$RX_ID" --basis b >/dev/null 2>&1 || RX5B=$?
+RX5C=0; TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$RX_ID $T verdict "$RX_ID" retracted \
+        --cause restated --successor tr-deadbeef --basis b >/dev/null 2>&1 || RX5C=$?
+RX5D=$(TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$RX_ID $T verdict "$RX_ID" retracted \
+       --cause restated --successor "$RX_DEAD" --basis b 2>&1); RX5DRC=$?
+if [ "$RX5A" -ne 0 ] && [ "$RX5B" -ne 0 ] && [ "$RX5C" -ne 0 ] \
+   && [ "$RX5DRC" -ne 0 ] \
+   && printf '%s\n' "$RX5D" | grep -q "itself retracted"; then
+  ok "RX5: successor must be a tr- id, not self, present in the ledger, and not itself a tombstone"
+else
+  miss "RX5: successor integrity broken (rc=$RX5A/$RX5B/$RX5C/$RX5DRC)"
+fi
+
+# RX6: the happy path -- 'restated' with a live successor files and
+# stores BOTH fields.
+RX_SUCC=$($T claim "f.txt rx marker, restated with a stable recipe" --tier P2 --duplicate-ok 2>/dev/null)
+if TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$RX_ID $T verdict "$RX_ID" retracted \
+     --cause restated --successor "$RX_SUCC" \
+     --basis "recipe re-anchored" >/dev/null 2>&1 \
+   && tail -1 .truth/claims.jsonl | grep -q '"cause": "restated"' \
+   && tail -1 .truth/claims.jsonl | grep -q "\"successor\": \"$RX_SUCC\""; then
+  ok "RX6: 'restated' with a live successor files and stores cause + successor"
+else
+  miss "RX6: the restated happy path did not store both fields"
+fi
+
+# RX7 (NEGATIVE CONTROL): a good retraction of a fact that really died
+# files at exit 0 with ZERO advisory lines and no successor key -- the
+# gate must not fire on the case it exists to permit. Advisory lines,
+# not raw stderr: the commit-gate banner is ADR-034's documented CC-1
+# exemption and fires on every write verb in an unwired sandbox (GS5's
+# convention).
+RX_OK=$($T claim "f.txt rx marker for the negative control" --tier P2 --duplicate-ok 2>/dev/null)
+RX7ERR=$(TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$RX_OK $T verdict "$RX_OK" retracted \
+         --cause expired --basis "the file was deleted in 0000000" 2>&1 >/dev/null)
+RX7RC=$?
+if [ "$RX7RC" -eq 0 ] \
+   && ! printf '%s\n' "$RX7ERR" | grep -q "^truth: advisory:" \
+   && ! printf '%s\n' "$RX7ERR" | grep -q "ADR-049" \
+   && tail -1 .truth/claims.jsonl | grep -q '"cause": "expired"' \
+   && ! tail -1 .truth/claims.jsonl | grep -q '"successor"'; then
+  ok "RX7 (negative control): a clean 'expired' retraction files at exit 0 with no advisory and no successor key"
+else
+  miss "RX7: the gate fired on a good retraction (rc=$RX7RC, stderr='$RX7ERR')"
+fi
+
+# RX8: the flags belong to the terminal verb only -- a recoverable
+# verdict says its own why in --basis.
+RX_D=$($T claim "f.txt rx marker for the diverge arm" --tier P2 --duplicate-ok 2>/dev/null)
+RX8A=$(TRUTH_SESSION=s-canary-verifier $T verdict "$RX_D" diverge --cause wrong \
+       --basis b 2>&1); RX8ARC=$?
+RX8B=0; TRUTH_SESSION=s-canary-verifier $T verdict "$RX_D" diverge \
+        --successor "$RX_SUCC" --basis b >/dev/null 2>&1 || RX8B=$?
+if [ "$RX8ARC" -ne 0 ] && [ "$RX8B" -ne 0 ] \
+   && printf '%s\n' "$RX8A" | grep -q "ADR-049"; then
+  ok "RX8: --cause/--successor are refused on a non-terminal verdict"
+else
+  miss "RX8: cause/successor leaked onto a recoverable verdict (rc=$RX8ARC/$RX8B)"
+fi
+
+# RX9: ORDER against the ADR-036 sweep -- the pure check precedes the
+# git-consuming one. A retraction that is BOTH causeless and cited
+# refuses on ADR-049, not exit 6: nothing ran, and no ceremony was spent.
+RX_TG=$($T claim "f.txt rx marker cited by a spec" --tier P2 --duplicate-ok 2>/dev/null)
+echo "grounded on $RX_TG" > docs/specs/rx.md
+git add -A && git commit -qm "rx: spec" --no-verify -q
+RX9ERR=$(TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$RX_TG $T verdict "$RX_TG" retracted \
+         --basis b 2>&1); RX9RC=$?
+if [ "$RX9RC" -ne 6 ] && printf '%s\n' "$RX9ERR" | grep -q "ADR-049" \
+   && ! printf '%s\n' "$RX9ERR" | grep -q "docs/specs/rx.md"; then
+  ok "RX9: the pure cause check refuses BEFORE the ADR-036 git sweep (staged order, nothing ran)"
+else
+  miss "RX9: the citation sweep ran ahead of the cause check (rc=$RX9RC)"
+fi
+
+# RX10: the validate MIRROR. Back-compat first -- a hand-appended legacy
+# retraction with NO cause must validate forever (the ledger is
+# append-only and validate runs inside the commit gate). Then the three
+# cross-field rules the schema deliberately cannot express (ADR-027).
+RXV="$(mktemp -d)"; TDIRS+=("$RXV")
+rx_line() { printf '{"id":"%s","kind":"%s","ts":"2026-07-01T00:00:00.000000+00:00","actor":"t","session":"s","payload":%s}\n' "$1" "$2" "$3"; }
+rx_line tr-00000001 verdict '{"claim":"tr-00000002","verdict":"retracted","basis":"legacy, no cause"}' > "$RXV/legacy.jsonl"
+rx_line tr-00000001 verdict '{"claim":"tr-00000002","verdict":"retracted","basis":"b","cause":"restated"}' > "$RXV/nosucc.jsonl"
+rx_line tr-00000001 verdict '{"claim":"tr-00000002","verdict":"agree","basis":"b","cause":"wrong"}' > "$RXV/onagree.jsonl"
+rx_line tr-000000e7 issue_event '{"issue":"wk-00000001","event":"cancelled","basis":"b","cause":"wrong"}' > "$RXV/onevent.jsonl"
+RXV_OK=0
+$T validate --stdin < "$RXV/legacy.jsonl" >/dev/null 2>&1 || RXV_OK=1
+RXV_A=0; $T validate --stdin < "$RXV/nosucc.jsonl"  >/dev/null 2>&1 || RXV_A=$?
+RXV_B=0; $T validate --stdin < "$RXV/onagree.jsonl" >/dev/null 2>&1 || RXV_B=$?
+RXV_C=0; $T validate --stdin < "$RXV/onevent.jsonl" >/dev/null 2>&1 || RXV_C=$?
+if [ "$RXV_OK" -eq 0 ] && [ "$RXV_A" -ne 0 ] && [ "$RXV_B" -ne 0 ] \
+   && [ "$RXV_C" -ne 0 ]; then
+  ok "RX10: validate keeps admitting a causeless LEGACY retraction, and refuses restated-without-successor, cause-on-agree, and cause-on-an-issue_event"
+else
+  miss "RX10: validate mirror wrong (legacy=$RXV_OK restated=$RXV_A agree=$RXV_B event=$RXV_C)"
+fi
+cd "$RX_PREV"
+rm -rf "$RX"
 
 # ---- FAULT RC (ADR-037, v0.9.23): recipe lints + generated-paths --------
 say "FAULT RC (ADR-037): recipe rot classes warn; generated-artifact watches refuse"

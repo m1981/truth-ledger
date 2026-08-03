@@ -2040,6 +2040,28 @@ CORPUS = [
                          "basis": "b",
                          "orphan_basis": "spec cites it as history"},
          rid="tr-000000e6"), True),
+    # ---- ADR-049 retraction cause (v0.9.34). The FIRST seed is the
+    # back-compat proof: `verdict retracted ok` above carries NO cause
+    # and both surfaces call it valid, so every pre-ADR-049 retraction
+    # in every consumer ledger keeps validating. These two seeds add the
+    # shared enum + successor shape; their `del payload.cause` /
+    # `del payload.successor` mutants re-prove absent-is-valid on both
+    # surfaces mechanically. Cross-field (cause on a NON-retracted
+    # verdict, 'restated' with no successor, either field on an
+    # issue_event) is a deliberate schema-vs-mirror DISAGREEMENT and
+    # lives in canary RX, never in this shared corpus -- the ADR-036
+    # orphan_basis precedent. That is exactly why the successor seed
+    # says `expired` and not `restated`: a restated seed's generated
+    # `del payload.successor` mutant would land on the mirror-only
+    # cross-field rule and the two surfaces would (correctly) disagree.
+    # ----
+    ("verdict retracted with cause",
+     rec("verdict", {"claim": "tr-00000001", "verdict": "retracted",
+                     "basis": "b", "cause": "wrong"}), True),
+    ("verdict retracted with cause and successor",
+     rec("verdict", {"claim": "tr-00000001", "verdict": "retracted",
+                     "basis": "b", "cause": "expired",
+                     "successor": "tr-00000002"}), True),
     ("verdict bad value", rec("verdict", {"claim": "tr-00000001",
                                           "verdict": "maybe", "basis": "b"}), False),
     ("verdict bad claim ref", rec("verdict", {"claim": "nope",
@@ -2558,10 +2580,12 @@ class TestCrossSurfaceVersions(unittest.TestCase):
     # v0.15: ADR-039 blast_forecast; v0.16: ADR-046 envelope admission
     # rule -- concerns + blast_forecast marked legacy-admitted/closed
     # (description-level deprecation; the structural checks stay so
-    # legacy records keep validating).
-    EXPECTED_SCHEMA_ID = "truth-ledger-record.v0.16"
+    # legacy records keep validating); v0.17: ADR-049 verdict cause +
+    # successor (absent stays valid forever -- the crossover property
+    # the FS-2 `del payload.cause` mutant proves on both surfaces).
+    EXPECTED_SCHEMA_ID = "truth-ledger-record.v0.17"
     PINNED_SHAPE_SHA256 = \
-        "3418acbf535fe0d163dfae44da2385ec780cc74acfdd69a7bcbaa0d5c8846561"
+        "62fa46d3fe161056c64890fee25dfff626e7593d4135fe61ce87cae249cb70ee"
 
     def _schema(self):
         import json as _json
@@ -3070,6 +3094,151 @@ class TestExitGate(unittest.TestCase):
         # copies, not a shared reference: widening one must not widen
         # the other (ADR-035)
         self.assertIsNot(tm.NEGATION_TOKENS, tm.QUANTIFIER_TOKENS)
+
+class TestRetractionCause(unittest.TestCase):
+    """ADR-049: the retraction cause's pure decision, its vocabulary
+    property, and the legacy-tolerant reader."""
+
+    LIVE = {"tr-00000001": {"status": "live"},
+            "tr-00000002": {"status": "live"},
+            "tr-0000dead": {"status": "retracted"}}
+
+    def err(self, cause, successor=None, cid="tr-00000001"):
+        return tm.retraction_cause_error(cause, successor, cid, self.LIVE)
+
+    # -- the gate ----------------------------------------------------
+    def test_missing_cause_refused_and_prints_the_two_question_tree(self):
+        err = self.err(None)
+        self.assertIn("ADR-049", err)
+        self.assertIn("Nothing was filed", err)
+        for value in tm.RETRACTION_CAUSES:
+            self.assertIn(f"--cause {value}", err)
+
+    def test_unknown_cause_refused_naming_the_set(self):
+        err = self.err("moved")
+        self.assertIn("moved", err)
+        for value in tm.RETRACTION_CAUSES:
+            self.assertIn(value, err)
+
+    def test_restated_without_successor_refused(self):
+        # The one blocking rule, and the whole reason the field is
+        # admitted under ADR-046: a fact that still holds may not be
+        # deleted with nothing carrying it forward.
+        err = self.err("restated")
+        self.assertIn("--successor", err)
+        self.assertIn("Nothing was filed", err)
+
+    def test_restated_with_a_live_successor_passes(self):
+        self.assertIsNone(self.err("restated", "tr-00000002"))
+
+    def test_expired_and_wrong_need_no_successor(self):
+        self.assertIsNone(self.err("expired"))
+        self.assertIsNone(self.err("wrong"))
+
+    def test_wrong_with_a_corrected_successor_is_not_refused(self):
+        # 10 of the meta ledger's causal retractions are exactly this
+        # shape ("overstated scope; superseded by tr-...") -- refusing
+        # it would be a false refusal.
+        self.assertIsNone(self.err("wrong", "tr-00000002"))
+
+    def test_successor_shape_self_reference_and_unknown_id_refused(self):
+        self.assertIn("tr- claim id", self.err("expired", "nope"))
+        self.assertIn("own successor", self.err("expired", "tr-00000001"))
+        self.assertIn("not in the ledger", self.err("expired", "tr-0000beef"))
+
+    def test_successor_may_not_be_a_tombstone(self):
+        err = self.err("restated", "tr-0000dead")
+        self.assertIn("itself retracted", err)
+
+    def test_gate_is_pure(self):
+        # no clock, no filesystem: the same inputs decide the same way
+        # regardless of when or where (ADR-043's decisions-in-the-core).
+        self.assertEqual(self.err("restated"), self.err("restated"))
+
+    # -- the vocabulary ----------------------------------------------
+    def test_vocabulary_is_the_truth_table_not_a_survey(self):
+        # Two yes/no questions about the sentence (still true? ever
+        # true?) have four cells, one of which is impossible (still
+        # true but never true). Exactly three values, so the set is
+        # exhaustive and mutually exclusive BY CONSTRUCTION. This
+        # tripwire fires on any widening -- a fifth cause means the
+        # questions changed, which is an ADR, not a constant edit.
+        self.assertEqual(set(tm.RETRACTION_CAUSES),
+                         {"restated", "expired", "wrong"})
+        self.assertEqual(len(tm.RETRACTION_CAUSES), 3)
+        # `moved` is deliberately NOT a value: a fact whose recipe
+        # drifted is still true, so it lands in `restated` and owes a
+        # successor -- or it is not a retraction at all (ADR-049).
+        self.assertNotIn("moved", tm.RETRACTION_CAUSES)
+
+    # -- the reader (ADR-047 adoption metric) ------------------------
+    def _retraction(self, rid, **extra):
+        p = {"claim": "tr-00000001", "verdict": "retracted", "basis": "b"}
+        p.update(extra)
+        return rec("verdict", p, rid=rid)
+
+    def test_report_counts_legacy_records_as_unrecorded(self):
+        r = tm.retraction_cause_report(events(
+            self._retraction("tr-0000000a"),                    # legacy
+            self._retraction("tr-0000000b", cause="wrong"),
+            self._retraction("tr-0000000c", cause="expired",
+                             successor="tr-00000002"),
+            rec("verdict", {"claim": "tr-00000001", "verdict": "agree",
+                            "basis": "b"}, rid="tr-0000000d")))
+        self.assertEqual(r["by_cause"],
+                         {"restated": 0, "expired": 1, "wrong": 1,
+                          "unrecorded": 1})
+        self.assertEqual(r["total"], 3)          # the agree is not one
+        self.assertEqual(r["successors_named"], 1)
+        self.assertEqual(r["successors_missing"], 2)
+
+    def test_report_is_empty_but_shaped_on_a_ledger_with_no_retractions(self):
+        r = tm.retraction_cause_report(events(rec("claim", claim_p())))
+        self.assertEqual(r["total"], 0)
+        self.assertEqual(set(r["by_cause"]),
+                         set(tm.RETRACTION_CAUSES) | {"unrecorded"})
+
+class TestRetractionCauseValidateMirror(unittest.TestCase):
+    """ADR-049's cross-field mirror rules -- deliberately NOT in the
+    shared FS-2 corpus (the schema cannot express them; ADR-027, the
+    orphan_basis precedent). The back-compat property is asserted here
+    as a first-class test, not inferred from the corpus."""
+
+    def mirror(self, payload, kind="verdict"):
+        return tm.validate_events([(1, rec(kind, payload))])
+
+    def test_legacy_retraction_without_a_cause_still_validates(self):
+        # The load-bearing back-compat assertion: every retraction
+        # filed before ADR-049 must keep passing `validate` forever,
+        # because validate runs INSIDE the commit gate and the ledger
+        # is append-only. A consumer ledger holding 75 of them must not
+        # be invalidated by this change.
+        self.assertEqual(self.mirror({"claim": "tr-00000001",
+                                      "verdict": "retracted",
+                                      "basis": "b"}), [])
+
+    def test_cause_on_a_non_retracted_verdict_refused(self):
+        errs = self.mirror({"claim": "tr-00000001", "verdict": "agree",
+                            "basis": "b", "cause": "wrong"})
+        self.assertTrue(any("ADR-049" in e for e in errs), errs)
+
+    def test_restated_without_successor_refused(self):
+        errs = self.mirror({"claim": "tr-00000001", "verdict": "retracted",
+                            "basis": "b", "cause": "restated"})
+        self.assertTrue(any("carry it forward" in e for e in errs), errs)
+
+    def test_successor_on_a_non_retracted_verdict_refused(self):
+        errs = self.mirror({"claim": "tr-00000001", "verdict": "diverge",
+                            "basis": "b", "successor": "tr-00000002"})
+        self.assertTrue(any("hands a fact on" in e for e in errs), errs)
+
+    def test_neither_field_may_creep_onto_an_issue_event(self):
+        for k in ("cause", "successor"):
+            errs = self.mirror({"issue": "wk-00000001", "event": "cancelled",
+                                "basis": "b",
+                                k: "wrong" if k == "cause" else "tr-00000002"},
+                               kind="issue_event")
+            self.assertTrue(any("ADR-049" in e for e in errs), (k, errs))
 
 class TestRecipeLints(unittest.TestCase):
     """ADR-037: pure lint decisions on the screen's own token stream."""

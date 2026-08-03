@@ -97,6 +97,20 @@ else
   bad "concern-tag --json malformed"
 fi
 
+RCZ_TXT=$(cd "$ROOT" && python3 "$INST/retraction-causes.py")
+if printf '%s\n' "$RCZ_TXT" | grep -Eq "^retractions: [1-9][0-9]* total" \
+   && printf '%s\n' "$RCZ_TXT" | grep -q "unrecorded share"; then
+  ok "retraction-causes renders this ledger's retraction tally and its unrecorded share (ADR-049)"
+else
+  bad "retraction-causes lost the tally render on a ledger with retractions: [$RCZ_TXT]"
+fi
+if (cd "$ROOT" && python3 "$INST/retraction-causes.py" --json) \
+   | python3 -c "import json,sys; d=json.load(sys.stdin); c=d['by_cause']; sys.exit(0 if 'unrecorded' in c and d['total'] == d['successors_named'] + d['successors_missing'] and sum(c.values()) == d['total'] else 1)"; then
+  ok "retraction-causes --json parses; the by_cause tally and the successor split both total the retraction count"
+else
+  bad "retraction-causes --json malformed or its totals do not reconcile"
+fi
+
 say "LANE 2 (red-proofs): each instrument must expose a seeded fault in a sandbox"
 
 # -- separation: carries retired canary SEP1/SEP2/SEP3 ---------------------
@@ -182,6 +196,48 @@ if printf '%s\n' "$BLOUT" | grep -q "floor 15 (fallback)" \
   ok "blast-report renders floor + a LIVE-computed forecast for the unstored hot watch (retired BF5)"
 else
   bad "blast-report lost the floor/rows render or the live forecast: [$BLOUT]"
+fi
+cd "$PREV"
+
+# -- retraction-causes: the legacy denominator + the bypass alarm ---------
+# ADR-049 requires a cause at INTAKE and tolerates its absence at
+# validate forever (append-only history). So the instrument's job is to
+# keep the legacy population VISIBLE (`unrecorded`, never dropped) and
+# to scream when a shape intake refuses appears anyway -- which can only
+# mean a raw append went past the CLI.
+RTD="$(mktemp -d)"; TDIRS+=("$RTD")
+mkrepo "$RTD"
+CID_RT=$(TRUTH_ACTOR=gate TRUTH_SESSION=s-rt python3 scripts/truth claim \
+         "f.txt holds the data marker" --tier P2 2>/dev/null)
+TRUTH_ACTOR=gate TRUTH_SESSION=s-rt TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=$CID_RT \
+  python3 scripts/truth verdict "$CID_RT" retracted --cause wrong \
+  --basis "never true: f.txt never held it" >/dev/null 2>&1
+# a legacy retraction, written the only way one can exist now: it
+# predates ADR-049 (fixture-appended, like the concerns line below)
+printf '%s\n' '{"id": "tr-00b0b0b0", "kind": "verdict", "actor": "legacy", "session": "s-old", "ts": "2026-01-01T00:00:00.000000+00:00", "payload": {"claim": "tr-00c0ffee", "verdict": "retracted", "basis": "superseded; successor in verdict trail"}}' >> .truth/claims.jsonl
+if python3 scripts/truth validate >/dev/null 2>&1; then
+  ok "a causeless LEGACY retraction still validates beside a v0.9.34 one (ADR-049 back-compat, both surfaces)"
+else
+  bad "validate refused a legacy causeless retraction -- ADR-049 legacy admission broken"
+fi
+RTOUT=$(python3 "$INST/retraction-causes.py")
+if printf '%s\n' "$RTOUT" | grep -q "wrong=1" \
+   && printf '%s\n' "$RTOUT" | grep -q "unrecorded=1" \
+   && printf '%s\n' "$RTOUT" | grep -q "unrecorded share: 50%" \
+   && ! printf '%s\n' "$RTOUT" | grep -q "ALARM"; then
+  ok "retraction-causes keeps the legacy record in the denominator and stays silent on a clean ledger (negative control)"
+else
+  bad "retraction-causes dropped the legacy record or false-alarmed: [$RTOUT]"
+fi
+# the seeded fault: cause=restated with no successor -- intake refuses
+# this shape, so its presence means the record was appended past the CLI
+printf '%s\n' '{"id": "tr-00bad000", "kind": "verdict", "actor": "raw", "session": "s-raw", "ts": "2026-01-02T00:00:00.000000+00:00", "payload": {"claim": "tr-00c0ffee", "verdict": "retracted", "basis": "hand-appended", "cause": "restated"}}' >> .truth/claims.jsonl
+RTBAD=$(python3 "$INST/retraction-causes.py")
+if printf '%s\n' "$RTBAD" | grep -q "ALARM: tr-00bad000" \
+   && ! python3 scripts/truth validate >/dev/null 2>&1; then
+  ok "a raw-appended restated-without-successor is named by the instrument AND refused by validate (the bypass is caught twice)"
+else
+  bad "the restated-without-successor bypass went unreported: [$RTBAD]"
 fi
 cd "$PREV"
 

@@ -691,6 +691,44 @@ def inverse_report(tracked, claims, under=None, excludes=()):
     dark = [p for p in considered if not match_paths(p, patterns)]
     return {"dark": sorted(dark), "considered": len(considered)}
 
+def retraction_cause_report(events):
+    """ADR-049's adoption metric (ADR-047: metric or it doesn't ship),
+    Tier C -- a pure report, driven by instruments/retraction-causes.py,
+    NOT a stats section (ADR-046 sent the instrument family out of the
+    template CLI).
+
+    Tallies every retraction verdict by its recorded `cause`, plus:
+      * `unrecorded` -- pre-ADR-049 records carrying no cause. NOT a
+        stored value and never stamped: the legacy population stays
+        VISIBLE in the denominator instead of being silently dropped
+        (the F1 fail-loud rule). It is what makes the metric readable
+        during the crossover: the number that must stop growing.
+      * successors_named / successors_missing -- how often a retraction
+        leaves a followable pointer at all. This is the number the
+        prose regime could not produce: at adoption 39 of the meta
+        ledger's 75 retraction bases claimed a successor in words
+        ("successor in verdict trail") and named no id.
+    Pure: reads records, no clock, no fold."""
+    counts = {c: 0 for c in RETRACTION_CAUSES}
+    counts["unrecorded"] = 0
+    named = missing = 0
+    for _, ev in events:
+        if ev.get("kind") != "verdict":
+            continue
+        p = ev.get("payload") or {}
+        if p.get("verdict") != "retracted":
+            continue
+        cause = p.get("cause")
+        counts[cause if cause in counts else "unrecorded"] += 1
+        if p.get("successor"):
+            named += 1
+        else:
+            missing += 1
+    return {"by_cause": counts,
+            "total": named + missing,
+            "successors_named": named,
+            "successors_missing": missing}
+
 def vocab_report():
     """P2 contract layer: the machine vocabulary -- every named set a
     satellite or instrument would otherwise hand-copy, exported once.

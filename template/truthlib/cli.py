@@ -222,6 +222,15 @@ def cmd_verdict(a):
     if a.mechanical and (a.recheck or a.verdict != "diverge"):
         sys.exit("truth: --mechanical only annotates a manual diverge "
                  "(ADR-012: it says the recipe changed, not reality)")
+    if (a.cause or a.successor) and (a.recheck or a.verdict != "retracted"):
+        # ADR-049: only the terminal verb kills a belief. `--recheck`
+        # can never produce a retraction (recheck_verdict returns
+        # diverge/cannot_verify only), so this covers it too rather
+        # than letting the flags be silently ignored there.
+        sys.exit("truth: --cause/--successor only accompany a manual "
+                 "retraction (ADR-049: only the terminal verb kills a "
+                 "belief; a diverge or cannot_verify says its own why "
+                 "in --basis and stays recoverable)")
     if a.recheck:
         ev = claims[a.claim_id]["claim"]["payload"].get("evidence")
         if not ev:
@@ -264,6 +273,19 @@ def cmd_verdict(a):
         if not a.verdict or not a.basis:
             sys.exit("truth: manual verdicts require <verdict> and --basis")
         if a.verdict == "retracted":
+            # ADR-049 FIRST -- deliberately BEFORE the ADR-011 ceremony.
+            # It is a pure argument check (no I/O, no ledger read beyond
+            # the fold already in hand), and a malformed invocation must
+            # never consume a typed-id confirmation: making the human
+            # re-type the id because a flag was missing would degrade
+            # exactly the ceremony ADR-011 exists to make deliberate.
+            # This is `verdict`'s own ordering rule, the one ADR-043's
+            # L2-F6 propagated to `done`: cheap argument checks precede
+            # the tombstone ceremony.
+            err = retraction_cause_error(a.cause, a.successor,
+                                         a.claim_id, claims)
+            if err:
+                sys.exit(err)
             err = human_ack_error(a.claim_id, "claim retraction")
             if err:
                 sys.exit(err)
@@ -300,6 +322,13 @@ def cmd_verdict(a):
                      f"scripts/truth dispatch {a.claim_id}")
         verdict, basis = a.verdict, a.basis
     payload = {"claim": a.claim_id, "verdict": verdict, "basis": basis}
+    if verdict == "retracted" and a.cause:
+        # ADR-049: the cause and its successor pointer. Not report-only
+        # metadata -- retraction_cause_error BLOCKS on them, which is
+        # what admits them under ADR-046's envelope rule.
+        payload["cause"] = a.cause
+        if a.successor:
+            payload["successor"] = a.successor
     if verdict == "retracted" and a.orphan_ok:
         # ADR-036: deliberate orphaning, stored and counted (CC-2).
         # Decay: declined -- a tombstone is terminal, nothing re-asks.
@@ -1230,7 +1259,8 @@ def main():
     v = sub.add_parser("verdict", help="record a verification verdict; "
                        "retraction is human-only (TRUTH_HUMAN=1 plus an "
                        "interactive typed-id confirmation, or "
-                       "TRUTH_HUMAN_ACK=<id> for headless human use)")
+                       "TRUTH_HUMAN_ACK=<id> for headless human use) and "
+                       "records WHY (--cause, ADR-049)")
     v.add_argument("claim_id")
     v.add_argument("verdict", nargs="?", choices=VERDICTS)
     v.add_argument("--basis")
@@ -1239,6 +1269,23 @@ def main():
     v.add_argument("--mechanical", action="store_true",
                    help="annotate a diverge: the measuring recipe changed, "
                         "not necessarily the fact (ADR-012)")
+    v.add_argument("--cause", choices=RETRACTION_CAUSES,
+                   help="REQUIRED on a retraction (ADR-049): why the belief "
+                        "dies. Two questions about the sentence -- restated "
+                        "= still true, a successor states it better "
+                        "(--successor required); expired = was true, the "
+                        "world moved past it; wrong = never true, or its "
+                        "evidence never demonstrated it. There is no "
+                        "override flag: the question is always answerable "
+                        "by the human retracting")
+    v.add_argument("--successor", metavar="TR_ID",
+                   help="the claim that carries the fact forward (ADR-049): "
+                        "must exist and not itself be retracted. Required "
+                        "with --cause restated, optional with "
+                        "expired/wrong (a corrected re-file is a normal "
+                        "`wrong` retraction). A CLAIM-level pointer -- "
+                        "ADR-013's --supersedes is per-ISSUE premise "
+                        "redirection and stays separate")
     v.add_argument("--orphan-ok", metavar="SENTENCE",
                    help="retract despite scope-covered citations of the id "
                         "(ADR-036): one sentence why deliberate orphaning "
