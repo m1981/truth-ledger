@@ -43,7 +43,7 @@ scripts/truth claim "operator ruling 2026-08: the 3650-day TTL on the retracted 
 
 **Re-file** (you want a set-level ADR-series sentinel again): the live
 lineage descendant already exists without any scope override
-(tr-49c2bcf2, the 46-file count sentinel), so a re-file is only needed
+(tr-126f0629, the 46-file count sentinel), so a re-file is only needed
 if that one is retired; the honest shape is the default 30-day decay:
 
 ```sh
@@ -149,12 +149,12 @@ scripts/truth citations tr-36d503e6   # -> tr-84b79439
 TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-36d503e6 scripts/truth verdict tr-36d503e6 retracted --basis "resolved by succession: superseded by tr-84b79439"
 scripts/truth citations tr-5fe1899a   # -> tr-84b79439 (same successor: the check-truth claim absorbed both)
 TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-5fe1899a scripts/truth verdict tr-5fe1899a retracted --basis "resolved by succession: superseded by tr-84b79439"
-scripts/truth citations tr-efad36a4   # -> tr-49c2bcf2
-TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-efad36a4 scripts/truth verdict tr-efad36a4 retracted --basis "resolved by succession: superseded by tr-49c2bcf2"
+scripts/truth citations tr-efad36a4   # -> tr-126f0629
+TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-efad36a4 scripts/truth verdict tr-efad36a4 retracted --basis "resolved by succession: superseded by tr-126f0629"
 scripts/truth citations tr-84b4bef5   # -> tr-010f7e96
 TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-84b4bef5 scripts/truth verdict tr-84b4bef5 retracted --basis "resolved by succession: superseded by tr-010f7e96"
-scripts/truth citations tr-7191f5a9   # -> tr-49c2bcf2 (intermediate generation, staled by the P6 commit)
-TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-7191f5a9 scripts/truth verdict tr-7191f5a9 retracted --basis "resolved by succession: superseded by tr-49c2bcf2"
+scripts/truth citations tr-7191f5a9   # -> tr-126f0629 (intermediate generation, staled by the P6 commit)
+TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-7191f5a9 scripts/truth verdict tr-7191f5a9 retracted --basis "resolved by succession: superseded by tr-126f0629"
 scripts/truth citations tr-30512073   # -> tr-010f7e96 (intermediate generation, staled by the P6 commit)
 TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-30512073 scripts/truth verdict tr-30512073 retracted --basis "resolved by succession: superseded by tr-010f7e96"
 scripts/truth citations tr-4b486c66   # -> tr-84b79439 (intermediate generation, staled by the P6 commit)
@@ -214,7 +214,7 @@ ceremony changes (ADR-047 decision 3).
 The P6 release bump did stale the previous sentinel generation as this
 note predicted; the closing session filed and citation-swapped the
 successors the same day, and an independent verifier session
-(s-verifier-p6-pins) agreed all three: tr-49c2bcf2 (ADR-series 001–047),
+(s-verifier-p6-pins) agreed all three: tr-126f0629 (ADR-series 001–047),
 tr-010f7e96 (explainer Scope at v0.9.31), tr-84b79439 (check-truth at
 the v0.9.31 lockstep line). The three staled intermediates were appended
 to the (c) retraction block above. Nothing further is owed here; the
