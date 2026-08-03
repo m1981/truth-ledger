@@ -25,7 +25,7 @@ BOM pins (2 claims, kuchnie, 2026-07-22).
 - **D3 — contract-symbol manifests** (replaces a prose symbol table,
   which would rot): a tracked, **pre-sorted** manifest file + one
   sentinel claim. Adding/removing a contract symbol stales the claim —
-  the staling is the review trigger (the tr-126f0629 pattern at symbol
+  the staling is the review trigger (the tr-58c2d1f8 pattern at symbol
   scale).
 
 ## Tested recipes (verbatim — they passed the ADR-009 screen when written,
