@@ -8,6 +8,41 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.35 (ADR-050 staling breakdown -- report what the ledger's central
+  rule costs; no schema change, no gate semantics change, fold untouched):
+  * `truth staling [--since TS] [--append-order] [--json]` (new read verb):
+    folds the event stream into staling EPISODES -- one opens at the first
+    invalidation on a claim and closes at the next verdict on it, so repeat
+    invalidations on an already-stale claim are re-stalings, not new
+    episodes -- and buckets each resolution as auto-healed by `reaffirm`,
+    hand-agreed, or genuinely changed. Also reports which kind of watched
+    path triggered stalings, bucketed by file suffix; a semantic
+    spec-vs-implementation split is deliberately NOT attempted, because the
+    template cannot know a consumer's layout.
+  * Walk order is the kernel's canonical `fold_key` (ts, id, canon; ADR-016)
+    because statuses are DEFINED by that fold. `--append-order` walks the raw
+    file, kept so measurements taken before this verb stay reproducible
+    through the shipped surface; the walk is stamped on every output and two
+    canary arms pin both walks against a fixture where they disagree.
+  * Tier: an argued exception to ADR-046, stated as such in ADR-050's header.
+    The report families left the CLI for meta-repo `instruments/`, which is
+    not templated -- so Tier C would put this question permanently out of
+    reach of the consumers who have it, and what is priced here is not a gate
+    but the kernel's central rule.
+  * 17 unit tests, 8 canary arms (FAULT ST), including two negative controls
+    and a deletion control. Canary 261 -> 269.
+  * No refusal, no advisory, no exit-code change. A high false-stale rate is
+    not a defect to refuse: narrowing a watch trades false stalings for
+    missed ones, and this report deliberately cannot see the second kind.
+
+v0.9.34 (ADR-049 retraction cause -- entry written at v0.9.35; the release
+  itself shipped without one, which is the gap this line closes):
+  * `verdict <id> retracted` gains `--cause {restated,expired,wrong}` and
+    `--successor TR_ID`: a retraction records WHY the fact died, and
+    `restated` owes a successor that carries it forward. A bare tombstone
+    left the reason to a free-text basis nobody could fold.
+  * Registry constant `RETRACTION_CAUSES`; schema and canary arms alongside.
+
 v0.9.33 (ADR-048 check reachability -- the audit remediation: a check no
   scheduled root invokes is prose, and four of ours were; no schema
   change, no gate semantics change, fold untouched):
