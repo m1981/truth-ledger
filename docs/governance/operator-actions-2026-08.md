@@ -216,8 +216,9 @@ note predicted; the closing session filed and citation-swapped the
 successors the same day, and an independent verifier session
 (s-verifier-p6-pins) agreed all three: the ADR-series sentinel then
 counting 001–047 (fourth link in that chain today: tr-58c2d1f8),
-tr-010f7e96 (explainer Scope at v0.9.31), tr-9dd3323b (check-truth at
-the v0.9.31 lockstep line). The three staled intermediates were appended
+tr-010f7e96 (explainer Scope at v0.9.31), and the check-truth gate
+sentinel then pinned at the v0.9.31 lockstep line (current link in that
+chain: tr-9dd65399). The three staled intermediates were appended
 to the (c) retraction block above. Nothing further is owed here; the
 standing rule stays: every release bump re-runs this succession
 ceremony from the committing session.
