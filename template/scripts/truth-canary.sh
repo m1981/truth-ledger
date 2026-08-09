@@ -965,7 +965,15 @@ CID_R=$($T claim "watched.txt has multiple lines" --class VERIFIED \
 echo "another line" >> watched.txt
 git add watched.txt && git commit -qm "canary: touch evidence again" --no-verify
 $T invalidate-scan --quiet
-TRUTH_SESSION=s-canary-verifier $T verdict "$CID_R" agree --basis "human re-verified at new HEAD" >/dev/null
+# ADR-051: appending a line CHANGES `wc -l`'s output, so this agree
+# would advance the anchor past a capsule that can no longer be
+# produced -- the exact orphaning this arm's own fixture demonstrates
+# ("a count that grew" is the ADR's canonical example). The
+# re-verification F2 built is unchanged in purpose; it now carries the
+# capsule with it instead of leaving it behind.
+TRUTH_SESSION=s-canary-verifier $T verdict "$CID_R" agree \
+  --basis "human re-verified at new HEAD" \
+  --refresh-evidence "the line count grew; the claim is that the file has MULTIPLE lines, which still holds" >/dev/null
 $T invalidate-scan --quiet
 if $T list --live --json | grep -q "$CID_R"; then
   ok "re-verified $CID_R stayed live (anchor advanced)"
@@ -2641,7 +2649,7 @@ fi
 cd "$RX_PREV"
 rm -rf "$RX"
 
-# ---- FAULT ST (ADR-050, v0.9.35): the staling breakdown -----------------
+# ---- FAULT ST (ADR-050, v0.9.36): the staling breakdown -----------------
 # A synthetic ledger whose answer is known BY CONSTRUCTION: four claims,
 # seven invalidation records forming five episodes, and four resolving
 # verdicts hand-built to land one in each arm plus a second mechanical
@@ -3320,6 +3328,65 @@ fi
 rm -f .lk-held .lk-release
 cd "$LK_PREV"
 rm -rf "$LK"
+
+# ---- FAULT EF (ADR-051, v0.9.36): capsule coherence ---------------------
+# An `agree` on a path-claim advances the effective anchor (F2) while the
+# capsule lives in the immutable claim record. Filed over a CHANGED
+# output, that agree leaves the claim live and permanently
+# un-recheckable: every later --recheck compares against a hash nobody
+# can produce, and reaffirm's hash-match arm can never take it back.
+# Measured before the gate: 13 of 126 live claims in that state.
+say "FAULT EF (ADR-051): an agree over a changed output is refused, and the refresh returns the claim to the mechanical arm"
+EF="$(mktemp -d)"; TDIRS+=("$EF"); EF_PREV="$PWD"
+mkrepo "$EF"
+printf 'x\nx\n' > f.txt
+git add -A >/dev/null 2>&1; git commit -qm init
+EF_CID="$($T claim "f.txt holds exactly two x lines" --class VERIFIED \
+  --evidence-cmd "grep -c x f.txt" --paths f.txt 2>/dev/null | tail -1)"
+TRUTH_SESSION=s-ef-v1 $T verdict "$EF_CID" agree --basis "re-ran it" \
+  >/dev/null 2>&1
+# EF4 (negative control) FIRST: a matching capsule must need no flag.
+if [ -n "$($T list --live --json 2>/dev/null | grep -o "$EF_CID")" ]; then
+  ok "EF4 (negative control): a clean agree passes with no --refresh-evidence"
+else
+  miss "EF4: the gate refused an agree whose capsule still reproduces"
+fi
+printf 'x\nx\nx\n' > f.txt; git add f.txt >/dev/null 2>&1
+git commit -qm "third x" >/dev/null 2>&1
+$T invalidate-scan >/dev/null 2>&1
+EF_N="$(wc -l < .truth/claims.jsonl | tr -d ' ')"
+EF_OUT="$(TRUTH_SESSION=s-ef-v2 $T verdict "$EF_CID" agree \
+  --basis "sentence still holds" 2>&1)"
+if printf '%s' "$EF_OUT" | grep -q "ADR-051" \
+   && printf '%s' "$EF_OUT" | grep -q -- "--refresh-evidence" \
+   && printf '%s' "$EF_OUT" | grep -q "diverge"; then
+  ok "EF1: the orphaning agree is refused, naming BOTH exits (refresh, diverge)"
+else
+  miss "EF1: the orphaning agree was accepted or the refusal taught only one exit"
+fi
+if [ "$(wc -l < .truth/claims.jsonl | tr -d ' ')" = "$EF_N" ]; then
+  ok "EF2: the refusal appended nothing"
+else
+  miss "EF2: the refusal still wrote to the ledger"
+fi
+TRUTH_SESSION=s-ef-v2 $T verdict "$EF_CID" agree \
+  --basis "sentence still holds" \
+  --refresh-evidence "the count grew 2->3; the sentence is about the file's shape" \
+  >/dev/null 2>&1
+printf 'x\nx\nx\n#c\n' > f.txt; git add f.txt >/dev/null 2>&1
+git commit -qm "comment only" >/dev/null 2>&1
+$T invalidate-scan >/dev/null 2>&1
+if TRUTH_SESSION=s-ef-r $T reaffirm 2>&1 | grep -q "1 reaffirmed"; then
+  ok "EF3: the refreshed claim returned to reaffirm's mechanical arm"
+else
+  miss "EF3: the refresh bought nothing -- still outside the hash-match arm"
+fi
+if $T validate >/dev/null 2>&1; then
+  ok "EF5: validate admits the refreshed verdict"
+else
+  miss "EF5: validate refuses a record the CLI itself writes"
+fi
+cd "$EF_PREV"
 
 say ""
 say "canary result: $PASS caught, $FAIL missed"

@@ -2582,10 +2582,12 @@ class TestCrossSurfaceVersions(unittest.TestCase):
     # (description-level deprecation; the structural checks stay so
     # legacy records keep validating); v0.17: ADR-049 verdict cause +
     # successor (absent stays valid forever -- the crossover property
-    # the FS-2 `del payload.cause` mutant proves on both surfaces).
-    EXPECTED_SCHEMA_ID = "truth-ledger-record.v0.17"
+    # the FS-2 `del payload.cause` mutant proves on both surfaces);
+    # v0.18: ADR-051 verdict evidence_refresh (absent stays valid
+    # forever, same crossover property).
+    EXPECTED_SCHEMA_ID = "truth-ledger-record.v0.18"
     PINNED_SHAPE_SHA256 = \
-        "62fa46d3fe161056c64890fee25dfff626e7593d4135fe61ce87cae249cb70ee"
+        "4478ac10facb0aed386b5f7ebb687ac3d9fcbcf11de7a2038ba242b561aa94f8"
 
     def _schema(self):
         import json as _json
@@ -2614,6 +2616,155 @@ class TestCrossSurfaceVersions(unittest.TestCase):
             "update PINNED_SHAPE_SHA256. If it is a pure comment/description "
             "edit, just update PINNED_SHAPE_SHA256. This test exists because "
             "the $id silently lapsed three times when nobody could see it.")
+
+
+class TestCapsuleCoherence(unittest.TestCase):
+    """ADR-051: the agree-side twin of ADR-012's mechanical subtype.
+
+    An agree on a path-claim advances the effective anchor while the
+    capsule stays in the immutable claim record, so an agree filed over
+    a changed output leaves the claim live and permanently
+    un-recheckable. The gate refuses that agree unless the verifier
+    states why the changed output still supports the sentence."""
+
+    CAP = {"command": "grep -c x f.txt", "output_hash": "sha256:" + "a" * 64,
+           "returncode": 0}
+    PAY = {"evidence_paths": ["f.txt"], "evidence": CAP}
+
+    def err(self, verdict="agree", observed=("a" * 64, 0), basis=None,
+            payload=None, capsule=None):
+        return tm.capsule_coherence_error(
+            verdict, payload if payload is not None else self.PAY,
+            observed, basis, capsule if capsule is not None else self.CAP)
+
+    # -- the gate ----------------------------------------------------
+    def test_matching_capsule_passes_silently(self):
+        self.assertIsNone(self.err())
+
+    def test_changed_output_refuses_the_agree(self):
+        err = self.err(observed=("b" * 64, 0))
+        self.assertIn("ADR-051", err)
+        self.assertIn("--refresh-evidence", err)
+        self.assertIn("Nothing was filed", err)
+        # it must offer the diverge branch too: an output change can mean
+        # the claim moved, and a gate that only teaches one exit funnels
+        # honest divergences into agrees.
+        self.assertIn("diverge", err)
+
+    def test_changed_returncode_alone_refuses(self):
+        self.assertIsNotNone(self.err(observed=("a" * 64, 1)))
+
+    def test_refresh_basis_admits_the_changed_output(self):
+        self.assertIsNone(self.err(observed=("b" * 64, 0),
+                                   basis="grep -n line numbers shifted"))
+
+    # -- the abstentions, each for a stated reason -------------------
+    def test_no_watched_paths_abstains(self):
+        # no anchor advance -> no capsule can fall behind it
+        self.assertIsNone(self.err(observed=("b" * 64, 0),
+                                   payload={"evidence": self.CAP}))
+
+    def test_unexecuted_command_abstains(self):
+        # unscreenable: `--recheck` cannot run it either, so there is no
+        # capsule freshness to protect
+        self.assertIsNone(self.err(observed=None))
+
+    def test_non_agree_verdict_abstains(self):
+        self.assertIsNone(self.err(verdict="diverge",
+                                   observed=("b" * 64, 0)))
+
+    # -- the symmetric refusals (a basis with nothing to excuse) -----
+    def test_refresh_on_matching_capsule_refused(self):
+        err = self.err(basis="unnecessary")
+        self.assertIn("nothing to refresh", err)
+
+    def test_refresh_on_non_agree_refused(self):
+        self.assertIn("only accompanies an agree",
+                      self.err(verdict="diverge", basis="x"))
+
+    def test_refresh_without_execution_refused(self):
+        self.assertIn("never a wish", self.err(observed=None, basis="x"))
+
+    def test_refresh_without_paths_refused(self):
+        self.assertIn("does not advance an anchor",
+                      self.err(payload={"evidence": self.CAP}, basis="x"))
+
+    # -- the reader that admits the field under ADR-046 --------------
+    def test_effective_evidence_overrides_hash_and_rc(self):
+        eff = tm.effective_evidence(
+            self.CAP, {"output_hash": "sha256:" + "b" * 64,
+                       "returncode": 2, "basis": "s"})
+        self.assertEqual(eff["output_hash"], "sha256:" + "b" * 64)
+        self.assertEqual(eff["returncode"], 2)
+        self.assertEqual(eff["command"], self.CAP["command"])
+        # the capsule itself is never mutated -- callers share it
+        self.assertEqual(self.CAP["output_hash"], "sha256:" + "a" * 64)
+
+    def test_effective_evidence_without_refresh_is_the_capsule(self):
+        self.assertEqual(tm.effective_evidence(self.CAP, None), self.CAP)
+
+    def test_latest_refresh_wins_in_fold_order_not_file_order(self):
+        # file order deliberately reversed against ts order: a reader
+        # keying off append order disagrees with the fold on a
+        # union-merged ledger (the ADR-016/ADR-050 lesson)
+        def v(ts, h):
+            return {"id": "tr-0000000" + h[0], "kind": "verdict", "ts": ts,
+                    "payload": {"claim": "tr-00000001", "verdict": "agree",
+                                "evidence_refresh": {
+                                    "output_hash": "sha256:" + h * 64,
+                                    "returncode": 0, "basis": "s"}}}
+        events = [(1, v("2026-01-02T00:00:00.000000+00:00", "b")),
+                  (2, v("2026-01-01T00:00:00.000000+00:00", "a"))]
+        got = tm.latest_evidence_refresh(events, "tr-00000001")
+        self.assertEqual(got["output_hash"], "sha256:" + "b" * 64)
+
+    # -- the mirror ---------------------------------------------------
+    def _v(self, **extra):
+        p = {"claim": "tr-00000001", "verdict": "agree", "basis": "b",
+             "anchor_commit": "abcdef1"}
+        p.update(extra)
+        return [(1, {"id": "tr-00000002", "kind": "verdict",
+                     "actor": "a", "session": "s",
+                     "ts": "2026-01-01T00:00:00.000000+00:00",
+                     "payload": p})]
+
+    def test_mirror_admits_a_well_formed_refresh(self):
+        ok = {"output_hash": "sha256:" + "a" * 64, "returncode": 0,
+              "basis": "line numbers shifted"}
+        self.assertEqual(tm.validate_events(self._v(evidence_refresh=ok)), [])
+
+    def test_mirror_tolerates_absence_forever(self):
+        # every pre-ADR-051 verdict lacks it, and validate runs INSIDE
+        # the commit gate: a mirror that refused history would wedge
+        # every consumer repo permanently (the ADR-049 reasoning)
+        self.assertEqual(tm.validate_events(self._v()), [])
+
+    def test_mirror_refuses_refresh_on_a_non_agree(self):
+        ok = {"output_hash": "sha256:" + "a" * 64, "returncode": 0,
+              "basis": "x"}
+        errs = tm.validate_events(self._v(verdict="diverge",
+                                          evidence_refresh=ok))
+        self.assertTrue(any("only an agree advances" in e for e in errs))
+
+    def test_mirror_refuses_refresh_without_an_anchor(self):
+        ok = {"output_hash": "sha256:" + "a" * 64, "returncode": 0,
+              "basis": "x"}
+        p = self._v(evidence_refresh=ok)
+        del p[0][1]["payload"]["anchor_commit"]
+        errs = tm.validate_events(p)
+        self.assertTrue(any("nothing to refresh" in e for e in errs))
+
+    def test_mirror_refuses_a_malformed_refresh(self):
+        for bad in ({"output_hash": "nothash", "returncode": 0, "basis": "x"},
+                    {"output_hash": "sha256:" + "a" * 64, "returncode": True,
+                     "basis": "x"},
+                    {"output_hash": "sha256:" + "a" * 64, "returncode": 0,
+                     "basis": "  "},
+                    "not-an-object"):
+            with self.subTest(bad=bad):
+                self.assertTrue(tm.validate_events(
+                    self._v(evidence_refresh=bad)))
+
 
 class TestAppendSingleWrite(unittest.TestCase):
     # The sec-1 concurrent-append safety statement assumes a record line
@@ -4217,6 +4368,17 @@ class TestReaffirmCLI(unittest.TestCase):
             r = _truth(d, "verdict", cid, "agree", "--basis", "ran it",
                        env_extra={"TRUTH_SESSION": "s-verifier"})
             self.assertEqual(r.returncode, 0, r.stderr)
+            # ADR-051: a manual agree on a path-claim runs the screened
+            # command once, to decide whether the anchor it is about to
+            # advance would leave the capsule behind. `touch` is still
+            # allowlisted HERE, so that run is legitimate -- pinned
+            # rather than absorbed, because it is a new execution on
+            # this path. Cleared again so any later reappearance is
+            # reaffirm's, which is what this test exists to prove.
+            self.assertTrue(os.path.exists(marker),
+                            "ADR-051: the agree gate should have run the "
+                            "still-allowlisted command once")
+            os.unlink(marker)
             with open(os.path.join(d, "f.txt"), "a") as f:
                 f.write("more\n")
             _git(d, "add", "f.txt")

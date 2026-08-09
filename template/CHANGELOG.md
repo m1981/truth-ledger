@@ -8,6 +8,26 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.36 (ADR-051 capsule coherence -- an agree carries the capsule with
+  the anchor; schema $id v0.18, one new verdict field, no fold change):
+  * `verdict <id> agree` on a path-claim now RUNS the screened evidence
+    command once and REFUSES when the capsule no longer reproduces --
+    that agree would advance the effective anchor (F2) past an immutable
+    capsule, leaving the claim live and permanently un-recheckable
+    (measured: 13 of 126 live claims, 10 of 77 retractions).
+  * `--refresh-evidence "<sentence>"` files it, storing
+    `evidence_refresh {output_hash, returncode, basis}` on the VERDICT.
+    `--recheck` and `reaffirm` compare against the newest refresh
+    (`effective_evidence`), so a refreshed claim RETURNS to reaffirm's
+    hash-match arm.
+  * BREAKING for scripted agrees: a plain `agree` over a changed output
+    now exits non-zero. The refusal names both exits (refresh, diverge).
+  * Counted as `evidence_refresh_filings` in the override report (CC-2).
+  * Verifier prompt: the step-1 stop rule is qualified, and a new
+    reproducible-by-whom step precedes the verdict rules.
+  * Absent `evidence_refresh` stays valid forever (validate runs inside
+    the commit gate; refusing history would wedge consumer repos).
+
 v0.9.35 (ADR-050 staling breakdown -- report what the ledger's central
   rule costs; no schema change, no gate semantics change, fold untouched):
   * `truth staling [--since TS] [--append-order] [--json]` (new read verb):

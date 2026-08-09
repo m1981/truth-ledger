@@ -120,6 +120,108 @@ def retraction_cause_error(cause, successor, claim_id, claims):
                 "Nothing was filed.")
     return None
 
+def capsule_coherence_error(verdict, claim_payload, observed, refresh_basis,
+                            capsule):
+    """ADR-051: the agree-side twin of ADR-012's mechanical subtype.
+
+    ADR-012 split `diverged` because it conflated two facts: reality
+    changed, versus the measuring recipe changed while the fact held.
+    `agree` carries the identical conflation and had no vocabulary for
+    it: "the evidence reproduces AND supports the sentence" and "the
+    evidence no longer reproduces but I judge the sentence still holds"
+    file the same record. Measured on the pilot ledger, humans hit the
+    second case and wrote the reason in prose -- "the recipe uses grep
+    -n, so the line numbers shifted" -- which is exactly the unrecorded-
+    judgment shape ADR-049 found in 65% of retraction bases.
+
+    The cost of the missing vocabulary is not cosmetic. An agree on a
+    path-carrying claim advances the effective anchor (F2); the capsule
+    is immutable and stays behind. So that agree silently converts the
+    claim into one that can NEVER be mechanically re-confirmed: every
+    later `--recheck` compares against an unproducible hash and
+    auto-diverges (and the verifier prompt says to stop there, before
+    the step that would read the sentence), while reaffirm's hash-match
+    arm can never take it back. 13 of 126 live claims sat in that state
+    when this was measured, and 10 of 77 retractions had passed through
+    it.
+
+    So: refuse the agree that would advance the anchor past a capsule
+    that no longer reproduces, unless the verifier states which case it
+    is. `--refresh-evidence "<sentence>"` records the judgment AND the
+    newly observed capsule, so anchor and capsule move together.
+
+    Refusal, not advisory -- ADR-049's three-part test, applied:
+      * volume is low (a mismatching manual agree, not every filing);
+      * the question is perfectly decidable (two hashes) and can never
+        produce a false refusal, so it cannot teach its own bypass --
+        the ADR-014 confused-deputy objection that made ADR-037's lints
+        warnings does not reach it;
+      * the convention equivalent has been measured to fail: ADR-012's
+        `--mechanical` exists on the diverge side and was used 6 times
+        in 99 diverges, while the agree side recorded nothing at all.
+
+    `observed` is (digest, returncode) from the shell's single run, or
+    None when there was nothing to run or the screen refused it -- an
+    unscreenable command can never be rechecked anyway, so there is no
+    capsule freshness to protect and the gate abstains. `capsule` is the
+    EFFECTIVE evidence (claim capsule + newest refresh), so a second
+    drift after a refresh re-fires this gate. Returns a refusal string
+    or None. Pure."""
+    if verdict != "agree":
+        if refresh_basis:
+            return ("truth: --refresh-evidence only accompanies an agree "
+                    "(ADR-051: it records that a changed output still "
+                    "supports the sentence; a diverge says the opposite, "
+                    "and cannot_verify says neither)")
+        return None
+    if not claim_payload.get("evidence_paths"):
+        # No anchor advance (cmd_verdict re-anchors only for path
+        # claims), so the capsule cannot be orphaned by this verdict.
+        if refresh_basis:
+            return ("truth: --refresh-evidence on a claim with no watched "
+                    "paths -- this agree does not advance an anchor, so "
+                    "no capsule can fall behind it (ADR-051)")
+        return None
+    if not (capsule or {}).get("command"):
+        if refresh_basis:
+            return ("truth: --refresh-evidence on a claim carrying no "
+                    "evidence command -- there is no capsule to refresh "
+                    "(ADR-051)")
+        return None
+    if observed is None:
+        # Unscreenable or unrunnable: `--recheck` refuses to execute it
+        # too (ADR-009/029), so the claim is manual-only either way.
+        if refresh_basis:
+            return ("truth: --refresh-evidence but the evidence command "
+                    "was not executed here -- a refresh records an act, "
+                    "never a wish (ADR-051). Nothing was filed.")
+        return None
+    digest, rc = observed
+    matches = ("sha256:" + digest == capsule.get("output_hash")
+               and rc == capsule.get("returncode", rc))
+    if matches:
+        if refresh_basis:
+            return ("truth: --refresh-evidence with a capsule that still "
+                    "reproduces -- there is nothing to refresh (ADR-051: "
+                    "a basis with nothing to excuse is schema noise; drop "
+                    "the flag)")
+        return None
+    if refresh_basis:
+        return None
+    return ("truth: this agree would advance the claim's anchor past a "
+            "capsule that no longer reproduces (ADR-051). The recorded "
+            "evidence hash can never be produced again, so every later "
+            "--recheck on this claim would auto-diverge and reaffirm "
+            "could never re-confirm it mechanically.\n"
+            "  If the output changed but the SENTENCE still holds (a "
+            "line-number shift, a count that grew), say so and carry the "
+            "new capsule forward:\n"
+            "    --refresh-evidence \"<one sentence: why the changed "
+            "output still supports this claim>\"\n"
+            "  If the change means the claim itself moved, file diverge "
+            "instead (--mechanical if only the recipe drifted, ADR-012). "
+            "Nothing was filed.")
+
 def contradicts_intake_error(a, b, claims, events):
     """Issue #4 intake gates, filing order: self-edge, unknown id (a
     then b), retracted endpoint, duplicate edge either direction. The

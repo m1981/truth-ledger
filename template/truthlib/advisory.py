@@ -508,6 +508,15 @@ def override_report(events, now, folded=None):
         1 for _, ev in events
         if ev.get("kind") in ("verdict", "issue_event")
         and (ev.get("payload") or {}).get("orphan_basis"))
+    # ADR-051 (CC-2): capsule refreshes -- an agree filed over a changed
+    # output. This is the gate's OWN health metric: a rising count means
+    # evidence recipes are drifting faster than the facts they measure
+    # (the ADR-012 mechanical class, agree side), which is a signal to
+    # re-file recipes, not to widen the gate.
+    evidence_refresh_filings = sum(
+        1 for _, ev in events
+        if ev.get("kind") == "verdict"
+        and (ev.get("payload") or {}).get("evidence_refresh"))
     decay_expiries = 0
     for _, ev in events:
         if ev.get("kind") != "invalidation":
@@ -542,6 +551,7 @@ def override_report(events, now, folded=None):
             "evidence_exit_filings": exit_overrides,
             "hollow_warned": hollow_warned,
             "orphan_filings": orphan_filings,
+            "evidence_refresh_filings": evidence_refresh_filings,
             "generated_ok_filings": generated_overrides,
             "max_scope_ttl_days": max_scope_ttl,
             "repeats": repeats}

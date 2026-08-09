@@ -641,6 +641,41 @@ def validate_events(events):
                     errors.append(f"line {n}: successor on a "
                                   f"{p.get('verdict')!r} verdict -- only a "
                                   "retraction hands a fact on (ADR-049)")
+            # ADR-051: evidence_refresh carries the capsule a verifier
+            # actually observed, plus the judgment that the changed
+            # output still supports the sentence. ABSENT IS TOLERATED
+            # FOREVER (every pre-ADR-051 verdict lacks it, the ledger is
+            # append-only, and validate runs INSIDE the commit gate --
+            # a mirror that refused history would wedge every consumer
+            # repo permanently; the ADR-049 reasoning, unchanged). The
+            # cross-field rules are mirror-only (ADR-027).
+            if "evidence_refresh" in p:
+                r = p["evidence_refresh"]
+                if not isinstance(r, dict):
+                    errors.append(f"line {n}: evidence_refresh must be an "
+                                  "object (ADR-051)")
+                elif not str(r.get("output_hash") or "").startswith("sha256:"):
+                    errors.append(f"line {n}: evidence_refresh.output_hash "
+                                  "must be a 'sha256:' digest (ADR-051)")
+                elif isinstance(r.get("returncode"), bool) \
+                        or not isinstance(r.get("returncode"), int):
+                    errors.append(f"line {n}: evidence_refresh.returncode "
+                                  "must be an integer (ADR-051)")
+                elif not (r.get("basis") or "").strip():
+                    errors.append(f"line {n}: empty evidence_refresh.basis "
+                                  "-- the refresh carries a sentence, not "
+                                  "a boolean (ADR-051)")
+                elif p.get("verdict") != "agree":
+                    errors.append(f"line {n}: evidence_refresh on a "
+                                  f"{p.get('verdict')!r} verdict -- only an "
+                                  "agree advances an anchor a capsule must "
+                                  "keep up with (ADR-051)")
+                elif not p.get("anchor_commit"):
+                    errors.append(f"line {n}: evidence_refresh without an "
+                                  "anchor_commit -- the refresh exists to "
+                                  "keep the capsule level with an anchor "
+                                  "advance, so an agree that advances no "
+                                  "anchor has nothing to refresh (ADR-051)")
             # ADR-027: schema requires verdict.anchor_commit be a string
             # >=7; the mirror had no length check (was weaker than schema).
             if "anchor_commit" in p and (not isinstance(p["anchor_commit"], str)

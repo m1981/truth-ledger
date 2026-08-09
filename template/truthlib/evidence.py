@@ -390,6 +390,52 @@ def ttl_staleness(events, cid):
         return True
     return is_ttl_reason(latest_invalidation_reason(events, cid))
 
+def latest_evidence_refresh(events, cid):
+    """ADR-051: the newest `evidence_refresh` filed for the claim, by
+    fold_key (the ADR-016 total order), never by file position -- the
+    same rule latest_invalidation_reason uses, for the same reason: a
+    reader that keys off append order disagrees with the fold on a
+    union-merged ledger. Returns the refresh payload or None. Pure."""
+    best_key, refresh = None, None
+    for ne in events:
+        ev = ne[1]
+        p = ev.get("payload") or {}
+        if ev.get("kind") != "verdict" or p.get("claim") != cid:
+            continue
+        r = p.get("evidence_refresh")
+        if not r:
+            continue
+        k = fold_key(ne)
+        if best_key is None or k > best_key:
+            best_key, refresh = k, r
+    return refresh
+
+def effective_evidence(capsule, refresh):
+    """ADR-051: the capsule a recheck must compare against -- the claim's
+    own, with output_hash/returncode overridden by the newest refresh.
+    THIS FUNCTION IS THE READER that admits `evidence_refresh` under
+    ADR-046's envelope rule; without a consumer the field would be
+    decoration and must not exist.
+    Why a refresh is needed at all: an `agree` advances the claim's
+    EFFECTIVE ANCHOR (F2) so re-verified claims stop re-staling from a
+    frozen base, but the capsule lives in the immutable claim record and
+    never moved with it. A human who correctly judged that a changed
+    output does not disturb the sentence (a grep -n line shift, a count
+    that grew) therefore left the claim live and PERMANENTLY
+    un-recheckable: every later recheck compares against a hash that can
+    no longer be produced, so it auto-diverges, and reaffirm's
+    hash-match arm can never take the claim back. Anchor and capsule now
+    move together or neither. Pure; a None refresh returns the capsule
+    unchanged, so every pre-ADR-051 record behaves exactly as before."""
+    if not capsule or not refresh:
+        return capsule
+    out = dict(capsule)
+    if refresh.get("output_hash"):
+        out["output_hash"] = refresh["output_hash"]
+    if "returncode" in refresh:
+        out["returncode"] = refresh["returncode"]
+    return out
+
 def previously_agreed(events, cid):
     """ADR-030: has ANY agree verdict ever been filed for the claim?
     Reaffirm re-confirms a verification that already happened; a stale

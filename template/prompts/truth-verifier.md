@@ -33,6 +33,13 @@ Procedure, in order:
    (reality changed). Those negative outcomes are FILED automatically
    (they are mechanical facts) -- if the recheck diverges, you are done;
    do not file a duplicate.
+   ONE EXCEPTION (ADR-051): if the recheck diverges AND the claim's
+   anchor has already advanced past its own watched paths, the mismatch
+   may be a stale CAPSULE rather than a changed fact -- an earlier agree
+   moved the anchor and left the recorded hash behind. Do not stop
+   there; continue to step 2 and judge the sentence. If it still holds,
+   file `agree --refresh-evidence "<why the changed output still
+   supports it>"`, which carries the capsule forward with the anchor.
    A MATCHING hash is only reported, never filed: it proves the command
    still produces that output, not that the claim's TEXT is a sound
    interpretation of it. Your agree (or diverge) is filed by you, once,
@@ -50,7 +57,16 @@ Procedure, in order:
    ("no X in Y"), verify the search would have found X if present (right
    directory, right pattern, no exclusions doing hidden work).
 
-3. VERDICT RULES.
+3. REPRODUCIBLE BY WHOM (ADR-051). Before your verdict, state whether
+   the evidence could be re-run by a DIFFERENT person on a DIFFERENT
+   machine. A command reading a path outside the repository, an
+   untracked artifact, or a local database is not reproducible, and a
+   session id proves nothing about it -- three "independent" agrees can
+   all come from the one filesystem where the path exists. If the claim
+   is not reproducible and is not explicitly a TTL attestation carrying
+   no watched paths, that is `cannot_verify`, not `agree`.
+
+4. VERDICT RULES.
    - agree: you independently reach the same conclusion from the evidence.
    - diverge: the evidence does not support the claim as written, or your
      own checks contradict it. Divergence is a SUCCESS of the process, not
@@ -74,7 +90,7 @@ Procedure, in order:
      believe a claim should die, diverge with a basis saying so, and the
      human queue will decide.
 
-4. BASIS DISCIPLINE. The --basis sentence must cite what you actually did
+5. BASIS DISCIPLINE. The --basis sentence must cite what you actually did
    ("re-ran grep, 0 matches in services/", "claim ambiguous: 'the API'
    could be either gateway"), never a vibe ("looks right"). Your verdict
    is itself a claim and carries your name.

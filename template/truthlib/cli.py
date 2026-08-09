@@ -1,4 +1,4 @@
-"""truth v0.9.35 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.36 -- append-only claims ledger with a native work kernel.
 
 truthlib.cli -- argparse and the cmd_* orchestration (the line above is
 the argparse description, kept in lockstep with the entry docstring by
@@ -213,7 +213,8 @@ def cmd_citations(a):
     sys.exit(CITATIONS_EXIT_CITED if any_cited else 0)
 
 def cmd_verdict(a):
-    claims, _ = fold(load_events())
+    events = load_events()          # ADR-051: the refresh readers need it
+    claims, _ = fold(events)
     if a.claim_id not in claims:
         sys.exit(f"truth: unknown claim {a.claim_id}")
     if claims[a.claim_id]["status"] == "retracted":
@@ -222,6 +223,15 @@ def cmd_verdict(a):
     if a.mechanical and (a.recheck or a.verdict != "diverge"):
         sys.exit("truth: --mechanical only annotates a manual diverge "
                  "(ADR-012: it says the recipe changed, not reality)")
+    observed = None   # ADR-051: set only on the manual-agree path below
+    if getattr(a, "refresh_evidence", None) and a.recheck:
+        # --recheck never files an agree (a matching hash is reported,
+        # never filed), so there is no anchor advance for a refresh to
+        # accompany. Refused rather than silently ignored -- the
+        # --cause/--successor precedent (ADR-049).
+        sys.exit("truth: --refresh-evidence does not accompany --recheck "
+                 "(ADR-051: a recheck never files an agree, so no anchor "
+                 "advances; run the recheck, then file your judgment)")
     if (a.cause or a.successor) and (a.recheck or a.verdict != "retracted"):
         # ADR-049: only the terminal verb kills a belief. `--recheck`
         # can never produce a retraction (recheck_verdict returns
@@ -255,7 +265,15 @@ def cmd_verdict(a):
                          "verdict with a basis naming what you ran "
                          "(ADR-009). Nothing was filed.")
             digest, rc = run_evidence(ev["command"])
-            verdict, basis = recheck_verdict(ev, digest, rc)
+            # ADR-051: compare against the EFFECTIVE capsule -- the
+            # claim's own, with output_hash/returncode overridden by the
+            # newest evidence_refresh. Without this a refreshed claim
+            # would keep auto-diverging against its original hash, which
+            # is the very state the refresh exists to leave.
+            verdict, basis = recheck_verdict(
+                effective_evidence(ev, latest_evidence_refresh(events,
+                                                               a.claim_id)),
+                digest, rc)
         if verdict == "agree":
             # A matching hash is a report, not a judgment: filing agree here
             # would commit the verifier to a verdict before the
@@ -320,8 +338,49 @@ def cmd_verdict(a):
                      "exists because authors share their own blind spots "
                      "(ADR-010). Dispatch it to a fresh session instead: "
                      f"scripts/truth dispatch {a.claim_id}")
+        # ADR-051: the capsule-coherence gate. An agree on a path-claim
+        # advances the effective anchor (F2) while the capsule stays in
+        # the immutable claim record -- so an agree filed over a changed
+        # output silently makes the claim permanently un-recheckable.
+        # Run the command ONCE here (the shell gathers; the decision is
+        # capsule_coherence_error's) and refuse the orphaning agree
+        # unless the verifier states why the changed output still
+        # supports the sentence. Placed AFTER the ADR-010 seam
+        # deliberately: a self-verification must be refused before any
+        # command runs on its behalf.
+        cap = claims[a.claim_id]["claim"]["payload"].get("evidence") or {}
+        refresh = latest_evidence_refresh(events, a.claim_id)
+        eff_cap = effective_evidence(cap, refresh)
+        observed = None
+        if a.verdict == "agree" and cap.get("command") \
+                and claims[a.claim_id]["claim"]["payload"].get(
+                    "evidence_paths"):
+            # Screened exactly as recheck screens it (ADR-009/029: the
+            # screen gates execution, and a second screen implementation
+            # is forbidden). A refusal leaves `observed` None and the
+            # gate abstains -- an unscreenable command can never be
+            # rechecked anyway, so there is no capsule to keep fresh.
+            if cap.get("screened") is not False and not \
+                    screen_evidence_command(cap["command"], load_allowlist(),
+                                            denylist=load_denylist()):
+                observed = run_evidence(cap["command"])
+        err = capsule_coherence_error(
+            a.verdict, claims[a.claim_id]["claim"]["payload"], observed,
+            a.refresh_evidence, eff_cap)
+        if err:
+            sys.exit(err)
         verdict, basis = a.verdict, a.basis
     payload = {"claim": a.claim_id, "verdict": verdict, "basis": basis}
+    if verdict == "agree" and getattr(a, "refresh_evidence", None) \
+            and observed is not None:
+        # ADR-051: the refresh records an ACT -- the capsule this
+        # session actually observed, plus the judgment that it still
+        # supports the sentence. effective_evidence() is its reader,
+        # which is what admits the field under ADR-046's envelope rule.
+        payload["evidence_refresh"] = {
+            "output_hash": "sha256:" + observed[0],
+            "returncode": observed[1],
+            "basis": a.refresh_evidence}
     if verdict == "retracted" and a.cause:
         # ADR-049: the cause and its successor pointer. Not report-only
         # metadata -- retraction_cause_error BLOCKS on them, which is
@@ -412,9 +471,16 @@ def cmd_reaffirm(a):
                                     ttl_staled=ttl_staled)
             else:
                 digest, rc = run_evidence(ev["command"])
-                d = reaffirm_triage(entry, reason, cur, was_agreed,
-                                    recheck=recheck_verdict(ev, digest, rc),
-                                    ttl_staled=ttl_staled)
+                # ADR-051: the EFFECTIVE capsule, exactly as `--recheck`
+                # compares -- a refreshed claim must return to the
+                # hash-match arm, or the refresh bought nothing.
+                d = reaffirm_triage(
+                    entry, reason, cur, was_agreed,
+                    recheck=recheck_verdict(
+                        effective_evidence(
+                            ev, latest_evidence_refresh(events, cid)),
+                        digest, rc),
+                    ttl_staled=ttl_staled)
         action, filed = d["action"], None
         if d["arm"] == "match":
             if cur is None and entry["claim"].get("session") == session():
@@ -1331,6 +1397,18 @@ def main():
                         "`wrong` retraction). A CLAIM-level pointer -- "
                         "ADR-013's --supersedes is per-ISSUE premise "
                         "redirection and stays separate")
+    v.add_argument("--refresh-evidence", dest="refresh_evidence",
+                   metavar="SENTENCE",
+                   help="REQUIRED on an agree whose evidence no longer "
+                        "reproduces (ADR-051): one sentence why the "
+                        "changed output still supports the claim's "
+                        "sentence -- a line-number shift, a count that "
+                        "grew. Stores the newly observed capsule on the "
+                        "verdict so the anchor and the capsule advance "
+                        "TOGETHER; without it the agree would leave the "
+                        "claim live and permanently un-recheckable. If "
+                        "the fact itself moved, file diverge instead "
+                        "(--mechanical if only the recipe drifted)")
     v.add_argument("--orphan-ok", metavar="SENTENCE",
                    help="retract despite scope-covered citations of the id "
                         "(ADR-036): one sentence why deliberate orphaning "
