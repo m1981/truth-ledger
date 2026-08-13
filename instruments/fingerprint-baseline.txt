@@ -302,13 +302,16 @@
     O| OK    fold latency -- <MS>
     O| OK    evidence allowlist present
     O| OK    evidence allowlist grey-zone -- no code-executing programs listed
+    O| FAIL  policy file attested (.truth/generated-paths) -- .truth/generated-paths is committed but EMPTY with no attestation -- which is byte-identical to the untouched default, so nothing here records that the emptiness was ever decided (ADR-042 rule 2: zero coverage is a failure until someone says otherwise). Add one line: '# attested YYYY-MM-DD: <why nothing belongs here>' -- or add the entries that do belong.
+    O| WARN  policy file attested (.truth/citation-scope) -- not committed -- the check it drives runs dark, and an absent file records no decision either way
+    O| OK    generated-paths covers what looks generated
     O| OK    union merge rule present
     O| FAIL  pre-commit hook enforces INV-A/INV-B -- no executable hook invoking check-truth under .git/hooks, and no top-level CI config (.github/workflows/*.yml, .gitlab-ci.yml, Jenkinsfile, …) names check-truth -- a hook OR CI MUST exist, see README Install
     O| FAIL  post-merge hook enforces INV-C -- no executable hook invoking invalidate-scan under .git/hooks, and no top-level CI config (.github/workflows/*.yml, .gitlab-ci.yml, Jenkinsfile, …) names invalidate-scan -- a hook OR CI MUST exist, see README Install
     O| OK    discovery -- snippet found in AGENTS.md
     O| OK    queue aging
     O| 
-    O| doctor: 2 failure(s), 0 warning(s)
+    O| doctor: 3 failure(s), 1 warning(s)
 === R:doctor-json
     exit=1
     E| 
@@ -335,6 +338,10 @@
     O|       "detail": "no code-executing programs listed"
     O|     },
     O|     {
+    O|       "check": "generated-paths covers what looks generated",
+    O|       "detail": ""
+    O|     },
+    O|     {
     O|       "check": "union merge rule present",
     O|       "detail": ""
     O|     },
@@ -347,8 +354,17 @@
     O|       "detail": ""
     O|     }
     O|   ],
-    O|   "warn": [],
+    O|   "warn": [
+    O|     {
+    O|       "check": "policy file attested (.truth/citation-scope)",
+    O|       "detail": "not committed -- the check it drives runs dark, and an absent file records no decision either way"
+    O|     }
+    O|   ],
     O|   "fail": [
+    O|     {
+    O|       "check": "policy file attested (.truth/generated-paths)",
+    O|       "detail": ".truth/generated-paths is committed but EMPTY with no attestation -- which is byte-identical to the untouched default, so nothing here records that the emptiness was ever decided (ADR-042 rule 2: zero coverage is a failure until someone says otherwise). Add one line: '# attested YYYY-MM-DD: <why nothing belongs here>' -- or add the entries that do belong."
+    O|     },
     O|     {
     O|       "check": "pre-commit hook enforces INV-A/INV-B",
     O|       "detail": "no executable hook invoking check-truth under .git/hooks, and no top-level CI config (.github/workflows/*.yml, .gitlab-ci.yml, Jenkinsfile, \u2026) names check-truth -- a hook OR CI MUST exist, see README Install"
@@ -358,8 +374,8 @@
     O|       "detail": "no executable hook invoking invalidate-scan under .git/hooks, and no top-level CI config (.github/workflows/*.yml, .gitlab-ci.yml, Jenkinsfile, \u2026) names invalidate-scan -- a hook OR CI MUST exist, see README Install"
     O|     }
     O|   ],
-    O|   "failures": 2,
-    O|   "warnings": 0
+    O|   "failures": 3,
+    O|   "warnings": 1
     O| }
 
 # end of fingerprint
