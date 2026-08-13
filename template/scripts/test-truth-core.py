@@ -5165,6 +5165,131 @@ class TestReproduceExitCodes(unittest.TestCase):
                          "reproduce files nothing: it must take no ledger "
                          "lock and print no commit-gate banner")
 
+class TestStructureDocMatchesDisk(unittest.TestCase):
+    """docs/structure.md is the structural view (ADR-044's DAG, ADR-046's
+    tiers, ADR-034's stages, drawn together). It exists because the
+    previous as-built diagram drifted 20 versions while being 'kept
+    current' by prepending prose deltas to its own header -- restatement
+    instead of citation, in the architecture description of the thing
+    that mechanises citation.
+
+    So it is pinned to the disk it describes, RELATIONALLY: both sides
+    are derived at run time and compared, with no expected value written
+    down. A count pinned to a literal would pass unchanged while a
+    module was added, which is the one failure this test exists to
+    catch.
+
+    It lives here, not in a claim, for a stated reason: comparing two
+    COMPUTED values needs command substitution, which the ADR-009
+    evidence screen refuses by design (evidence must be read-only and
+    safe to re-execute in a verifier's session). A claim could only pin
+    one side, and `reaffirm` would then auto-agree while the two drifted
+    -- the shape measured on the consumer ledger as 13 orphaned
+    capsules. The relational check therefore belongs to a gate that may
+    execute; this suite is one."""
+
+    DOC = os.path.join(HERE, "..", "docs", "structure.md")
+
+    @staticmethod
+    def _re():
+        import re as _r
+        return _r
+
+    def _doc(self):
+        with open(self.DOC, encoding="utf-8") as f:
+            return f.read()
+
+    def _modules_on_disk(self):
+        d = os.path.join(HERE, "..", "truthlib")
+        return {f[:-3] for f in os.listdir(d)
+                if f.endswith(".py") and f != "__init__.py"}
+
+    def _modules_in_doc(self, text):
+        # the decomposition diagram names each module as <b>name</b>
+        return set(self._re().findall(r"<b>([a-z]+)</b>", text))
+
+    def test_diagram_names_exactly_the_modules_that_exist(self):
+        disk, doc = self._modules_on_disk(), self._modules_in_doc(self._doc())
+        self.assertEqual(
+            disk, doc,
+            "docs/structure.md's decomposition diagram and truthlib/ "
+            "disagree.\n  on disk only: %s\n  in doc only:  %s\n"
+            "Redraw the diagram; do NOT append a version delta to its "
+            "header (that is how the previous as-built view drifted 20 "
+            "versions)." % (sorted(disk - doc), sorted(doc - disk)))
+
+    def test_drawn_import_edges_match_the_real_ast_edges(self):
+        """The arrows are the claim, so the arrows are what is checked.
+        Parses truthlib/*.py for real intra-package imports and compares
+        with the `A --> B` edges drawn in the decomposition section."""
+        import ast
+        real = set()
+        d = os.path.join(HERE, "..", "truthlib")
+        for m in self._modules_on_disk():
+            with open(os.path.join(d, m + ".py"), encoding="utf-8") as f:
+                tree = ast.parse(f.read())
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module \
+                        and node.module.startswith("truthlib."):
+                    real.add((node.module.split(".")[1], m))
+        text = self._doc()
+        # only the decomposition section's edges; node ids there are the
+        # three-letter uppercase aliases beside each <b>module</b> box
+        re = self._re()
+        alias = dict(re.findall(r"([A-Z]{3})\[\"<b>([a-z]+)</b>", text))
+        drawn = set()
+        for a, b in re.findall(r"^\s*([A-Z]{3}) --> ([A-Z]{3})$",
+                               text, re.M):
+            if a in alias and b in alias:
+                drawn.add((alias[a], alias[b]))
+        # A readable diagram draws the TRANSITIVE REDUCTION -- registry
+        # is imported directly by six modules, and drawing all 18 edges
+        # produces a hairball nobody reads. So the relation checked is
+        # not equality but FAITHFULNESS of the reduction, which is the
+        # honest property: every drawn arrow is a real import, and the
+        # drawn graph reaches exactly what the real one reaches. An
+        # invented arrow fails the first half; a lost dependency fails
+        # the second.
+        self.assertTrue(
+            drawn <= real,
+            "the diagram draws import edges that do not exist: %s"
+            % sorted(drawn - real))
+
+        def closure(edges):
+            nodes = {n for e in edges for n in e}
+            reach = {n: {b for a, b in edges if a == n} for n in nodes}
+            changed = True
+            while changed:
+                changed = False
+                for n in nodes:
+                    add = set()
+                    for m in reach[n]:
+                        add |= reach.get(m, set())
+                    if not add <= reach[n]:
+                        reach[n] |= add
+                        changed = True
+            return {(a, b) for a in reach for b in reach[a]}
+
+        self.assertEqual(
+            closure(drawn), closure(real),
+            "the drawn DAG reaches a different set than the real one -- "
+            "the reduction lost or invented a dependency.\n"
+            "  real reaches only:  %s\n  drawn reaches only: %s"
+            % (sorted(closure(real) - closure(drawn)),
+               sorted(closure(drawn) - closure(real))))
+
+    def test_purity_boundary_agrees_with_the_enforced_one(self):
+        """The green box in the diagram must contain exactly the modules
+        TestModulePurity actually enforces -- a diagram claiming purity
+        for a module nobody checks is the marketing this repo forbids."""
+        text = self._doc()
+        pure_block = text.split("subgraph EDGE")[0]
+        drawn_pure = set(self._re().findall(r"<b>([a-z]+)</b>", pure_block))
+        self.assertEqual(
+            drawn_pure, set(TestModulePurity.PURE),
+            "docs/structure.md draws a different PURE CORE than "
+            "TestModulePurity enforces")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

@@ -2656,7 +2656,7 @@ fi
 cd "$RX_PREV"
 rm -rf "$RX"
 
-# ---- FAULT ST (ADR-050, v0.9.37): the staling breakdown -----------------
+# ---- FAULT ST (ADR-050, v0.9.38): the staling breakdown -----------------
 # A synthetic ledger whose answer is known BY CONSTRUCTION: four claims,
 # seven invalidation records forming five episodes, and four resolving
 # verdicts hand-built to land one in each arm plus a second mechanical
@@ -3336,7 +3336,7 @@ rm -f .lk-held .lk-release
 cd "$LK_PREV"
 rm -rf "$LK"
 
-# ---- FAULT EF (ADR-051, v0.9.37): capsule coherence ---------------------
+# ---- FAULT EF (ADR-051, v0.9.38): capsule coherence ---------------------
 # An `agree` on a path-claim advances the effective anchor (F2) while the
 # capsule lives in the immutable claim record. Filed over a CHANGED
 # output, that agree leaves the claim live and permanently

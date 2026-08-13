@@ -8,6 +8,34 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.38 (the structural view -- docs only + one new test class; no CLI
+  change, no schema change, fold untouched):
+  * NEW `docs/structure.md`: the decomposition the system never had. Nine
+    drawn viewpoints existed and every one was behaviour or flow, so the
+    module DAG (ADR-044), the tier boundary (ADR-046) and the intake-stage
+    order (ADR-034) had to be reassembled from five ADRs by every reader.
+    They are now one document, plus a stakeholder/concern table restoring
+    the 42010 anchoring that `--concern` reached for and the envelope rule
+    correctly evicted at v0.9.30 (it costs nothing in prose).
+  * PINNED, relationally: `TestStructureDocMatchesDisk` derives BOTH sides
+    at run time -- modules from `truthlib/`, edges from `ast`, the purity
+    boundary from TestModulePurity -- and compares. No expected value is
+    written down, so a count pinned to a literal cannot pass while a module
+    is added. The drawn DAG is checked as a faithful transitive REDUCTION
+    (every arrow real, same reachability), because drawing all 18 edges is
+    a hairball nobody reads.
+  * Stated in the test, because it is a real constraint: this cannot be a
+    claim. Comparing two COMPUTED values needs command substitution, which
+    the ADR-009 screen refuses by design. A claim could pin only one side,
+    and `reaffirm` would auto-agree while the two drifted -- the shape
+    measured on a consumer ledger as 13 orphaned capsules.
+  * `docs/diagrams/asbuilt-architecture.md` marked SUPERSEDED for structure
+    and kept as the v0.9.13 snapshot it is. Its running header -- ~3,000
+    words of version deltas prepended over 20 releases, never once drawing
+    `truthlib/` -- is the restatement-instead-of-citation failure (paper
+    section 5) occurring in the architecture description of the artifact
+    that mechanises citation.
+
 v0.9.37 (ADR-013 redirects applied by every premise-map consumer;
   no schema change, no fold change, no gate semantics change):
   * `truth issues` now applies apply_supersedes(), matching `ready`,

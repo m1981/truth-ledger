@@ -1,4 +1,4 @@
-"""truth v0.9.37 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.38 -- append-only claims ledger with a native work kernel.
 
 truthlib.cli -- argparse and the cmd_* orchestration (the line above is
 the argparse description, kept in lockstep with the entry docstring by

@@ -24,6 +24,12 @@ Three documents, in this order. Everything else is reference.
 A consumer repo additionally gets `docs/machinery-atlas.md` — ten drawn views
 of the machinery as installed. Start there if one exists.
 
+If you are about to **change the machinery** rather than use it, read
+`template/docs/structure.md` first: the modules, what each owns, the import
+DAG, the tier boundary and the intake-stage order, in one place. It is drawn
+from disk and pinned by `TestStructureDocMatchesDisk`, so it fails the suite
+rather than drifting — which is what happened to the view it replaces.
+
 ## Init a new repo — one command
 
 ```bash
