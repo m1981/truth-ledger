@@ -27,21 +27,46 @@ got this right: its acceptance was *the old corpus unchanged*, and any arm-count
 delta meant the phase had exceeded its licence. The fingerprint generalises
 that to observable behaviour.
 
-**It is red-proven**, and the proof found two holes in its own first draft:
+### Re-prove it here before you trust it
 
-| seeded change | detected |
+The four mutations below were run and detected during authoring, in a
+throwaway clone. **That is a result you cannot check, so do not take it.** Run
+this first, in your own tree, and read the table as the expected output of
+your own run rather than as a finding of mine:
+
+```bash
+bash instruments/reprove-fingerprint.sh
+```
+
+It seeds each mutation, runs the fingerprint, restores, and prints DETECTED or
+MISSED per row. Expected:
+
+| seeded change | expected |
 |---|---|
-| two `INTAKE_GATES` rows swapped | ✅ 4 lines |
-| `CITATIONS_EXIT_CITED` → `1` | ✅ 2 lines |
-| one word changed in a refusal message | ✅ 2 lines |
-| one CC-1 advisory line dropped | ✅ 1 line |
+| two `INTAKE_GATES` rows swapped | DETECTED |
+| `CITATIONS_EXIT_CITED` → `1` | DETECTED |
+| one word changed in a refusal message | DETECTED |
+| one CC-1 advisory line dropped | DETECTED |
+| nothing (control) | IDENTICAL |
 
-The first draft missed the first two. The order probe was tuned to Jaccard
-0.556 — *below* G8's 0.6 threshold, so G8 never fired and the order of the two
-gates was unobservable. And no probe reached the `cited` branch of `citations`,
-so the only non-trivial exit code in that file was never exercised. Both are
-the dark-arm class: an arm that cannot report a miss. **Assume your own new
-arms have this defect until a seeded mutation proves otherwise.**
+**Any MISSED means the instrument is blind for that class and no brief below
+may be accepted against it.** A MISSED on the control means the fingerprint is
+not deterministic in your environment — report that before anything else.
+
+Note how the guard actually fires, because it is not where you would expect:
+blinding the instrument (deleting a probe) shifts every later probe, so the
+**control** goes non-IDENTICAL before the seeded row goes MISSED. Either way
+the script refuses, but read the control line first — it is the arm that
+catches tampering with the instrument itself.
+
+**The instrument's own first draft missed two of the four**, which is why this
+step is mandatory rather than advisory. The order probe was tuned to Jaccard
+0.556 — *below* G8's 0.6 threshold — so G8 never fired and the order of the
+two gates was unobservable. And no probe reached the `cited` branch of
+`citations`, so the only non-trivial exit code in that file was never
+exercised. Both are the dark-arm class: an arm that cannot report a miss.
+**Assume your own new arms have this defect until a seeded mutation proves
+otherwise.**
 
 ---
 
