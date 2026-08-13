@@ -1,0 +1,31 @@
+# Payload fields exempted from the reader sweep (F1.4,
+# instruments/field-consumers.py). One entry per line:
+#
+#   <payload-key> -- <why nothing reads it, and what would change that>
+#
+# ABSENT          -> no policy on record; the sweep excuses NOTHING and
+#                    says so loudly (it cannot tell an exemption from an
+#                    oversight).
+# COMMITTED EMPTY -> a conscious "every payload field here must have a
+#                    reader". Armed and silent.
+# POPULATED       -> armed, and every entry is re-checked: an exemption
+#                    for a field that has since acquired a reader, or for
+#                    a field this ledger no longer carries, FAILS.
+#
+# THIS FILE IS DELIBERATELY EMPTY. ADR-046 already states the admission
+# rule -- a payload field is admitted only if the fold or a blocking gate
+# reads it -- so there is nothing to excuse: a field with no reader is a
+# defect to fix, not a policy to record. The two legacy-admitted fields
+# ADR-046 names, `blast_forecast` and `concerns`, need no entry here:
+# both turn out to have real content readers (validate_events type-checks
+# the forecast; instruments/concern-tag.py reads the tags), so the sweep
+# passes them on their merits rather than on an exemption.
+#
+# One field is FAILING as this file is committed, and that is intended:
+# `reaffirm_cleared` rides 1072 records and its only consumer is a
+# presence test. F3.5 (wk-fadcc69d) is the fix -- the burials instrument
+# reading prior_anchor and touched. Exempting it here instead would hide
+# the exact finding the sweep was built to make.
+#
+# attested 2026-08-13: nothing in this ledger is exempt from needing a
+# reader; the one failing field has a named fix in flight, not a waiver.
