@@ -8,8 +8,70 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
-v0.9.38 (the structural view -- docs only + one new test class; no CLI
-  change, no schema change, fold untouched):
+v0.9.38 (one new READ verb, one behaviour change to `doctor`, the
+  structural view, and the acceptance instrument for the coming
+  refactor; no schema change, fold untouched):
+
+  -- BEHAVIOUR CHANGE, read this first ------------------------------------
+  * `truth doctor` now FAILS on a committed-but-EMPTY policy file that
+    carries no dated attestation (`.truth/generated-paths`,
+    `.truth/citation-scope`). ADR-034's SI-4 reads committed-empty as
+    "consciously configured" and stays silent; ADR-042 rule 2 says zero
+    coverage is a failure. Both were on record and they contradict; SI-4
+    won by being older, not on merit. An empty file must now SAY it is
+    empty: `# attested YYYY-MM-DD: <reason>`. **Every existing consumer's
+    doctor goes red until one line is written per empty policy file** --
+    that is the intended and only effect on them. The template ships the
+    instruction and an example, deliberately NOT the attestation line: an
+    inherited attestation records nothing. Argued, with the case against
+    (ADR-045 chose WARN in the same adoption shape), in ADR-053.
+  * Cross-check, WARN never a refusal: `doctor` names tracked files under
+    conventionally generated directories that the committed list does not
+    cover. An attested "nothing here is generated" is a claim about the
+    repository, and only the repository can contradict it. On the pilot
+    consumer it names 25 files at once.
+
+  -- NEW VERB -------------------------------------------------------------
+  * `truth reproduce [--since] [--arm] [--json]` -- re-runs every LIVE
+    claim's evidence capsule and classifies the outcome: `reproduces` /
+    `capsule-stale` / `unexecutable` / `no-capsule`, with `capsule-stale`
+    split four ways (`uncommitted`, `watched-moved`, `orphaned-capsule`,
+    `unexplained`) because one count is four different repairs. Read verb:
+    outside WRITE_VERBS, no ledger lock, files NOTHING -- a mismatching
+    hash is ADR-012's judgment call and a batch verb has no judge.
+    Exit 7 when any capsule no longer reproduces; exit 8 when the sweep
+    examined ZERO claims (ADR-042 rule 2: measuring nothing is a failure,
+    not a pass). Execution reuses the screened path `--recheck` and
+    `reaffirm` use, against the ADR-051 effective capsule; the one
+    addition is `cwd=repo_root()`. Argued in ADR-052, which ADR-051's own
+    Non-goals section named and owed a record.
+  * Measured on the pilot consumer: 126 live claims, 86 reproduce, 7
+    capsule-stale (all orphaned-capsule), 11 unexecutable, 22 no-capsule --
+    cross-checked against a reimplementation written from the ADR text
+    rather than from truthlib, with zero per-claim disagreements. The same
+    commit gave 78/13 in a Linux container and 82/9 in a clean macOS
+    worktree: four claims depend on the machine, two more reproduce only
+    on a tree carrying gitignored `__pycache__`.
+  * Canary FAULT RP: five arms including a negative control, each seen RED
+    against its own named mutation. RP2 is seeded as a RAW LEGACY RECORD,
+    because since ADR-051 the CLI refuses to create an orphaned capsule --
+    the only way to seed the population that still exists in deployed
+    ledgers is to append the pre-ADR-051 shape directly.
+
+  -- META-REPO INSTRUMENTS (not shipped to consumers) ----------------------
+  * `instruments/field-consumers.py` fails any payload field with no
+    reader, enumerating keys MECHANICALLY from the ledger. Detection is an
+    AST walk, not a grep, and a PRESENCE TEST IS NOT A READER: it found
+    `reaffirm_cleared`, riding 1072 records, whose only consumer asks
+    whether it is there. The version that counted every read as a reader
+    reported that field healthy.
+  * `instruments/fingerprint.sh` (50 probes) + baseline +
+    `reprove-fingerprint.sh`: the acceptance instrument for the A1-A5
+    refactor, with its sensitivity re-proved against four seeded mutations
+    in the reader's own tree. Its declared coverage limits are written
+    down rather than implied.
+
+  -- THE STRUCTURAL VIEW --------------------------------------------------
   * NEW `docs/structure.md`: the decomposition the system never had. Nine
     drawn viewpoints existed and every one was behaviour or flow, so the
     module DAG (ADR-044), the tier boundary (ADR-046) and the intake-stage
