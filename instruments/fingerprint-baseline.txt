@@ -377,5 +377,59 @@
     O|   "failures": 3,
     O|   "warnings": 1
     O| }
+=== R:reproduce-empty
+    exit=8
+    E| truth: reproduce examined ZERO live claims -- the sweep measured nothing, which is a failure, not a pass (ADR-042 rule 2). Check --since, the ledger path, and that this repo has live claims at all.
+    O| reproduce: 0 live claim(s) -- 0 reproduces, 0 capsule-stale, 0 unexecutable, 0 no-capsule
+=== R:reproduce-empty-json
+    exit=8
+    E| truth: reproduce examined ZERO live claims -- the sweep measured nothing, which is a failure, not a pass (ADR-042 rule 2). Check --since, the ledger path, and that this repo has live claims at all.
+    O| {
+    O|   "examined": 0,
+    O|   "counts": {
+    O|     "reproduces": 0,
+    O|     "capsule-stale": 0,
+    O|     "unexecutable": 0,
+    O|     "no-capsule": 0
+    O|   },
+    O|   "capsule_stale_shapes": {},
+    O|   "head": "b4f1ac05f92c06a0c3ef11ebe69a1b6a6f3abc7c",
+    O|   "dirty": true,
+    O|   "claims": []
+    O| }
+=== R:reproduce
+    exit=0
+    E| 
+    O| <TR>  reproduces     output hash and returncode match the effective capsule (ADR-051)
+    O| reproduce: 1 live claim(s) -- 1 reproduces, 0 capsule-stale, 0 unexecutable, 0 no-capsule
+=== R:reproduce-json
+    exit=0
+    E| 
+    O| {
+    O|   "examined": 1,
+    O|   "counts": {
+    O|     "reproduces": 1,
+    O|     "capsule-stale": 0,
+    O|     "unexecutable": 0,
+    O|     "no-capsule": 0
+    O|   },
+    O|   "capsule_stale_shapes": {},
+    O|   "head": "b4f1ac05f92c06a0c3ef11ebe69a1b6a6f3abc7c",
+    O|   "dirty": true,
+    O|   "claims": [
+    O|     {
+    O|       "id": "<TR>",
+    O|       "arm": "reproduces",
+    O|       "detail": "output hash and returncode match the effective capsule (ADR-051)",
+    O|       "tier": "P2",
+    O|       "text": "f.txt carries exactly two x lines",
+    O|       "command": "grep -c x f.txt"
+    O|     }
+    O|   ]
+    O| }
+=== R:reproduce-arm
+    exit=0
+    E| 
+    O| reproduce: 1 live claim(s) -- 1 reproduces, 0 capsule-stale, 0 unexecutable, 0 no-capsule
 
 # end of fingerprint

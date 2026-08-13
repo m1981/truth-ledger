@@ -164,5 +164,30 @@ probe "R:staling-empty"         $T staling
 probe "R:doctor"                $T doctor
 probe "R:doctor-json"           $T doctor --json
 
+# ---- F1.1 reproduction sweep --------------------------------------------
+# Added when this series landed on a tree that carries `truth reproduce`.
+# This verb needs probing MORE than most, not less: A4 rewrites main() as a
+# table including this parser, and A2 splits advisory, from which
+# cmd_reproduce takes dirty_watch and parse_porcelain_z. It is the newest
+# code in the tree and therefore the code a behaviour-preserving refactor
+# is most likely to break without anyone noticing.
+#
+# The empty sweep goes FIRST, and it is not a filler arm: every verdict
+# probe above is a refusal, so nothing in this sandbox has ever been live,
+# and exit 8 is ADR-042 rule 2 -- an instrument that examined nothing has
+# not passed. That arm is only reachable while the population is empty.
+probe "R:reproduce-empty"       $T reproduce
+probe "R:reproduce-empty-json"  $T reproduce --json
+# Now make exactly one claim live so the arms and exit 0 are reachable too.
+# A different session id, because ADR-010's self-agree guard compares
+# session strings; the capsule (`grep -c x f.txt` over an unchanged f.txt)
+# still reproduces, so ADR-051's coherence gate passes silently. This runs
+# AFTER every other probe, so no existing block can move.
+TRUTH_SESSION=s-fp-verifier $T verdict "$CID" agree \
+  --basis "re-ran the capsule" >/dev/null 2>&1
+probe "R:reproduce"             $T reproduce
+probe "R:reproduce-json"        $T reproduce --json
+probe "R:reproduce-arm"         $T reproduce --arm capsule-stale
+
 echo
 echo "# end of fingerprint"
