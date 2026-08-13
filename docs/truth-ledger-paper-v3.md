@@ -37,6 +37,38 @@ deployments, and the defects an adversarial audit found; §6 is the
 theoretical vocabulary that motivated the design, presented after the
 mechanism and its field correction.
 
+
+### Scope, declared
+
+This is a **verification apparatus**. It answers one question: does a written
+sentence still correspond to the repository it describes?
+
+It has no requirements baseline. Nothing here can tell you that a true fact is
+about the wrong thing, that a spec should never have been written, or that the
+work it governs is worth doing. In 12207 terms the whole ledger sits *below*
+the baseline: it catches sentences drifting from code, never code drifting from
+intent. §6 borrows the verification/validation vocabulary because it is the
+right vocabulary for naming what is absent, not because both halves are
+implemented.
+
+The only hooks toward the other half are narrow and named: ADR-014's
+`--accept-kind validation`, a golden-diff oracle encoding stakeholder intent,
+and ADR-049's `wrong` cause, which counts filings that should never have passed
+intake. Neither constitutes a baseline.
+
+Two consequences an operator should hold:
+
+1. When a requirement, standard, or authoritative input is superseded, this
+   system says "recheck the dependent work". The correct signal would be *the
+   baseline moved, so every decision descending from it is now unargued* — and
+   nothing here can produce it.
+2. A fact that quietly died while nothing it watches moved is invisible by
+   construction. The staling rule reports only what git can see; §2's measured
+   false-alarm rate is the cost of that reach, and the missed-staling rate is
+   not measurable at all.
+
+Declaring this boundary is cheaper than defending it.
+
 ---
 
 ## 1. The mechanism
@@ -589,13 +621,14 @@ that already names it.
 - **"Checked" and "believed" are typeset identically** in standups, PR
   summaries, and estimates. ISO/IEC/IEEE 12207 separates *verification*
   (was the check performed correctly) from *validation* (is it the right
-  check). The artifact enforces the split twice: evidence classes make
-  belief-vs-check explicit at filing, and the verifier protocol
-  separates re-running the command from judging whether its output
-  supports the *sentence*. §2's dominant failure — a correct grep
-  backing an overreaching quantifier — is a validation failure hiding
-  behind passing verification, which is why ADR-007 gates it at
-  intake.
+  check). The artifact serves the verification side, and borrows the
+  vocabulary of the other: evidence classes make belief-vs-check explicit
+  at filing, and the verifier protocol separates re-running the command
+  from judging whether its output supports the *sentence*. §2's dominant
+  failure — a correct grep backing an overreaching quantifier — is a
+  validation failure hiding behind passing verification, and ADR-007
+  gates that one shape at intake. One shape is not the split: see the
+  scope declaration at the end of §0 for what this artifact cannot do.
 - **"What breaks if this assumption is wrong?" is unanswerable in either
   direction.** ISO/IEC/IEEE 24765's forward/backward traceability,
   usually requirements↔code↔tests, is applied assumptions↔work: premise

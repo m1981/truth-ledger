@@ -6,6 +6,24 @@ An append-only claims ledger for repositories where AI agents (and humans) asser
 
 ---
 
+## Reading order
+
+Three documents, in this order. Everything else is reference.
+
+1. **`docs/truth-ledger-paper-v3.md`** — what this is and what it measures.
+   Read §0 first, including the scope declaration: this is a verification
+   apparatus with no requirements baseline, and knowing that up front saves
+   you from expecting the other half.
+2. **`docs/truth-ledger-operations-guide.md`** — how to live with it. The
+   daily loop, the monthly audit, what to do when a gate refuses you.
+3. **`template/docs/adr/truth/`** — why each mechanism is the way it is.
+   Fifty-two records, densely cross-referenced; read on demand, never front to
+   back. If you need a spine: ADR-002 (work kernel), ADR-009 (evidence
+   screen), ADR-034 (gate table), ADR-046 (tiering).
+
+A consumer repo additionally gets `docs/machinery-atlas.md` — ten drawn views
+of the machinery as installed. Start there if one exists.
+
 ## Init a new repo — one command
 
 ```bash
