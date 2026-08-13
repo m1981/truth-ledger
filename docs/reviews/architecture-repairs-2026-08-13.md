@@ -90,22 +90,55 @@ does **not** cover, stated so the next reader does not have to ask:
 
 ## 0b. Numbers in this document, and where they were measured
 
-Every figure in this document and in `APPLY.md` — `354 tests`, `273 caught,
-1 missed`, the four DETECTED rows — was measured **in an ephemeral container**,
-on a clean clone of `8fa0706` with this series applied. Not on the maintainer's
-machine, and not in the repository you are reading this in.
+The figures this document was FIRST written with — `354 tests`, `273 caught,
+1 missed`, the four DETECTED rows — were measured **in an ephemeral
+container**, on a clean clone of `8fa0706` with this series applied. Not on
+the maintainer's machine, and not in the repository you are reading this in.
+They have since been replaced by the table at the end of this section, which
+was measured here; the originals are kept below only because the gap between
+them is the lesson.
 
 That is a pattern worth naming rather than patching case by case, because it
-has now occurred twice in this work:
+has now occurred three times in this work:
 
 1. §0's red-proof table was originally written in the past tense about a file
    that did not exist in the repository — a plan described as a result.
-2. `273 caught, 1 missed` is quoted as an expected value, and the canary's
-   count is **branch-dependent**: 286 `ok(` call sites resolve to 273 caught,
-   because most arms sit in if/else pairs, and at least two arms
-   (`FAULT D1`'s absent-patterns path, `FAULT R`'s PATH manipulation) take
-   different branches under different local state. It was stable across every
-   run I made; I never ran it where you are reading this.
+2. `273 caught, 1 missed` is quoted as an expected value. Measured on the
+   maintainer's macOS at the same commit: **274 caught, 0 missed**.
+
+   The first diagnosis offered for that gap — that the canary's count is
+   *branch-dependent*, so `286 ok(` call sites resolve to 273 — does not
+   survive arithmetic, and the correction matters more than the original
+   claim. **The totals are identical: 273 + 1 = 274 + 0 = 274.** Branch
+   dependence would move the TOTAL; here the total is fixed and only the
+   split moves. Both arms named as evidence (`FAULT D1`, `FAULT R`) are
+   plain if/else pairs, each contributing exactly one to PASS *or* to
+   FAIL, so neither can change the total at all.
+
+   So this is not a counting artifact. **UM4 genuinely fails in a Linux
+   container and genuinely passes on macOS** — an environment-dependent
+   test outcome, which is a finding about UM4 (it presumably needs git or
+   filesystem behaviour the container lacks) and is worth its own
+   investigation rather than a footnote.
+
+   The sharper rule that follows: quote **both** numbers, always. The
+   total is the invariant — it changes only when arms are added or
+   removed. The split is the signal — it changes only when an arm's
+   OUTCOME changes, which is always either an environment finding or a
+   regression, and never noise.
+
+3. A third instance, found while landing this series, and the most
+   expensive of the three because the number was *plausible*: the canary
+   read `282 caught, 1 missed` (FAULT TG6) on the maintainer's tree while
+   a clean worktree at the same commit read `283 / 0`. The cause was not
+   the environment and not a regression — `reprove-fingerprint.sh` had
+   been interrupted by a closed pipe and had left one of its own seeded
+   mutations (`CITATIONS_EXIT_CITED -> 1`) in `cli.py`. The instrument
+   that certifies the refactor had silently broken the tree it was
+   certifying. Fixed in the same series (rollback trap); recorded here
+   because the lesson is the rule above: the split moved, so an arm's
+   outcome had changed, so something real was wrong — and adjusting the
+   number would have buried it.
 
 **The rule this establishes.** A number produced in a throwaway environment is
 not a fact about the repository — it is a *prediction* about what the
@@ -113,10 +146,23 @@ repository will report. State it as an expected value with the command that
 produces it, never as a finding. Where the number could vary by environment,
 say so.
 
-Concretely, for this document: treat `354`, `273/1` and the DETECTED rows as
-**expected output of your own run**. If any differs on your machine, that is
+Concretely, for this document: every figure below is the **expected output of
+your own run**, with the command that produces it. If one differs, that is
 information about your environment or about a real regression — report it
 before proceeding, and do not adjust the number to match.
+
+| expected | command |
+|---|---|
+| `Ran 382 tests` `OK`, 0 skipped | `cd template && PYTHONPATH=~/.cache/truth-ledger-pylib python3 scripts/test-truth-core.py` |
+| `283 caught, 0 missed` | `cd template && bash scripts/truth-canary.sh` |
+| `SENSITIVITY PROVEN`, 50 probes | `bash instruments/reprove-fingerprint.sh` |
+
+Measured on macOS at the tip of this series, in a **clean tree** — run
+`git status` first, because a dirty one has already produced a false canary
+number here once (item 3 above). The core suite needs `PYTHONPATH` pointing
+at the local jsonschema cache; without it the run is not wrong, it is
+*narrower* — three schema tests skip and the suite still says `OK`, which is
+the same silent-green shape this section is about.
 
 This is the same defect the ledger itself catches at the claim layer (an
 attestation nothing can re-run) and the same one the atlas hit (a count that
