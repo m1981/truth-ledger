@@ -1125,6 +1125,179 @@ def cmd_staling(a):
           + (f" (+{report['pathless']} with no watched path)"
              if report["pathless"] else ""))
 
+def _capsule_stale_facts(entry, diff_cache, dirty_entries):
+    """Gather (SHELL) what capsule_stale_shape decides on: the claim's own
+    watched paths changed over effective-anchor..HEAD. Uses the scan's own
+    differ and matcher -- changed_files_since + match_paths -- because a
+    second differ is exactly the drift ADR-005 catalogued. The per-anchor
+    cache matters: a sweep of a repo where many claims share one anchor
+    would otherwise fork one `git diff` per claim."""
+    cp = entry["claim"]["payload"]
+    own = cp.get("anchor_commit")
+    effective = entry.get("anchor") or own
+    paths = cp.get("evidence_paths", [])
+    # ADR-038's own matcher, reused: a watched path dirty in the working
+    # tree explains the mismatch outright, and it must be decided even
+    # when there is no anchor to diff from.
+    dirty = dirty_watch(dirty_entries, paths) if dirty_entries else []
+    if not effective:
+        return {"shape": "uncommitted" if dirty else None,
+                "shape_error": (None if dirty else
+                                "the claim carries no anchor to diff from"),
+                "watched_dirty": dirty}
+
+    def window(a, b):
+        if (a, b) not in diff_cache:
+            diff_cache[(a, b)] = changed_files_between(a, b)
+        changed, err = diff_cache[(a, b)]
+        if changed is None:
+            return None, (f"diff {_short_sha(a)}..{_short_sha(b)} failed: "
+                          f"{(err or 'unknown')[:120]}")
+        return [f for f in changed if match_paths(f, paths)], None
+
+    ahead, err = window(effective, "HEAD")
+    if err:
+        return {"shape": "uncommitted" if dirty else None,
+                "shape_error": err, "watched_dirty": dirty}
+    buried = []
+    if own and own != effective:
+        buried, err = window(own, effective)
+        if err:
+            # A rewritten or unreachable own-anchor is not a reason to
+            # report nothing: the forward window already decides
+            # watched-moved, and the remaining two shapes collapse to
+            # "cannot tell" rather than to a wrong label.
+            return {"shape": ("uncommitted" if dirty
+                              else "watched-moved" if ahead else None),
+                    "shape_error": err, "watched_touched": ahead,
+                    "watched_buried": [], "watched_dirty": dirty}
+    return capsule_stale_shape(entry, ahead, buried, dirty)
+
+def cmd_reproduce(a):
+    """F1.1: re-run every LIVE claim's evidence capsule and classify what
+    came back. Read verb -- deliberately NOT in WRITE_VERBS: it executes
+    author-recorded commands and files NOTHING, so it takes no ledger lock
+    and prints no commit-gate banner.
+
+    The measurement this verb exists for: `invalidate-scan`'s rule -- a
+    watched path moved, so the claim is suspect -- is wrong about seven
+    times in eight in this repo, and over half of those false alarms still
+    cost a human a read (`truth staling`, ADR-050). Nothing so far
+    measures the OTHER error: a claim that is live and whose capsule
+    quietly stopped being producible. Every arm below is a population the
+    ledger could not previously name.
+
+    Execution goes through the SAME screened path `verdict --recheck` and
+    `reaffirm` use -- screen_evidence_command against the CURRENT
+    allowlist (committed policy now, not at filing time), then
+    run_evidence + recheck_verdict against the ADR-051 effective capsule.
+    A second executor or a second matcher is forbidden.
+
+    WHAT THIS MEASURES IS THE WORKING TREE, NOT THE COMMIT. Measured on
+    kuchnie: two live claims (`ls kitchen-cam/src/kitchen_cam | sort`,
+    `grep -rln recipe kuchnie-core/src/kuchnie_core`) reproduce in a tree
+    that carries gitignored __pycache__ directories and do NOT reproduce
+    in a clean checkout of the same commit -- their capsules are hostage
+    to build artifacts no tripwire watches. No warning is emitted for
+    this: an "ignored files present" banner would fire in every repo and
+    train `2>/dev/null` (the ADR-046 noise lesson). The report carries
+    `head` and `dirty` instead, and F1.3's CI lane -- a clean checkout on
+    another machine -- is the mechanism that surfaces it."""
+    events = load_events()
+    if a.since:
+        # Same window convention as `stats` and `staling`: the shell
+        # filters, and the fold then derives status from what is left --
+        # so --since narrows WHICH claims are live, not just the report.
+        events = [(n, ev) for n, ev in events
+                  if (ev.get("ts") or "") >= a.since]
+    claims, _ = fold(events)
+    allow, deny = load_allowlist(), load_denylist()
+    # F1.1: pin execution to the repo root. Capsules were recorded by
+    # `claim` running there; a sweep from a subdirectory would otherwise
+    # report drift that is really the caller's cwd.
+    root = repo_root()
+    rows, counts = [], {arm: 0 for arm in REPRODUCE_ARMS}
+    shapes, diff_cache = {}, {}
+    # Gathered ONCE, before the loop: the diff windows are
+    # commit-to-commit, so without this an uncommitted edit to a watched
+    # file lands in `unexplained` -- the arm that is supposed to mean
+    # "reads something outside its own watch". Found by running the sweep
+    # on the tree that was implementing it.
+    porcelain = working_tree_status()
+    dirty_entries = parse_porcelain_z(porcelain) if porcelain else []
+    for cid, entry in sorted(claims.items()):
+        if entry["status"] != "live":
+            continue
+        d = reproduce_triage(entry)
+        if d["arm"] == "execute":
+            ev = entry["claim"]["payload"]["evidence"]
+            screen_err = screen_evidence_command(ev["command"], allow,
+                                                 denylist=deny)
+            if screen_err:
+                d = reproduce_triage(entry, screen_err=screen_err)
+            else:
+                digest, rc = run_evidence(ev["command"], cwd=root)
+                d = reproduce_triage(entry, recheck=recheck_verdict(
+                    effective_evidence(
+                        ev, latest_evidence_refresh(events, cid)),
+                    digest, rc))
+        cp = entry["claim"]["payload"]
+        row = {"id": cid, "arm": d["arm"], "detail": d["detail"],
+               "tier": cp.get("cost_tier"), "text": cp.get("text"),
+               "command": (cp.get("evidence") or {}).get("command")}
+        if d["arm"] == "capsule-stale":
+            row.update(_capsule_stale_facts(entry, diff_cache,
+                                            dirty_entries))
+            shapes[row.get("shape")] = shapes.get(row.get("shape"), 0) + 1
+        counts[d["arm"]] += 1
+        rows.append(row)
+    stale_rows = [r for r in rows if r["arm"] == "capsule-stale"]
+    # `head` and `dirty` are the reproducibility provenance: two sweeps
+    # that disagree are only comparable if they say which tree they ran
+    # against (the `staling --append-order` precedent -- a number that
+    # does not say how it was produced is not a result).
+    report = {"examined": len(rows), "counts": counts,
+              "capsule_stale_shapes": shapes,
+              "head": head_commit(),
+              "dirty": (None if porcelain is None else bool(porcelain)),
+              "claims": rows}
+    if a.json:
+        print(json.dumps(report, indent=2))
+    else:
+        for r in rows:
+            if a.arm and r["arm"] != a.arm:
+                continue
+            print(f"{r['id']}  {r['arm']:<14} {r['detail']}")
+            if r["arm"] == "capsule-stale":
+                extra = (f"shape={r['shape']}" if r.get("shape")
+                         else f"shape=UNKNOWN ({r.get('shape_error')})")
+                for label, key in (("watched touched", "watched_touched"),
+                                   ("buried", "watched_buried"),
+                                   ("dirty", "watched_dirty")):
+                    if r.get(key):
+                        extra += f", {label}: " + ", ".join(r[key][:5])
+                print(f"{'':<16}{extra}")
+        print(f"reproduce: {len(rows)} live claim(s) -- "
+              + ", ".join(f"{counts[arm]} {arm}" for arm in REPRODUCE_ARMS))
+        if shapes:
+            print("capsule-stale shapes: "
+                  + ", ".join(f"{k or 'unknown'}={v}"
+                              for k, v in sorted(shapes.items(),
+                                                 key=lambda kv: str(kv[0]))))
+    if not rows:
+        # ADR-042 rule 2, the reason this verb has an exit code of its
+        # own: an instrument that examined nothing has NOT passed. A
+        # sweep that silently exits 0 over an empty population is the
+        # green-because-it-never-ran failure, and it is indistinguishable
+        # from a healthy repo at the CI summary line.
+        print("truth: reproduce examined ZERO live claims -- the sweep "
+              "measured nothing, which is a failure, not a pass (ADR-042 "
+              "rule 2). Check --since, the ledger path, and that this "
+              "repo has live claims at all.", file=sys.stderr)
+        sys.exit(REPRODUCE_EXIT_EMPTY)
+    if stale_rows:
+        sys.exit(REPRODUCE_EXIT_STALE)
+
 def cmd_doctor(a):
     """G4: check the INSTALLATION, which the sandboxed canary cannot."""
     root = repo_root()
@@ -1600,6 +1773,27 @@ def main():
                           "on union-merged ledgers")
     stl.add_argument("--json", action="store_true")
     stl.set_defaults(fn=cmd_staling)
+
+    rp = sub.add_parser("reproduce", help="re-run every LIVE claim's "
+                        "evidence capsule here and now (F1.1): reproduces "
+                        "/ capsule-stale / unexecutable / no-capsule. The "
+                        "question no other verb asks -- invalidate-scan "
+                        "watches PATHS, recheck and reaffirm only reach "
+                        "claims already knocked out of live. Files "
+                        "nothing. Exit 7 when any capsule no longer "
+                        "reproduces; exit 8 when the sweep examined zero "
+                        "claims (ADR-042 rule 2: measuring nothing is a "
+                        "failure, not a pass)")
+    rp.add_argument("--since", metavar="ISO_TS",
+                    help="only fold events with ts >= this ISO timestamp "
+                         "(same window convention as `stats`/`staling`; it "
+                         "narrows which claims are live, not just the "
+                         "report)")
+    rp.add_argument("--arm", choices=REPRODUCE_ARMS,
+                    help="print only this arm's rows (the summary line and "
+                         "the exit code still cover the whole sweep)")
+    rp.add_argument("--json", action="store_true")
+    rp.set_defaults(fn=cmd_reproduce)
 
     r = sub.add_parser("ready", help="unblocked issues filtered by premise "
                        "validity (ADR-001); source: --stdin, TRUTH_TRACKER_CMD, "

@@ -4959,5 +4959,147 @@ class TestModulePurity(unittest.TestCase):
                         "allowlist is empty by design)")
 
 
+def _live_entry(claim_rec, anchor=None):
+    """The fold-entry shape reproduce_triage receives for a LIVE claim --
+    `anchor` is the EFFECTIVE anchor the fold advanced to, which is the
+    whole point of the shape classifier."""
+    return {"claim": claim_rec, "status": "live",
+            "status_ts": claim_rec.get("ts"),
+            "anchor": anchor or claim_rec["payload"].get("anchor_commit")}
+
+
+class TestReproduceTriage(unittest.TestCase):
+    """F1.1: every arm of the reproduction sweep, as a pure function of
+    plain data. The arm ORDER is contract (most fundamental disability
+    first), so each test pins its arm against a claim that would also
+    qualify for a later one."""
+
+    def triage(self, claim_over=None, screen_err=None, recheck=None):
+        entry = _live_entry(rec("claim", verified_p(**(claim_over or {}))))
+        return tm.reproduce_triage(entry, screen_err=screen_err,
+                                   recheck=recheck)
+
+    def test_arms_are_the_declared_set(self):
+        self.assertEqual(tm.REPRODUCE_ARMS,
+                         ("reproduces", "capsule-stale", "unexecutable",
+                          "no-capsule"))
+
+    def test_no_capsule_when_no_command(self):
+        d = self.triage({"evidence": None, "evidence_class": "INFERRED"})
+        self.assertEqual(d["arm"], "no-capsule")
+
+    def test_no_capsule_wins_over_unscreened(self):
+        # Order contract: a claim with no command cannot be screened, so
+        # its missing capsule is reported, not its screened flag.
+        d = self.triage({"evidence": {"screened": False}})
+        self.assertEqual(d["arm"], "no-capsule")
+
+    def test_unsafe_ok_is_never_executed(self):
+        d = self.triage({"evidence": dict(verified_p()["evidence"],
+                                          screened=False)})
+        self.assertEqual(d["arm"], "unexecutable")
+        self.assertIn("evidence-unsafe-ok", d["detail"])
+
+    def test_screen_refusal_is_unexecutable_not_stale(self):
+        # The distinction exit 7 rests on: a missing `rg` must never be
+        # reported as evidence drift.
+        d = self.triage(screen_err="'rg' is not in .truth/evidence-allow.")
+        self.assertEqual(d["arm"], "unexecutable")
+
+    def test_execute_sentinel_before_any_run(self):
+        self.assertEqual(self.triage()["arm"], "execute")
+
+    def test_hash_match_reproduces(self):
+        d = self.triage(recheck=("agree", "recheck: output hash matches"))
+        self.assertEqual(d["arm"], "reproduces")
+
+    def test_mismatch_is_capsule_stale(self):
+        d = self.triage(recheck=("diverge", "recheck: output hash MISMATCH"))
+        self.assertEqual(d["arm"], "capsule-stale")
+
+    def test_exit_127_is_unexecutable_not_capsule_stale(self):
+        d = self.triage(recheck=("cannot_verify", "not found (exit 127)"))
+        self.assertEqual(d["arm"], "unexecutable")
+
+
+class TestCapsuleStaleShape(unittest.TestCase):
+    """F1.1: three shapes, three repairs. The buried window is what makes
+    orphaned-capsule mean what it says -- `anchor_advanced` alone labels
+    an unrelated advance as an orphan."""
+
+    def shape(self, ahead, buried, dirty=(), anchor="def5678"):
+        entry = _live_entry(rec("claim", verified_p()), anchor=anchor)
+        return tm.capsule_stale_shape(entry, ahead, buried, dirty)
+
+    def test_shapes_are_the_declared_set(self):
+        self.assertEqual(tm.REPRODUCE_SHAPES,
+                         ("uncommitted", "watched-moved", "orphaned-capsule",
+                          "unexplained"))
+
+    def test_uncommitted_wins_over_every_commit_window(self):
+        # Both windows are commit-to-commit, so an uncommitted edit is
+        # invisible to them and would fall through to `unexplained` --
+        # polluting the one shape that is supposed to mean "reads
+        # something outside its own watch". Found live: a claim hashing
+        # .truth/generated-paths reported unexplained while the file sat
+        # edited-but-uncommitted in the tree that was implementing this.
+        d = self.shape(["f.txt"], ["f.txt"], dirty=["f.txt"])
+        self.assertEqual(d["shape"], "uncommitted")
+        self.assertEqual(d["watched_dirty"], ["f.txt"])
+
+    def test_clean_tree_leaves_the_commit_windows_deciding(self):
+        self.assertEqual(self.shape([], ["f.txt"], dirty=[])["shape"],
+                         "orphaned-capsule")
+
+    def test_ahead_window_wins(self):
+        # A watched path changed since the last agree: the tripwire has
+        # simply not fired yet, and that reading takes precedence over
+        # anything the buried window says.
+        d = self.shape(["f.txt"], ["f.txt"])
+        self.assertEqual(d["shape"], "watched-moved")
+
+    def test_buried_window_names_the_orphan(self):
+        d = self.shape([], ["f.txt"])
+        self.assertEqual(d["shape"], "orphaned-capsule")
+        self.assertTrue(d["anchor_advanced"])
+        self.assertEqual(d["watched_buried"], ["f.txt"])
+
+    def test_advance_without_a_watched_change_is_not_an_orphan(self):
+        # The defect the first cut of this classifier had: an anchor that
+        # advanced over commits touching nothing this claim watches says
+        # NOTHING about why the capsule died -- the command is reading
+        # something outside its own evidence_paths.
+        d = self.shape([], [])
+        self.assertEqual(d["shape"], "unexplained")
+        self.assertTrue(d["anchor_advanced"])
+
+    def test_unmoved_anchor_and_quiet_windows_is_unexplained(self):
+        entry = _live_entry(rec("claim", verified_p()))
+        d = tm.capsule_stale_shape(entry, [], [])
+        self.assertEqual(d["shape"], "unexplained")
+        self.assertFalse(d["anchor_advanced"])
+
+    def test_lists_are_sorted(self):
+        d = self.shape(["b", "a"], [])
+        self.assertEqual(d["watched_touched"], ["a", "b"])
+
+
+class TestReproduceExitCodes(unittest.TestCase):
+    """F1.1: the two codes are the verb's whole contract with CI."""
+
+    def test_stale_and_empty_are_distinct_and_not_one(self):
+        self.assertEqual(tm.REPRODUCE_EXIT_STALE, 7)
+        self.assertEqual(tm.REPRODUCE_EXIT_EMPTY, 8)
+        for code in (tm.REPRODUCE_EXIT_STALE, tm.REPRODUCE_EXIT_EMPTY):
+            self.assertNotIn(code, (0, 1, tm.CITATIONS_EXIT_CITED),
+                             "a reproduce exit code collides with a code "
+                             "that already means something else")
+
+    def test_reproduce_is_not_a_write_verb(self):
+        self.assertNotIn("reproduce", tm.WRITE_VERBS,
+                         "reproduce files nothing: it must take no ledger "
+                         "lock and print no commit-gate banner")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

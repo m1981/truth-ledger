@@ -3388,6 +3388,116 @@ else
 fi
 cd "$EF_PREV"
 
+# ---- FAULT RP (F1.1): the reproduction sweep ----------------------------
+# `truth reproduce` asks the question no other verb asks: can this LIVE
+# claim's recorded capsule still be produced, here, now? invalidate-scan
+# watches PATHS (right about 1 time in 8 -- ADR-050); recheck and reaffirm
+# only reach claims already knocked out of live. Four arms plus a negative
+# control. RP2 is seeded as a RAW LEGACY RECORD on purpose: since ADR-051
+# the CLI refuses to create an orphaned capsule, so the only way to seed
+# the population that still exists in deployed ledgers (7 live claims in
+# kuchnie at ae16a60) is to append the pre-ADR-051 shape directly.
+say "FAULT RP (F1.1): reproduce classifies live capsules, and a sweep that measured nothing FAILS"
+RP="$(mktemp -d)"; TDIRS+=("$RP"); RP_PREV="$PWD"
+mkrepo "$RP"
+
+# RP5 (negative control) FIRST, before any claim exists: ADR-042 rule 2 --
+# an instrument that examined nothing has not passed, it failed to run.
+# This arm is the reason the verb has an exit code of its own; a sweep
+# that exits 0 over an empty population is indistinguishable from a
+# healthy repo at the CI summary line.
+printf 'x\nx\n' > f.txt
+printf 'dark.txt\n' > .gitignore
+printf 'x\n' > dark.txt          # gitignored: the dependency no watch sees
+git add -A >/dev/null 2>&1; git commit -qm "rp: init"
+$T reproduce >/dev/null 2>&1; RP_RC=$?
+if [ "$RP_RC" -eq 8 ]; then
+  ok "RP5 (negative control): a sweep over zero live claims exits 8, not 0"
+else
+  miss "RP5: the empty sweep exited $RP_RC -- a green that measured nothing"
+fi
+RP_C0="$(git rev-parse HEAD)"
+printf 'x\nx\nx\n' > f.txt
+git add f.txt >/dev/null 2>&1; git commit -qm "rp: third x"
+RP_C1="$(git rev-parse HEAD)"
+
+# RP2's seed: a pre-ADR-051 legacy pair. The claim anchors at C0 with a
+# hash nothing can produce; the agree anchors at C1, so the EFFECTIVE
+# anchor advanced over a commit that changed the watched file. That makes
+# the buried window (C0..C1) carry f.txt and the ahead window (C1..HEAD)
+# carry nothing -- the orphaned-capsule signature.
+RP_H="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+printf '%s\n' "{\"id\":\"tr-0aa00001\",\"kind\":\"claim\",\"actor\":\"canary\",\"session\":\"s-rp-legacy\",\"ts\":\"2026-07-01T00:00:00.000000+00:00\",\"payload\":{\"text\":\"the legacy claim whose capsule an agree left behind\",\"evidence_class\":\"VERIFIED\",\"cost_tier\":\"P1\",\"ttl_days\":null,\"evidence_paths\":[\"f.txt\"],\"anchor_commit\":\"$RP_C0\",\"evidence\":{\"command\":\"grep -c x f.txt\",\"output_hash\":\"$RP_H\",\"returncode\":0,\"screened\":true}}}" >> .truth/claims.jsonl
+printf '%s\n' "{\"id\":\"tr-0aa00002\",\"kind\":\"verdict\",\"actor\":\"canary\",\"session\":\"s-rp-legacy-v\",\"ts\":\"2026-07-02T00:00:00.000000+00:00\",\"payload\":{\"claim\":\"tr-0aa00001\",\"verdict\":\"agree\",\"basis\":\"legacy: an agree filed over a changed output, before ADR-051 refused it\",\"anchor_commit\":\"$RP_C1\"}}" >> .truth/claims.jsonl
+
+# RP1's subject: a capsule that still produces, filed and agreed normally.
+RP_A="$($T claim "f.txt holds exactly three x lines" --class VERIFIED \
+  --evidence-cmd "grep -c x f.txt" --paths f.txt 2>/dev/null | tail -1)"
+TRUTH_SESSION=s-rp-v $T verdict "$RP_A" agree --basis "re-ran it" \
+  >/dev/null 2>&1
+# RP4's subject: an INFERRED claim carries no capsule at all.
+RP_B="$($T claim "the decomposition rests on judgment, not a probe" \
+  --class INFERRED --basis "read the module and reasoned about it" \
+  2>/dev/null | tail -1)"
+TRUTH_SESSION=s-rp-v $T verdict "$RP_B" agree --basis "read it too" \
+  >/dev/null 2>&1
+# RP3's subject: filed while `cat` was allowlisted, swept after it was
+# withdrawn -- the ADR-009 posture is that the screen is committed policy
+# NOW, not at filing time.
+RP_D="$($T claim "cat reads f.txt without a filter" --class VERIFIED \
+  --evidence-cmd "cat f.txt" --paths f.txt 2>/dev/null | tail -1)"
+TRUTH_SESSION=s-rp-v $T verdict "$RP_D" agree --basis "ran it" \
+  >/dev/null 2>&1
+grep -v '^cat$' .truth/evidence-allow > .truth/ea.tmp
+mv .truth/ea.tmp .truth/evidence-allow
+
+RP_OUT="$($T reproduce --json 2>/dev/null)"; RP_RC=$?
+if printf '%s' "$RP_OUT" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+a=[r for r in d["claims"] if r["id"]=="'"$RP_A"'"]
+# Deliberately NOT asserting the global reproduces count: coupling this
+# arm to it made RP1 redden for RP3'"'"'s and RP4'"'"'s mutations too, and an arm
+# that fires for someone else'"'"'s defect cannot testify about its own.
+sys.exit(0 if a and a[0]["arm"]=="reproduces" else 1)'; then
+  ok "RP1: a capsule that still produces lands in reproduces"
+else
+  miss "RP1: a producible capsule was not reported as reproduces"
+fi
+if printf '%s' "$RP_OUT" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+r=[r for r in d["claims"] if r["id"]=="tr-0aa00001"]
+sys.exit(0 if r and r[0]["arm"]=="capsule-stale"
+         and r[0].get("shape")=="orphaned-capsule"
+         and r[0].get("watched_buried")==["f.txt"]
+         and r[0].get("watched_touched")==[] else 1)' \
+   && [ "$RP_RC" -eq 7 ]; then
+  ok "RP2: the legacy orphan is capsule-stale, shaped orphaned-capsule by the buried window, exit 7"
+else
+  miss "RP2: the orphaned capsule went unreported, was mis-shaped, or did not raise exit 7 (rc=$RP_RC)"
+fi
+if printf '%s' "$RP_OUT" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+r=[r for r in d["claims"] if r["id"]=="'"$RP_D"'"]
+sys.exit(0 if r and r[0]["arm"]=="unexecutable"
+         and "not in .truth/evidence-allow" in r[0]["detail"] else 1)'; then
+  ok "RP3: a claim the CURRENT allowlist refuses is unexecutable, never counted as drift"
+else
+  miss "RP3: a de-allowlisted capsule was executed anyway, or miscounted as capsule-stale"
+fi
+if printf '%s' "$RP_OUT" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+r=[r for r in d["claims"] if r["id"]=="'"$RP_B"'"]
+sys.exit(0 if r and r[0]["arm"]=="no-capsule" else 1)'; then
+  ok "RP4: an INFERRED claim with no capsule lands in no-capsule, not in reproduces"
+else
+  miss "RP4: a capsule-less claim was not separated out"
+fi
+cd "$RP_PREV"
+
 say ""
 say "canary result: $PASS caught, $FAIL missed"
 if [ "$FAIL" -gt 0 ]; then

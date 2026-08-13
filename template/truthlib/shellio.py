@@ -57,19 +57,27 @@ def commit_reachable(sha):
                        capture_output=True)
     return r.returncode == 0
 
-def changed_files_since(anchor):
-    """Returns (changed_files or None, error or None).
+def changed_files_between(a, b):
+    """Returns (changed_files or None, error or None) for a..b.
 
     --no-renames: with rename detection active, a `git mv` of a watched
     file emits only the DESTINATION path, so the watched (old) path never
     appears and the scan silently misses the change -- a rename must show
-    as delete+add so the tripwire fires on the old path."""
+    as delete+add so the tripwire fires on the old path.
+
+    THE ONE DIFFER. F1.1 needed a second window (own-anchor..effective-
+    anchor, what the agrees buried) alongside the scan's anchor..HEAD;
+    a second `git diff` call site is how the F1/F5 screen drift started,
+    so the range became a parameter instead."""
     r = subprocess.run(["git", "diff", "--name-only", "--no-renames",
-                        f"{anchor}..HEAD"],
-                       capture_output=True, text=True)
+                        f"{a}..{b}"], capture_output=True, text=True)
     if r.returncode != 0:
         return None, r.stderr.strip()
     return r.stdout.splitlines(), None
+
+def changed_files_since(anchor):
+    """The invalidate-scan window: anchor..HEAD. Unchanged behaviour."""
+    return changed_files_between(anchor, "HEAD")
 
 def tracked_files():
     """INV-M fact-gathering: the tracked-file universe a literal
@@ -91,8 +99,16 @@ def session():
     # forensic grouping, not identity -- set TRUTH_SESSION for real ids.
     return f"s-{os.getppid()}-{now_dt():%Y%m%d}"
 
-def run_evidence(cmd):
-    r = subprocess.run(cmd, shell=True, capture_output=True)
+def run_evidence(cmd, cwd=None):
+    """The ONE evidence executor (intake, recheck, reaffirm, reproduce) --
+    a second one would drift from the screen that gates it (ADR-009/029).
+
+    `cwd` is F1.1's addition: `reproduce` pins execution to the repo root
+    so a sweep run from a subdirectory does not report drift that is
+    really the caller's working directory. Default None keeps intake,
+    recheck and reaffirm byte-identical -- they inherit the caller's cwd,
+    exactly as they always have."""
+    r = subprocess.run(cmd, shell=True, capture_output=True, cwd=cwd)
     return hashlib.sha256(r.stdout).hexdigest(), r.returncode
 
 def run_accept_command(command, cwd):

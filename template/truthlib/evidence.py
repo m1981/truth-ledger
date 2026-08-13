@@ -436,6 +436,159 @@ def effective_evidence(capsule, refresh):
         out["returncode"] = refresh["returncode"]
     return out
 
+# -------------------------------------------- reproduction sweep (F1.1)
+
+REPRODUCE_ARMS = ("reproduces", "capsule-stale", "unexecutable", "no-capsule")
+
+# Why a live claim's capsule no longer reproduces. Named shapes, not a
+# free-text guess: the whole point of the sweep is that "capsule-stale"
+# alone conflates three different repairs.
+REPRODUCE_SHAPES = ("uncommitted", "watched-moved", "orphaned-capsule",
+                    "unexplained")
+
+def reproduce_triage(entry, screen_err=None, recheck=None):
+    """F1.1: the ONE decision per LIVE claim -- can its recorded evidence
+    capsule still be produced on this machine, right now?
+
+    This is the question no existing verb asks. `invalidate-scan` asks
+    whether a watched PATH moved (right 1 time in 8 -- the 7:1 false-
+    staling ratio this instrument exists to measure against); `reaffirm`
+    and `verdict --recheck` re-run capsules, but only for claims already
+    knocked out of `live`. A claim that is live and whose capsule died
+    quietly is invisible to all three, which is exactly how 13 of this
+    repo's live claims became permanently un-recheckable before ADR-051.
+
+    Pure, and deliberately the same SHAPE as reaffirm_triage: the shell
+    gathers (current-allowlist screen result, run outcome) and applies;
+    nothing here reads a clock, the env, or a file. Returns
+    {"arm", "detail"}; arm is one of REPRODUCE_ARMS, or the "execute"
+    sentinel telling the shell to run the screened command and call again
+    with its result.
+
+    Arm order is the contract, most fundamental disability first: a claim
+    with no capsule cannot be screened, and a claim the screen refuses
+    cannot be run. So a no-capsule claim reports no-capsule even if it
+    somehow also carried screened=false.
+
+    NOTHING IS EVER FILED. This verb reports; it is not in WRITE_VERBS.
+    A mismatching hash is ADR-012's judgment call (mechanical drift vs
+    reality moved) and a batch verb has no judge -- the same rule that
+    keeps reaffirm's mismatch arm from filing a diverge."""
+    p = entry["claim"]["payload"]
+    ev = p.get("evidence") or {}
+    if not ev.get("command"):
+        return {"arm": "no-capsule",
+                "detail": "no evidence command recorded -- this claim's "
+                          "standing rests on judgment alone, and no "
+                          "mechanical check can ever contradict it"}
+    if ev.get("screened") is False:
+        # ADR-009/029 recheck refusal discipline: screened=false is the
+        # author's own admission, final; the command NEVER executes here.
+        return {"arm": "unexecutable",
+                "detail": "filed with --evidence-unsafe-ok "
+                          "(evidence.screened=false): never re-executed "
+                          "(ADR-009)"}
+    if screen_err:
+        return {"arm": "unexecutable",
+                "detail": "the CURRENT allowlist refuses this command -- "
+                          + screen_err}
+    if recheck is None:
+        return {"arm": "execute", "detail": "run the screened command"}
+    verdict = recheck[0]
+    if verdict == "agree":
+        return {"arm": "reproduces",
+                "detail": "output hash and returncode match the effective "
+                          "capsule (ADR-051)"}
+    if verdict == "cannot_verify":
+        # recheck_verdict's exit-127 rule: the program is absent, which
+        # says nothing about the fact. An unexecutable capsule is a
+        # DIFFERENT defect from a stale one and must not be counted as
+        # drift -- exit 7 would then fire on a missing `rg`.
+        return {"arm": "unexecutable",
+                "detail": "command not found at re-run (exit 127): "
+                          "environment, not reality"}
+    return {"arm": "capsule-stale",
+            "detail": "the recorded capsule can no longer be produced "
+                      "here -- this claim is un-recheckable until someone "
+                      "judges it and refreshes (ADR-051)"}
+
+def capsule_stale_shape(entry, touched_ahead, touched_buried,
+                        dirty_watched=()):
+    """F1.1: WHY a live claim's capsule stopped reproducing -- the fact
+    that decides which repair applies. Three shapes, three different
+    repairs, and lumping them under one "capsule-stale" count is what
+    made the population unreadable for as long as it existed.
+
+    Pure. The shell supplies two commit-to-commit diffs of the claim's
+    OWN evidence_paths, through the scan's differ and matcher (never a
+    second implementation), plus the working tree's dirty watched paths
+    through ADR-038's existing `dirty_watch`:
+
+      touched_ahead   effective-anchor..HEAD -- the window the NEXT
+                      invalidate-scan will look at.
+      touched_buried  own-anchor..effective-anchor -- the past that
+                      `agree`s carried the claim over. Empty when the
+                      anchor never advanced.
+      dirty_watched   watched paths dirty in the WORKING TREE right now.
+
+    Shapes, in decision order:
+
+      uncommitted       a watched path is edited but not committed. It
+                        must be judged FIRST and it is not a defect
+                        report: both diff windows are commit-to-commit,
+                        so an uncommitted edit is invisible to them and
+                        would otherwise fall through to `unexplained` --
+                        polluting the one arm that is supposed to mean
+                        something. This shape was found by running the
+                        sweep on the tree that was implementing it: a
+                        claim hashing `.truth/generated-paths` reported
+                        `unexplained` because the file had been edited
+                        and not yet committed. Repair: commit, re-run.
+      watched-moved     a watched path changed since the last agree and
+                        so did the output. Ordinary: the tripwire has not
+                        fired yet. Repair: let the scan stale it, then
+                        judge it.
+      orphaned-capsule  the watched surface changed BEFORE the last
+                        agree, that agree advanced the effective anchor
+                        (F2) and the capsule stayed at the pre-change
+                        hash. The exact pre-ADR-051 shape; repair is
+                        `agree --refresh-evidence`, ONE HUMAN JUDGMENT AT
+                        A TIME -- refreshing this population by script is
+                        judgment laundering (ADR-030), and it would turn
+                        a visible orphan count into an invisible one.
+      unexplained       nothing watched changed in EITHER window, and the
+                        output still differs. The command reads something
+                        outside its own evidence_paths: an untracked or
+                        gitignored file, or the machine. The arm worth
+                        reading -- it names claims whose watched set is
+                        wrong, which no other surface reports.
+
+    `anchor_advanced` alone was the first cut of this and it is too weak:
+    it labels a dark-dependency claim "orphaned" whenever any unrelated
+    agree happened to move the anchor. The buried-window diff is what
+    makes the label mean what it says.
+
+    Returns {"shape", "anchor_advanced", "watched_touched",
+    "watched_buried"}."""
+    p = entry["claim"]["payload"]
+    own = p.get("anchor_commit")
+    effective = entry.get("anchor")
+    advanced = bool(own and effective and effective != own)
+    ahead = sorted(touched_ahead or [])
+    buried = sorted(touched_buried or [])
+    dirty = sorted(dirty_watched or [])
+    if dirty:
+        shape = "uncommitted"
+    elif ahead:
+        shape = "watched-moved"
+    elif buried:
+        shape = "orphaned-capsule"
+    else:
+        shape = "unexplained"
+    return {"shape": shape, "anchor_advanced": advanced,
+            "watched_touched": ahead, "watched_buried": buried,
+            "watched_dirty": dirty}
+
 def previously_agreed(events, cid):
     """ADR-030: has ANY agree verdict ever been filed for the claim?
     Reaffirm re-confirms a verification that already happened; a stale

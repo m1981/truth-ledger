@@ -31,6 +31,14 @@ PROMPT_REL = "prompts/truth-verifier.md"
 CITATION_SCOPE_REL = ".truth/citation-scope"
 CITATION_SCOPE_DEFAULT = ("docs/specs/**",)
 CITATIONS_EXIT_CITED = 6
+# F1.1: `truth reproduce` exit codes. 7 = at least one live claim's
+# capsule can no longer be produced here -- a REPORT, distinct from a
+# crash (1) so a CI lane can treat drift and breakage differently.
+# 8 = the sweep examined ZERO claims. ADR-042 rule 2: an instrument that
+# measured nothing has not passed, it has failed to run; an empty sweep
+# exiting 0 is the silent-green failure mode the rule exists to forbid.
+REPRODUCE_EXIT_STALE = 7
+REPRODUCE_EXIT_EMPTY = 8
 # ADR-037: which artifacts are GENERATED is a per-repository fact the
 # template cannot know -- consumer policy (SI-4), shipped EMPTY with a
 # header (committed-empty = consciously nothing, silent; ABSENT = the
