@@ -1,0 +1,298 @@
+# behavioural fingerprint — refusal messages, exit codes, advisory block
+# any diff against this file is a BEHAVIOUR CHANGE, not a refactor
+
+=== G:text-empty
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: claim text must be non-empty -- an assertion with no sentence cannot be verified, diverged from, or cited (schema: text minLength 1)
+    O| 
+=== G:dup-baseline
+    exit=0
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    O| <TR>
+=== G:near-duplicate-G8
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: refusing near-duplicate of active claim(s) (G8):
+    E|   <TR>: the alpha fact holds here
+    E| Re-file with --duplicate-ok if genuinely distinct.
+    O| 
+=== G:quantifier-ADR007
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: claim text quantifies universally ('the repo') but the evidence command is scoped ('--include=*.txt') -- the exact shape of both pilot divergences (ADR-007). Either narrow the claim's sentence to the command's actual domain, or re-file with --scope-ok "<one sentence: why this scope covers that quantifier>".
+    O| 
+=== G:order-G8-vs-ADR007
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: refusing near-duplicate of active claim(s) (G8):
+    E|   <TR>: the alpha fact holds here
+    E| Re-file with --duplicate-ok if genuinely distinct.
+    O| 
+=== G:inv-m-whitespace
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: --paths entry contains whitespace with no comma (INV-M): ['a.txt b.txt'] -- did you forget a comma between paths? A space-joined literal can never match a real file.
+    O| 
+=== G:inv-m-dead-literal
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: --paths entry matches zero tracked files (INV-M): ['nope.txt'] -- a literal that matches nothing is a dead tripwire from the moment it's filed. Fix the path; use a glob ('*'/'?'/'**') if you're intentionally watching an empty-for-now pattern; or, for a fact about a file git does not track, use --ttl-days instead (untracked files never appear in diffs, so a path can never invalidate them).
+    O| 
+=== G:inv-m-dead-glob
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: --paths glob can match no path git could emit (INV-M, ADR-024): ['.git/*'] -- a glob that is absolute, ends in '/', or has a '.', '..', empty, or leading '.git' component never matches a repo-relative, normalized diff path, so it is a dead tripwire despite the glob exemption. Use a reachable repo-relative pattern like 'dir/**' or 'dir/*.py'.
+    O| 
+=== G:verified-no-cmd
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: VERIFIED claims require --evidence-cmd (INV-B)
+    O| 
+=== G:verified-no-paths
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: VERIFIED claims require --paths (INV-C) or --ttl-days for facts outside the repo (G10)
+    O| 
+=== G:inferred-no-basis
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: INFERRED claims require --basis
+    O| 
+=== G:screen-unlisted
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: 'curl' is not in .truth/evidence-allow. Add it there if it is read-only and you accept it re-running inside verifier sessions, or file with --evidence-unsafe-ok (recheck will then refuse to execute it) (ADR-009).
+    O| 
+=== G:screen-newline
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: control character '\n' is not screenable -- it is word-whitespace to the screen's lexer but a command separator to the executing shell (a newline is /bin/sh's statement terminator); evidence commands must be a single printable line (ADR-021)
+    O| 
+=== G:screen-substitution
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: command substitution ('$(' or backtick) is not screenable (ADR-009)
+    O| 
+=== G:screen-redirect
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: output redirection to 'out.txt' is refused -- evidence commands must be read-only; '/dev/null' and fd dups ('2>&1') are the only allowed sinks (ADR-009)
+    O| 
+=== G:exit-gate-ADR035
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: a positive claim's evidence exited 1 -- the command demonstrates nothing the sentence asserts (a hollow VERIFIED, ADR-035). Fix the recipe, or state why a failing command proves this sentence: --evidence-exit-ok "<basis>".
+    O| 
+=== OK:clean-filing
+    exit=0
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    O| <TR>
+=== OK:advisory-block
+    exit=0
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: advisory: recipe: -n makes the output shift under unrelated edits -- mechanical divergence on the first insertion above the match (ADR-012/ADR-037). Drop -n unless the line number is the fact.
+    O| <TR>
+=== V:unknown-claim
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: unknown claim <TR>
+    O| 
+=== V:no-basis
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: manual verdicts require <verdict> and --basis
+    O| 
+=== V:self-agree-ADR010
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: agree on a claim this same session filed is self-verification -- the independence seam (G11) exists because authors share their own blind spots (ADR-010). Dispatch it to a fresh session instead: scripts/truth dispatch <TR>
+    O| 
+=== V:mechanical-misuse
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: --mechanical only annotates a manual diverge (ADR-012: it says the recipe changed, not reality)
+    O| 
+=== V:cause-on-agree
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: --cause/--successor only accompany a manual retraction (ADR-049: only the terminal verb kills a belief; a diverge or cannot_verify says its own why in --basis and stays recoverable)
+    O| 
+=== V:retract-no-cause
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: a retraction must record WHY (ADR-049). Answer two questions about the sentence you are killing:
+    E|   --cause restated  the sentence is STILL TRUE; a successor states it better
+    E|                     (requires --successor <tr-id>)
+    E|   --cause expired   it WAS true and the world moved past it
+    E|   --cause wrong     it was NEVER true, or its evidence never demonstrated it
+    E|   Nothing was filed.
+    O| 
+=== V:retract-no-human
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: claim retraction is a human tombstone decision (G12). If you are an agent: file `diverge` (or close with a basis) saying it should die, and stop -- the human queue decides. If you are a human: re-run this in your own terminal.
+    O| 
+=== V:restated-no-successor
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: --cause restated says the fact still holds, so something must still state it -- name the replacement with --successor <tr-id>. If no claim carries the fact forward, either file one first, or the fact did NOT survive and the cause is `expired`/`wrong` (ADR-049). Nothing was filed.
+    O| 
+=== V:refresh-on-recheck
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: --refresh-evidence does not accompany --recheck (ADR-051: a recheck never files an agree, so no anchor advances; run the recheck, then file your judgment)
+    O| 
+=== W:issue-unknown-dep
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: unknown dep(s): <WK> -- deps must reference existing wk- issues
+    O| 
+=== W:accept-kind-no-cmd
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| warning: no --premise given -- this issue is not protected by the ledger; if it stands on any repository fact, link it (premise-at-birth, ADR-002)
+    E| truth: --accept-kind names an oracle shape with no oracle -- give --accept-cmd too (ADR-014)
+    O| 
+=== W:start-unknown
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: unknown issue <WK>
+    O| 
+=== W:done-no-basis
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: unknown issue <WK>
+    O| 
+=== W:premise-bad-id
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: not a claim id: 'notanid' -- premise claim id takes tr-hex8; validate refuses the record this would append (ADR-013). Nothing was filed.
+    O| 
+=== W:contradicts-self
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: a claim cannot contradict itself (issue #4)
+    O| 
+=== R:impact-watched
+    exit=3
+    E| 
+    O| editing f.txt -> next commit STALES <TR> (P2, unverified): f.txt carries exactly two x lines
+    O| editing f.txt -> next commit STALES <TR> (P2, unverified): f.txt line numbering probe
+=== R:impact-unwatched
+    exit=0
+    E| 
+    O| 
+=== R:impact-inverse-empty
+    exit=2
+    E| truth: --inverse scope matched no tracked files -- check --under/--exclude (exit 2: usage, not a clean audit)
+    O| 
+=== R:citations-bad-id
+    exit=1
+    E| truth: not a ledger id: '#' -- citations sweeps ledger ids only (tr-hex8, or wk-hex8 for an issue tombstone); nothing was swept (ADR-036)
+    O| 
+=== R:citations-clean
+    exit=0
+    E| truth: advisory: no .truth/citation-scope -- sweeping the built-in default scope (docs/specs/**)
+    O| <TR>: clean
+=== R:citations-cited-exit6
+    exit=6
+    E| truth: advisory: no .truth/citation-scope -- sweeping the built-in default scope (docs/specs/**)
+    O| <TR>: docs/specs/cited.md
+=== V:retract-while-cited
+    exit=6
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: advisory: no .truth/citation-scope -- the citation sweep runs against the built-in default scope (docs/specs/**); commit the file to declare this repo's own (ADR-036)
+    E| truth: retraction blocked -- <TR> is cited by 1 scope-covered file(s) (ADR-036):
+    E|   docs/specs/cited.md
+    E|   Swap each citation to the successor claim first, then retract.
+    O| 
+=== R:validate
+    exit=0
+    E| 
+    O| validate: 3 record(s) OK
+=== R:vocab
+    exit=0
+    E| 
+    O| statuses: unverified,live,stale,diverged,cannot_verify,retracted,disputed
+    O| active: live,unverified
+    O| verdicts: agree->live,diverge->diverged,cannot_verify->cannot_verify,retracted->retracted
+    O| premise_blocking: stale,diverged,cannot_verify,retracted,disputed
+    O| premise_warn: unverified,cannot_verify
+    O| citation_bad: disputed,diverged,retracted,stale
+    O| tiers: P0,P1,P2
+    O| kinds: claim,verdict,invalidation,premise,issue,issue_event,contradicts
+=== R:staling-empty
+    exit=0
+    E| 
+    O| staling: no invalidations in range -- nothing to break down
+
+# end of fingerprint
