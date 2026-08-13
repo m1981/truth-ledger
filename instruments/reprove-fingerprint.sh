@@ -20,7 +20,41 @@ cd "$ROOT" || exit 1
 [ -x "$FP" ] || { echo "FAIL: $FP missing or not executable"; exit 1; }
 [ -s "$BASE" ] || { echo "FAIL: $BASE missing"; exit 1; }
 
-TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+TMP="$(mktemp -d)"
+# This script deliberately MUTATES truthlib in place, so an interrupted run
+# leaves the repository broken -- and the old trap deleted $TMP, destroying
+# the backups that were the only way back. Both halves of that bit for real:
+# a `| head -6` closed the pipe, SIGPIPE killed the run mid-M3, and
+# `CITATIONS_EXIT_CITED -> 1` stayed in cli.py. The canary then read
+# 282 caught / 1 missed (FAULT TG6) on a tree whose git status showed one
+# stray modified file, and that number was nearly written down as a finding.
+#
+# So: restore before removing, and catch the signals that skip an EXIT trap.
+# EXIT alone does NOT run when the shell is killed by an uncaught SIGPIPE.
+CLEANED=0
+cleanup() {
+  [ "$CLEANED" = 1 ] && return 0      # idempotent: signal path then EXIT
+  CLEANED=1
+  local b m damaged=0
+  for b in "$TMP"/*.bak; do
+    [ -e "$b" ] || continue
+    m="$(basename "$b" .bak)"
+    cp "$b" "$TPL/truthlib/$m.py"
+    damaged=1
+    echo "reprove: ROLLED BACK a seeded mutation in truthlib/$m.py" >&2
+  done
+  if [ "$damaged" = 1 ]; then
+    echo "reprove: the run did not finish -- the tree was restored, but \
+re-run this to completion before trusting any result" >&2
+  fi
+  rm -rf "$TMP"
+}
+# The signal handlers must EXIT, not return. A trap on PIPE hands control
+# back to the script, so cleanup would fire, delete $TMP, and the script
+# would then keep seeding mutations with nowhere to back them up -- one
+# stray mutation turned into two when this was written the obvious way.
+trap 'cleanup; exit 130' INT TERM HUP PIPE
+trap cleanup EXIT
 FAILED=0
 
 run_fp() { bash "$FP" > "$TMP/out.txt" 2>&1; }
@@ -40,8 +74,16 @@ report() {  # report "<label>" "<expect DETECTED|IDENTICAL>"
     if [ "$expect" = "DETECTED" ]; then
       printf '  %-42s DETECTED   (%s lines)\n' "$label" "$n"
     else
-      printf '  %-42s DIFFERS    <-- NOT DETERMINISTIC (%s lines)\n' \
+      # TWO different faults produce this one symptom, and naming only
+      # the rarer one sends the reader hunting a clock leak when the fix
+      # is one command. A control that differs means EITHER the
+      # instrument is non-deterministic OR -- far more often -- the
+      # committed baseline was generated on a different tree than the
+      # one you are standing in.
+      printf '  %-42s DIFFERS    <-- baseline stale for this tree, or the instrument is non-deterministic (%s lines)\n' \
              "$label" "$n"
+      printf '  %-42s            check `git log -1 --format=%%h -- %s` against HEAD; if the baseline predates a DELIBERATE behaviour change, regenerate it in a commit of its own that explains every line\n' \
+             "" "${BASE#"$(cd "$(dirname "$0")/.." && pwd)/"}"
       FAILED=1
     fi
   fi
@@ -50,7 +92,9 @@ report() {  # report "<label>" "<expect DETECTED|IDENTICAL>"
 seed() {  # seed <module> <python-replace-expression-file>
   cp "$TPL/truthlib/$1.py" "$TMP/$1.bak"
 }
-restore() { cp "$TMP/$1.bak" "$TPL/truthlib/$1.py"; }
+# A leftover .bak means a mutation that was never rolled back, so restore
+# removes its own backup and the trap treats whatever survives as damage.
+restore() { cp "$TMP/$1.bak" "$TPL/truthlib/$1.py"; rm -f "$TMP/$1.bak"; }
 
 echo "Re-proving fingerprint sensitivity against $BASE"
 echo
