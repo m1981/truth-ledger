@@ -68,6 +68,60 @@ exercised. Both are the dark-arm class: an arm that cannot report a miss.
 **Assume your own new arms have this defect until a seeded mutation proves
 otherwise.**
 
+### Declared coverage limits of this instrument
+
+Written because a reviewer asked whether `doctor`'s absence from the probes
+was scope or oversight. It was oversight; `doctor` is probed now (two arms,
+red-proven on its reachable branches). What follows is what the instrument
+does **not** cover, stated so the next reader does not have to ask:
+
+- **Only reachable branches.** The `doctor` probe runs after claims have been
+  filed, so its `ledger exists` FAIL branch is unreachable and unpinned. The
+  same is true anywhere a probe's state makes a branch dead. A mutation on a
+  dead branch reads as NIEWYKRYTE and that is the instrument being honest, not
+  broken — but it means "the fingerprint is empty" never meant "every branch is
+  pinned".
+- **Not the canary, not the suites.** The fingerprint pins the CLI's observable
+  surface. Test-count and arm-count regressions are a separate acceptance
+  criterion and must be checked separately.
+- **Not concurrency, not multi-machine.** Single process, single sandbox.
+- **Not performance.** Fold latency is normalised away deliberately; a refactor
+  that makes the fold ten times slower passes the fingerprint clean.
+
+## 0b. Numbers in this document, and where they were measured
+
+Every figure in this document and in `APPLY.md` — `354 tests`, `273 caught,
+1 missed`, the four DETECTED rows — was measured **in an ephemeral container**,
+on a clean clone of `8fa0706` with this series applied. Not on the maintainer's
+machine, and not in the repository you are reading this in.
+
+That is a pattern worth naming rather than patching case by case, because it
+has now occurred twice in this work:
+
+1. §0's red-proof table was originally written in the past tense about a file
+   that did not exist in the repository — a plan described as a result.
+2. `273 caught, 1 missed` is quoted as an expected value, and the canary's
+   count is **branch-dependent**: 286 `ok(` call sites resolve to 273 caught,
+   because most arms sit in if/else pairs, and at least two arms
+   (`FAULT D1`'s absent-patterns path, `FAULT R`'s PATH manipulation) take
+   different branches under different local state. It was stable across every
+   run I made; I never ran it where you are reading this.
+
+**The rule this establishes.** A number produced in a throwaway environment is
+not a fact about the repository — it is a *prediction* about what the
+repository will report. State it as an expected value with the command that
+produces it, never as a finding. Where the number could vary by environment,
+say so.
+
+Concretely, for this document: treat `354`, `273/1` and the DETECTED rows as
+**expected output of your own run**. If any differs on your machine, that is
+information about your environment or about a real regression — report it
+before proceeding, and do not adjust the number to match.
+
+This is the same defect the ledger itself catches at the claim layer (an
+attestation nothing can re-run) and the same one the atlas hit (a count that
+had moved). It reaches documents too, and documents have no invalidation scan.
+
 ---
 
 ## 1. Sequencing

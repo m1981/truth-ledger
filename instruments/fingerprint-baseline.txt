@@ -294,5 +294,72 @@
     exit=0
     E| 
     O| staling: no invalidations in range -- nothing to break down
+=== R:doctor
+    exit=1
+    E| 
+    O| OK    repo has commits (anchors resolvable)
+    O| OK    ledger validates
+    O| OK    fold latency -- <MS>
+    O| OK    evidence allowlist present
+    O| OK    evidence allowlist grey-zone -- no code-executing programs listed
+    O| OK    union merge rule present
+    O| FAIL  pre-commit hook enforces INV-A/INV-B -- no executable hook invoking check-truth under .git/hooks, and no top-level CI config (.github/workflows/*.yml, .gitlab-ci.yml, Jenkinsfile, …) names check-truth -- a hook OR CI MUST exist, see README Install
+    O| FAIL  post-merge hook enforces INV-C -- no executable hook invoking invalidate-scan under .git/hooks, and no top-level CI config (.github/workflows/*.yml, .gitlab-ci.yml, Jenkinsfile, …) names invalidate-scan -- a hook OR CI MUST exist, see README Install
+    O| OK    discovery -- snippet found in AGENTS.md
+    O| OK    queue aging
+    O| 
+    O| doctor: 2 failure(s), 0 warning(s)
+=== R:doctor-json
+    exit=1
+    E| 
+    O| {
+    O|   "ok": [
+    O|     {
+    O|       "check": "repo has commits (anchors resolvable)",
+    O|       "detail": ""
+    O|     },
+    O|     {
+    O|       "check": "ledger validates",
+    O|       "detail": ""
+    O|     },
+    O|     {
+    O|       "check": "fold latency",
+    O|       "detail": "<MS>"
+    O|     },
+    O|     {
+    O|       "check": "evidence allowlist present",
+    O|       "detail": ""
+    O|     },
+    O|     {
+    O|       "check": "evidence allowlist grey-zone",
+    O|       "detail": "no code-executing programs listed"
+    O|     },
+    O|     {
+    O|       "check": "union merge rule present",
+    O|       "detail": ""
+    O|     },
+    O|     {
+    O|       "check": "discovery",
+    O|       "detail": "snippet found in AGENTS.md"
+    O|     },
+    O|     {
+    O|       "check": "queue aging",
+    O|       "detail": ""
+    O|     }
+    O|   ],
+    O|   "warn": [],
+    O|   "fail": [
+    O|     {
+    O|       "check": "pre-commit hook enforces INV-A/INV-B",
+    O|       "detail": "no executable hook invoking check-truth under .git/hooks, and no top-level CI config (.github/workflows/*.yml, .gitlab-ci.yml, Jenkinsfile, \u2026) names check-truth -- a hook OR CI MUST exist, see README Install"
+    O|     },
+    O|     {
+    O|       "check": "post-merge hook enforces INV-C",
+    O|       "detail": "no executable hook invoking invalidate-scan under .git/hooks, and no top-level CI config (.github/workflows/*.yml, .gitlab-ci.yml, Jenkinsfile, \u2026) names invalidate-scan -- a hook OR CI MUST exist, see README Install"
+    O|     }
+    O|   ],
+    O|   "failures": 2,
+    O|   "warnings": 0
+    O| }
 
 # end of fingerprint

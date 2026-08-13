@@ -156,6 +156,13 @@ probe "V:retract-while-cited"    env TRUTH_HUMAN=1 TRUTH_HUMAN_ACK="$CID" \
 probe "R:validate"              $T validate
 probe "R:vocab"                 $T vocab
 probe "R:staling-empty"         $T staling
+# doctor is the installation check and its refusals are a user-facing
+# surface like any other. Deterministic here because the sandbox is built
+# fresh with no hooks, and the one time-varying field (fold latency, "Nms")
+# is collapsed by norm(). Added after a reviewer asked whether its absence
+# was scope or oversight -- it was oversight.
+probe "R:doctor"                $T doctor
+probe "R:doctor-json"           $T doctor --json
 
 echo
 echo "# end of fingerprint"
