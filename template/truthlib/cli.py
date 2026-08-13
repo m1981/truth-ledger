@@ -1,4 +1,4 @@
-"""truth v0.9.36 -- append-only claims ledger with a native work kernel.
+"""truth v0.9.37 -- append-only claims ledger with a native work kernel.
 
 truthlib.cli -- argparse and the cmd_* orchestration (the line above is
 the argparse description, kept in lockstep with the entry docstring by
@@ -851,6 +851,21 @@ def cmd_issues(a):
         return
     claims, premises = fold(events)
     premises = merge_premises(premises, issue_premises(issues))
+    # ADR-013: apply the redirects, exactly as `ready` and `impact` do. The
+    # effective premise list is DERIVED, like every status in this system,
+    # and three consumers of merge_premises() applying the derivation while
+    # a fourth did not is the drift shape ADR-043 named -- two verbs of one
+    # CLI answering differently about one fact. Observed on the kuchnie
+    # ledger: wk-cc0daf81 listed both tr-bd0ba211 (the successor) and
+    # tr-8ed0a7ff (its RETRACTED predecessor) here, while `ready` correctly
+    # honoured the redirect, so an operator reading `issues` saw a dead
+    # premise the machinery had already re-targeted.
+    # The raw links are not lost: they are permanent records in the ledger
+    # (the premise-at-birth payload, the redirect record, and the
+    # replacement claim are three separate lines), so `git log` and the
+    # ledger itself remain the history. This verb reports EFFECTIVE state,
+    # which is what governs readiness.
+    premises = apply_supersedes(premises, fold_supersedes(events))
     rows = []
     for wid, e in sorted(issues.items()):
         p = e["issue"]["payload"]

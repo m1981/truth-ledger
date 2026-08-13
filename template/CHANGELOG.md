@@ -8,6 +8,23 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.9.37 (ADR-013 redirects applied by every premise-map consumer;
+  no schema change, no fold change, no gate semantics change):
+  * `truth issues` now applies apply_supersedes(), matching `ready`,
+    `impact` and `premise`. Four verbs build a premise map with
+    merge_premises(); three followed it with the ADR-013 derivation and
+    `issues` did not, so two verbs of one CLI answered differently about
+    one fact. Observed on a real ledger: an issue listed both its
+    successor premise and that premise's RETRACTED predecessor, while
+    `ready` correctly honoured the redirect.
+  * The property is now a test, not an instance: an AST arm walks cli.py
+    and fails any function calling merge_premises() without
+    apply_supersedes(), so a future verb that forgets reddens at once.
+  * Display change only. The raw links stay permanent records in the
+    ledger -- premise-at-birth payload, redirect record and replacement
+    claim are three separate lines -- so history is not lost; this verb
+    reports EFFECTIVE state, which is what governs readiness.
+
 v0.9.36 (ADR-051 capsule coherence -- an agree carries the capsule with
   the anchor; schema $id v0.18, one new verdict field, no fold change):
   * `verdict <id> agree` on a path-claim now RUNS the screened evidence

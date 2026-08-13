@@ -2618,6 +2618,79 @@ class TestCrossSurfaceVersions(unittest.TestCase):
             "the $id silently lapsed three times when nobody could see it.")
 
 
+
+class TestIssuesAppliesSupersedes(unittest.TestCase):
+    """ADR-013 redirects must be applied by EVERY consumer of the premise
+    map, not most of them.
+
+    Four verbs call merge_premises(); `ready`, `impact` and `premise`
+    followed it with apply_supersedes() and `issues` did not, so the two
+    verbs an operator reads side by side answered differently about one
+    fact. Observed on a real ledger: an issue listed both its successor
+    premise and that premise's RETRACTED predecessor here, while `ready`
+    correctly honoured the redirect.
+
+    That is the drift shape ADR-043 named for the satellites' status
+    vocabulary -- the gated copies stayed correct, the hand copies did
+    not -- reappearing inside one file."""
+
+    def test_issues_reports_the_effective_premise_not_the_dead_one(self):
+        with tempfile.TemporaryDirectory() as d:
+            _mk_sandbox(d)
+            old = _truth(d, "claim", "f.txt holds data", "--class",
+                         "VERIFIED", "--evidence-cmd", "cat f.txt",
+                         "--paths", "f.txt").stdout.strip().splitlines()[-1]
+            wk = _truth(d, "issue", "work standing on that fact",
+                        "--premise", old).stdout.strip().splitlines()[-1]
+
+            # kill the premise mechanically (stale is an ungated dead
+            # state under ADR-013; retracted would need the ADR-017 gate)
+            with open(os.path.join(d, "f.txt"), "a") as f:
+                f.write("changed\n")
+            _git(d, "add", "f.txt")
+            _git(d, "commit", "-qm", "touch the watched path")
+            _truth(d, "invalidate-scan")
+
+            new = _truth(d, "claim", "f.txt holds data and a second line",
+                         "--class", "VERIFIED", "--evidence-cmd",
+                         "cat f.txt", "--paths", "f.txt", "--duplicate-ok"
+                         ).stdout.strip().splitlines()[-1]
+            r = _truth(d, "premise", wk, new, "--supersedes", old)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            rows = json.loads(_truth(d, "issues", "--json").stdout)
+            prem = next(x["premises"] for x in rows if x["id"] == wk)
+            self.assertIn(new, prem,
+                          "issues must report the successor premise")
+            self.assertNotIn(old, prem,
+                             "issues reported the superseded premise -- "
+                             "ADR-013 redirects were not applied, so this "
+                             "verb disagrees with `ready` about one fact")
+
+    def test_every_premise_map_consumer_applies_the_redirect(self):
+        """The property, not the instance: any verb that builds a premise
+        map with merge_premises() must follow it with apply_supersedes().
+        A future verb that forgets reddens here rather than at the next
+        audit."""
+        import ast
+        src = open(os.path.join(HERE, "..", "truthlib", "cli.py"),
+                   encoding="utf-8").read()
+        tree = ast.parse(src)
+        offenders = []
+        for fn in ast.walk(tree):
+            if not isinstance(fn, ast.FunctionDef):
+                continue
+            calls = {n.func.id for n in ast.walk(fn)
+                     if isinstance(n, ast.Call)
+                     and isinstance(n.func, ast.Name)}
+            if "merge_premises" in calls and "apply_supersedes" not in calls:
+                offenders.append(fn.name)
+        self.assertEqual(offenders, [],
+                         "these build a premise map without applying "
+                         "ADR-013 redirects, so they report dead premises "
+                         "the machinery has already re-targeted")
+
+
 class TestCapsuleCoherence(unittest.TestCase):
     """ADR-051: the agree-side twin of ADR-012's mechanical subtype.
 

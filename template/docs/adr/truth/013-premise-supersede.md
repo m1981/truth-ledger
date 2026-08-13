@@ -27,6 +27,20 @@ ADR-017 superseding a `retracted` premise requires the ADR-011 human
 gate (`TRUTH_HUMAN` + typed-id ack); the mechanical dead states
 (`stale`/`diverged`/`cannot_verify`/`missing`) below stay ungated as
 written. Canary R11.
+Amended by: note (2026-08-13, v0.9.37) -- a defect against this ADR's own
+Consequences, which state that "ready/impact now share one more derivation
+step": `truth issues` built its premise map with merge_premises() and never
+applied apply_supersedes(), so it reported premises this ADR had already
+re-targeted. Found on the kuchnie ledger, where an open issue listed both its
+successor premise and that premise's RETRACTED predecessor while `ready`
+honoured the redirect correctly -- two verbs of one CLI disagreeing about one
+fact, the drift shape ADR-043 named for the satellites' status vocabulary,
+reappearing inside a single file. Fixed by applying the derivation in
+cmd_issues, and pinned as a PROPERTY rather than an instance: an AST test arm
+walks cli.py and fails any function that calls merge_premises() without
+apply_supersedes(), so the next verb that forgets reddens immediately. No fold,
+schema or gate change; the raw links remain permanent ledger records.
+
 Date: 2026-07-13
 Supersedes: — (extends ADR-002's kernel; leaves ADR-001's matrix intact)
 
