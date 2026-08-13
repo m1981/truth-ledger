@@ -28,6 +28,13 @@ mkrepo() {
   cp "$HERE/../.truth/evidence-allow" .truth/evidence-allow
   cp "$HERE/../.truth/evidence-deny" .truth/evidence-deny  # ADR-022 baseline
   cp "$HERE/../.truth/generated-paths" .truth/generated-paths  # ADR-037 (empty=silent)
+  # F3.1: the sandbox is a CONSUMER, and a consumer with an empty policy
+  # file must attest it or doctor fails. The template ships the file
+  # unattested on purpose (an inherited attestation records nothing), so
+  # every sandbox makes the statement itself -- which is also what keeps
+  # the FAULT PA arms below honest: they mutate this line, not a default.
+  printf '# attested 2026-01-01: the canary sandbox generates nothing\n' \
+    >> .truth/generated-paths
   cp "$HERE/check-truth.sh" scripts/check-truth.sh
   cp "$HERE/spec-health.sh" scripts/spec-health.sh
   cp "$HERE/doc-health.sh" scripts/doc-health.sh
@@ -3387,6 +3394,63 @@ else
   miss "EF5: validate refuses a record the CLI itself writes"
 fi
 cd "$EF_PREV"
+
+# ---- FAULT PA (F3.1): an empty policy file must SAY it is empty ---------
+# ADR-037/SI-4 reads a committed-empty policy file as a conscious "nothing
+# here" and goes silent; ADR-042 rule 2 says zero coverage is a failure.
+# Both are on record and they contradict, and until now the earlier one
+# won by default -- not on merit, just by being first. The attestation is
+# the reconciliation: emptiness stays a legitimate statement, but it has
+# to be stated, dated and justified, because an untouched shipped default
+# is byte-identical to a decision nobody made.
+say "FAULT PA (F3.1): an unattested empty policy file fails doctor; an attested one passes; a populated one needs no attestation"
+PA="$(mktemp -d)"; TDIRS+=("$PA"); PA_PREV="$PWD"
+mkrepo "$PA"
+echo ".truth/claims.jsonl merge=union" >> .gitattributes
+printf '# Agents\nUse scripts/truth (see .truth/README.md)\n' > AGENTS.md
+printf '#!/usr/bin/env bash\nexec bash scripts/check-truth.sh\n' > .git/hooks/pre-commit
+printf '#!/usr/bin/env bash\npython3 scripts/truth invalidate-scan --quiet\n' > .git/hooks/post-merge
+printf '#!/usr/bin/env bash\nexec bash scripts/check-truth.sh\n' > .git/hooks/pre-merge-commit
+chmod +x .git/hooks/pre-commit .git/hooks/post-merge .git/hooks/pre-merge-commit
+mkdir -p src/generated
+printf 'col\n1\n' > src/generated/out.csv
+git add -A >/dev/null 2>&1; git commit -qm "pa: wired repo with a generated artifact" --no-verify
+
+# PA1 (negative control) FIRST: mkrepo attested, so the wired repo passes.
+if $T doctor >/dev/null 2>&1; then
+  ok "PA1 (negative control): an ATTESTED empty policy file passes doctor"
+else
+  miss "PA1: doctor failed a repo whose empty policy file carries an attestation"
+  $T doctor 2>&1 | grep -E "^(FAIL|WARN)" || true
+fi
+# PA4: the cross-check. The attestation says nothing is generated; the
+# repository says otherwise, and only this arm asks the repository.
+if $T doctor 2>&1 | grep -q "WARN  generated-paths covers what looks generated"; then
+  ok "PA4: a tracked file under generated/ is named even though the empty list is attested"
+else
+  miss "PA4: an attested-empty list was trusted over a tracked src/generated/out.csv"
+fi
+# PA2: strip the attestation -- back to the untouched default, which
+# records no decision.
+grep -v '^# attested ' .truth/generated-paths > .truth/gp.tmp
+mv .truth/gp.tmp .truth/generated-paths
+PA_OUT="$($T doctor 2>&1)"; PA_RC=$?
+if [ "$PA_RC" -ne 0 ] \
+   && printf '%s\n' "$PA_OUT" | grep -q "FAIL  policy file attested (.truth/generated-paths)"; then
+  ok "PA2: an UNATTESTED empty policy file FAILs doctor (exit 1), naming the one-line fix"
+else
+  miss "PA2: doctor read an untouched empty default as a conscious statement (rc=$PA_RC)"
+fi
+# PA3: entries ARE the statement -- a populated list needs no attestation.
+printf 'src/generated/**\n' >> .truth/generated-paths
+PA_OUT="$($T doctor 2>&1)"
+if printf '%s\n' "$PA_OUT" | grep -q "OK    policy file attested (.truth/generated-paths) -- populated" \
+   && ! printf '%s\n' "$PA_OUT" | grep -q "WARN  generated-paths covers what looks generated"; then
+  ok "PA3: a POPULATED list needs no attestation, and covering the artifact silences the cross-check"
+else
+  miss "PA3: a populated list was still asked to attest, or the cross-check kept firing after it was covered"
+fi
+cd "$PA_PREV"
 
 # ---- FAULT RP (F1.1): the reproduction sweep ----------------------------
 # `truth reproduce` asks the question no other verb asks: can this LIVE

@@ -44,6 +44,31 @@ REPRODUCE_EXIT_EMPTY = 8
 # header (committed-empty = consciously nothing, silent; ABSENT = the
 # check is dark, one advisory line says so).
 GENERATED_PATHS_REL = ".truth/generated-paths"
+# F3.1: SI-4 reads a committed-empty policy file as a conscious "nothing
+# here" and stays silent. That is only true if someone consciously said
+# it -- and an untouched shipped default is byte-identical to a decision
+# nobody made. ADR-042 rule 2 says zero coverage is a failure; SI-4 says
+# it is a statement; the contradiction is real and today the earlier one
+# wins by default rather than on merit. The attestation is what makes
+# them compatible: an empty policy file must SAY, with a date and a
+# reason, that its emptiness was chosen. Absent attestation, doctor
+# fails -- an unattested empty file is the untouched default, and the
+# default has never been a statement about anything.
+POLICY_ATTESTATION_RE = re.compile(
+    r"^[ \t]*#[ \t]*attested[ \t]+(\d{4}-\d{2}-\d{2})[ \t]*:[ \t]*(\S.*)$")
+ATTESTABLE_POLICY_FILES = (GENERATED_PATHS_REL, CITATION_SCOPE_REL)
+# Directory-name conventions a generated artifact hides under. Used ONLY
+# for the empty-list cross-check -- naming is evidence, not proof, so a
+# hit is a WARN naming files, never a refusal.
+# Both forms per name on purpose: `**` compiles to `.*`, so `**/dist/**`
+# requires a '/' BEFORE dist and silently misses a top-level `dist/` --
+# the single most common shape there is. The pair is not redundancy, it
+# is the fix for a probe set that would have looked thorough and skipped
+# the obvious case.
+GENERATED_DIR_PROBES = ("generated/**", "**/generated/**",
+                        "dist/**", "**/dist/**",
+                        "build/**", "**/build/**",
+                        "__generated__/**", "**/__generated__/**")
 # ADR-039: blast forecast. Window and cold-start floor change only with
 # the BF faults; the EFFECTIVE floor self-calibrates per repo (P90 of
 # stored forecasts over live path-claims once enough exist) because a

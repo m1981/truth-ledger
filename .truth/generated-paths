@@ -17,3 +17,11 @@
 # and checks nothing is worse than no gate.
 #
 # Add a path here the day this repo generates one.
+#
+# F3.1: the machine-readable form of the statement above. The prose
+# said it since 2026-08-01 and nothing could check that it had been
+# said at all -- an unattested empty file is byte-identical to the
+# untouched default, so `doctor` now refuses to read one as policy.
+# attested 2026-08-01: nothing in this repository is generated; every
+# tracked file is hand-authored except .truth/claims.jsonl, which the
+# CLI excludes structurally.

@@ -4959,6 +4959,71 @@ class TestModulePurity(unittest.TestCase):
                         "allowlist is empty by design)")
 
 
+class TestPolicyFileState(unittest.TestCase):
+    """F3.1: the three-way SI-4 read, made decidable. `unattested` is the
+    state that did not exist before -- and it is the one the shipped
+    default lands in."""
+
+    HEADER = "# Generated-artifact watch list (ADR-037).\n#\n# Examples:\n"
+
+    def test_absent_is_not_an_attestation_problem(self):
+        self.assertEqual(tm.policy_file_state(None), "absent")
+        self.assertIsNone(tm.policy_attestation_error(".truth/x", "absent"))
+
+    def test_shipped_default_is_unattested(self):
+        self.assertEqual(tm.policy_file_state(self.HEADER), "unattested")
+        err = tm.policy_attestation_error(".truth/x", "unattested")
+        self.assertIn("attested YYYY-MM-DD", err)
+
+    def test_attestation_line_makes_it_a_statement(self):
+        text = self.HEADER + "# attested 2026-08-13: nothing here is generated\n"
+        self.assertEqual(tm.policy_file_state(text), "attested")
+        self.assertIsNone(tm.policy_attestation_error(".truth/x", "attested"))
+
+    def test_entries_are_their_own_statement(self):
+        self.assertEqual(tm.policy_file_state(self.HEADER + "dist/**\n"),
+                         "populated")
+        self.assertIsNone(tm.policy_attestation_error(".truth/x", "populated"))
+
+    def test_attestation_needs_a_date_and_a_reason(self):
+        for bad in ("# attested: nothing here\n",
+                    "# attested 2026-08-13:\n",
+                    "# attested yesterday: nothing here\n",
+                    "# we attest that nothing is generated\n"):
+            self.assertEqual(tm.policy_file_state(self.HEADER + bad),
+                             "unattested", f"accepted {bad!r} as attestation")
+
+    def test_attestation_must_be_a_comment_not_an_entry(self):
+        # A non-comment line is an ENTRY; if the attestation were written
+        # without its '#' the file would be populated with a garbage glob,
+        # and that must not read as attested.
+        text = self.HEADER + "attested 2026-08-13: nothing\n"
+        self.assertEqual(tm.policy_file_state(text), "populated")
+
+
+class TestGeneratedBlindSpot(unittest.TestCase):
+    """F3.1 cross-check: an attested-empty list can still be wrong, and
+    only the repository can say so."""
+
+    TRACKED = ["src/app.py", "exercises/d60/generated/rozrys.csv",
+               "docs/api/generated/index.md", "dist/bundle.js",
+               "README.md"]
+
+    def test_names_tracked_files_under_generated_dirs(self):
+        self.assertEqual(
+            tm.generated_blind_spot([], self.TRACKED),
+            ["dist/bundle.js", "docs/api/generated/index.md",
+             "exercises/d60/generated/rozrys.csv"])
+
+    def test_covered_paths_drop_out(self):
+        self.assertEqual(
+            tm.generated_blind_spot(["**/generated/**", "dist/**"],
+                                    self.TRACKED), [])
+
+    def test_silent_when_nothing_looks_generated(self):
+        self.assertEqual(tm.generated_blind_spot([], ["src/app.py"]), [])
+
+
 def _live_entry(claim_rec, anchor=None):
     """The fold-entry shape reproduce_triage receives for a LIVE claim --
     `anchor` is the EFFECTIVE anchor the fold advanced to, which is the

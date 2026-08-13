@@ -1378,6 +1378,40 @@ def cmd_doctor(a):
     else:
         ok("evidence allowlist grey-zone", "no code-executing programs listed")
 
+    # F3.1: every attestable policy file, and the cross-check that an
+    # attested empty list can still be wrong. Runs here rather than at
+    # intake because it is a property of the INSTALLATION, which is
+    # exactly what doctor is for (G4) -- and because a refusal at filing
+    # time would punish the filer for a policy decision that is not
+    # theirs to make.
+    for rel in ATTESTABLE_POLICY_FILES:
+        state = policy_file_state(read_policy_file(rel))
+        err = policy_attestation_error(rel, state)
+        if err:
+            fail(f"policy file attested ({rel})", err)
+        elif state == "absent":
+            warn(f"policy file attested ({rel})",
+                 "not committed -- the check it drives runs dark, and an "
+                 "absent file records no decision either way")
+        else:
+            ok(f"policy file attested ({rel})", state)
+    # The cross-check. An attested "nothing here is generated" is a
+    # statement about the repository, and the repository can contradict
+    # it -- this is the only surface that asks.
+    gen_globs, _gen_src, _gen_err = load_generated_globs()
+    blind = generated_blind_spot(gen_globs or [], tracked_files())
+    if blind:
+        warn("generated-paths covers what looks generated",
+             f"{len(blind)} tracked file(s) sit under a conventionally "
+             f"generated directory that {GENERATED_PATHS_REL} does not "
+             f"cover: {', '.join(blind[:5])}"
+             + (f" (+{len(blind) - 5} more)" if len(blind) > 5 else "")
+             + " -- either list them (ADR-037 then refuses watches on "
+               "them) or accept that claims watching them restale on "
+               "every regeneration")
+    else:
+        ok("generated-paths covers what looks generated")
+
     ga = os.path.join(root, ".gitattributes")
     if os.path.exists(ga) and "claims.jsonl merge=union" in open(ga, encoding="utf-8").read():
         ok("union merge rule present")

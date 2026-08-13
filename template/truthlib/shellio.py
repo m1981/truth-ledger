@@ -140,6 +140,22 @@ def load_allowlist(rel=EVIDENCE_ALLOW_REL):
                 out.append(line)
     return out
 
+def read_policy_file(rel):
+    """F3.1: a policy file's raw text, or None when absent. SHELL. One
+    reader for every attestable policy file -- the state decision is
+    policy_file_state's, and giving it the bytes instead of a parsed
+    shape is what keeps `# attested ...` visible to it (every existing
+    loader strips comments, which is precisely where the attestation
+    lives)."""
+    path = os.path.join(repo_root(), rel)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read()
+    except (OSError, ValueError):
+        return None
+
 def load_denylist():
     """ADR-022: the template-owned evidence deny baseline, or None if the
     file is absent (an older deployment simply has no extra deny -- the

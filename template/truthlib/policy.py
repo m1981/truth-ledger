@@ -439,6 +439,65 @@ def _evidence_paths_touched(entry, facts, now):
                 "label": "paths changed"}
     return None
 
+# --- F3.1: a conscious empty is not the same as an untouched default -----
+
+def policy_file_state(text):
+    """F3.1: classify a policy file's CONTENT (SI-4, made decidable).
+    Pure -- `text` is the file's content, or None when the file is
+    absent; the shell does the reading.
+
+      absent      the file is not there. A different state with its own
+                  voice (the check runs dark and says so); never an
+                  attestation problem.
+      populated   at least one non-comment, non-blank line. The entries
+                  ARE the statement; nothing to attest.
+      attested    no entries, and a `# attested YYYY-MM-DD: <reason>`
+                  line. Emptiness was chosen, dated, and justified.
+      unattested  no entries and no such line -- byte-for-byte what the
+                  template ships, which is a decision NOBODY MADE. This
+                  is the state F3.1 exists to separate out; before it,
+                  SI-4 read it as identical to `attested` and went
+                  silent."""
+    if text is None:
+        return "absent"
+    for line in text.splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            return "populated"
+    for line in text.splitlines():
+        if POLICY_ATTESTATION_RE.match(line):
+            return "attested"
+    return "unattested"
+
+def policy_attestation_error(rel, state):
+    """F3.1: the refusal text for an unattested empty policy file, or
+    None. Pure. The message has to teach the fix, because the fix is one
+    line and the failure otherwise reads as bureaucracy."""
+    if state != "unattested":
+        return None
+    return (f"{rel} is committed but EMPTY with no attestation -- which is "
+            "byte-identical to the untouched default, so nothing here "
+            "records that the emptiness was ever decided (ADR-042 rule 2: "
+            "zero coverage is a failure until someone says otherwise). Add "
+            "one line: '# attested YYYY-MM-DD: <why nothing belongs here>' "
+            "-- or add the entries that do belong.")
+
+def generated_blind_spot(globs, tracked, probes=GENERATED_DIR_PROBES):
+    """F3.1 cross-check: tracked files sitting under a conventionally
+    generated directory that the committed list does NOT cover. Pure;
+    the shell supplies the committed globs and `git ls-files`.
+
+    Naming is evidence, not proof -- a directory called `generated/` can
+    hold hand-written files -- so a hit is a WARN that NAMES the files
+    and lets a human decide, never a refusal. It exists because the
+    expensive failure is silent: an empty generated-paths list plus a
+    tracked `exercises/*/generated/rozrys.csv` means the ADR-037 gate is
+    switched off exactly where it was needed, and the attestation check
+    alone cannot see that -- an attested empty file is still wrong if
+    the repo demonstrably generates something."""
+    return sorted(f for f in tracked
+                  if match_paths(f, probes) and not match_paths(f, globs))
+
 INVALIDATORS = (_ttl_expired, _anchor_unreachable, _evidence_paths_touched)
 
 def decide_invalidation(entry, facts, now):

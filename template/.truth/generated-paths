@@ -16,6 +16,17 @@
 # per path filing says so). This file is CONSUMER-OWNED: `copier
 # update` never overwrites it (_skip_if_exists).
 #
+# F3.1 -- AN EMPTY LIST MUST BE ATTESTED. `truth doctor` FAILS while this
+# file is empty and carries no attestation line, because an untouched
+# default is byte-identical to a decision nobody made. Committing the
+# file is not the statement; SAYING SO is:
+#
+#   # attested 2026-08-13: nothing in this repository is generated
+#
+# The template deliberately does NOT ship that line -- an attestation the
+# consumer never made is worth less than none. Write it, with today's
+# date and your own reason, or list the paths that belong below.
+#
 # Examples:
 #   dist/**
 #   docs/api/generated/**
