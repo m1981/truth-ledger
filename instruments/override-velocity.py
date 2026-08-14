@@ -11,7 +11,7 @@ gate.
 
 Tier C wiring (ADR-046): meta-repo driver over truthlib (sys.path
 bootstrap to template/); the pure report itself
-(truthlib.advisory.override_report) never moved. Stdlib only.
+(truthlib.reports.override_report) moved there with A2. Stdlib only.
 
 Usage: python3 instruments/override-velocity.py [--json]
 Gate:  scripts/test-instruments.sh

@@ -17,7 +17,7 @@ The two numbers ADR-047's review reads:
 
 Report only, never a gate. Tier C wiring (ADR-046): meta-repo driver
 over truthlib (sys.path bootstrap to template/); the pure report
-(truthlib.advisory.retraction_cause_report) lives in the template and
+(truthlib.reports.retraction_cause_report) lives in the template and
 is unit-tested there. Stdlib only.
 
 Usage: python3 instruments/retraction-causes.py [--json]

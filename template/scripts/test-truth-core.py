@@ -5011,12 +5011,37 @@ class TestIntakeStageReturns(unittest.TestCase):
         self.assertIsNone(tm.run_intake_stage("pre-execution", ctx))
 
     def test_the_first_refusal_wins_and_stops_the_stage(self):
-        # Order is the ADR-034 contract: a ctx tripping two rows must
-        # report the EARLIER one, which is only observable now that the
-        # value comes back instead of leaving through sys.exit.
-        ctx = self._ctx(text="")
-        self.assertIn("text must be non-empty",
-                      tm.run_intake_stage("pre-execution", ctx))
+        """Order is the ADR-034 contract: a ctx tripping TWO rows must
+        report the EARLIER one.
+
+        The first version of this arm was DARK, and the adversary pass
+        proved it by seeding a runner that returns the LAST refusal
+        instead of the first: all 386 tests stayed green. Its ctx (empty
+        text) tripped exactly one row, so 'first' and 'last' were the
+        same string and the property the arm is named for was never
+        exercised. The name described a test that was not performed.
+
+        This ctx trips near-duplicate-g8 (row 2) AND
+        quantifier-scope-adr007 (row 3) at once, so the returned message
+        names whichever row the TABLE put first. Swap those two rows in
+        INTAKE_GATES and this fails."""
+        prior = rec("claim", claim_p(text="the alpha fact holds here"))
+        ctx = self._ctx(
+            text="the alpha fact holds here anywhere",
+            evidence_class="VERIFIED",
+            evidence_cmd="grep -c x --include=*.txt f.txt",
+            claims={"tr-00000001": {"claim": prior, "status": "live",
+                                    "status_ts": prior["ts"]}})
+        # Both rows must really fire on this ctx. Without these two, the
+        # arm goes dark again the moment either gate's shape changes --
+        # which is exactly how it went dark the first time.
+        self.assertIsNotNone(tm._gate_duplicate(dict(ctx)),
+                             "row 2 no longer fires: the order arm is dark")
+        self.assertIsNotNone(tm._gate_quantifier_scope(dict(ctx)),
+                             "row 3 no longer fires: the order arm is dark")
+        err = tm.run_intake_stage("pre-execution", dict(ctx))
+        self.assertIn("near-duplicate", err)
+        self.assertNotIn("quantifies universally", err)
 
 
 class TestPolicyFileState(unittest.TestCase):

@@ -76,7 +76,7 @@ def repo_root():
 
 
 def claim_concerns(payload):
-    """Legacy tags as read-side data (the truthlib.advisory contract,
+    """Legacy tags as read-side data (the truthlib.reports contract,
     restated here so this reader stays truthlib-free): string items of a
     well-formed list, else [] -- degrade, never crash (red-team F2)."""
     cs = payload.get("concerns")

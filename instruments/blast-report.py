@@ -17,7 +17,7 @@ described filing day) and falls back to them only when `git log` is
 shallow/unavailable.
 
 Tier C wiring: meta-repo driver over truthlib (sys.path bootstrap to
-template/); the pure report itself (truthlib.advisory.blast_report)
+template/); the pure report itself (truthlib.reports.blast_report)
 never moved. Stdlib only.
 
 Usage: python3 instruments/blast-report.py [--json]

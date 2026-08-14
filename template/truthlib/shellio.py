@@ -11,9 +11,11 @@ that phase.  Four of the seven became returns (tracker_issues ×3,
 events_at_ref), because `ready` and `baseline` are their only callers
 and can act.  Three remain and each carries its reason inline:
 repo_root and ledger_lock have no partial answer to give, and
-load_events would need (events, err) threaded through twenty-three call
-sites to reproduce one identical exit.  An undeclared exception is the
-defect; a declared one is a decision.
+load_events would need (events, err) threaded through 22 call sites (26
+with the Tier C instruments) to reproduce one exit -- an exit the
+adversary pass then showed is WRONG for `validate`, whose contract is
+reporting every bad record and which dies on the first.  An undeclared
+exception is the defect; a declared one is a decision.
 """
 import contextlib
 import fcntl
@@ -32,9 +34,15 @@ def repo_root():
     """A1 -- DECLARED EXCEPTION, this exit stays. Fourteen call sites take
     the result as a path and build on it; there is no partial answer to
     hand back, because outside a git repository there is no ledger, no
-    policy file and no anchor -- every verb's precondition is gone, not
-    one verb's input. An undeclared exception is the defect A1 names; a
-    declared one is a decision, and this is the decision."""
+    policy file and no anchor. An undeclared exception is the defect A1
+    names; a declared one is a decision, and this is the decision.
+
+    CORRECTED after the adversary pass: this reason first said "every
+    verb's precondition is gone", and that is false. `truth vocab` runs
+    outside a repository and exits 0 -- it reads only registry constants
+    and never calls this function. The operative claim (every CALLER of
+    repo_root needs a path) holds; the universal one did not, and a
+    plausible-sounding reason that does not hold is worse than none."""
     r = subprocess.run(["git", "rev-parse", "--show-toplevel"],
                        capture_output=True, text=True)
     if r.returncode != 0:
@@ -368,20 +376,35 @@ def load_events(stream=None):
             events.append((n, json.loads(line)))
         except json.JSONDecodeError:
             # A1 -- DECLARED EXCEPTION, and the one I am least happy
-            # about. Twenty-three call sites take the event list, and a
-            # corrupt line means the same thing at every one of them: the
-            # fold cannot run, so no verb can answer. Threading (events,
-            # err) through all twenty-three to reproduce one identical
-            # exit would be churn with no reader, and it is exactly the
-            # kind of change whose diff hides a behaviour change.
+            # about. 22 call sites in template/ (26 counting the four
+            # Tier C instruments) take the event list, and threading
+            # (events, err) through all of them to reproduce one
+            # identical exit would be churn with no reader.
             #
-            # The composability this leaves unfixed is real: an embedder
-            # still cannot recover from one bad line. The clean answer is
-            # a raised exception caught in main() -- catchable, testable,
-            # byte-identical -- but that is a DESIGN CHOICE this brief
-            # does not authorise, and choosing rather than reporting is
-            # the failure mode A1's own licence forbids. Reported, not
-            # taken.
+            # CORRECTED after the adversary pass, twice. The count first
+            # said 23, which counted this function's own `def` line --
+            # in a commit whose centrepiece was correcting the brief's
+            # grep arithmetic. And the reason first claimed "a corrupt
+            # line means the same thing at every one of them", which is
+            # FALSE and has a live counter-example:
+            #
+            #   printf 'not json\n{"also":"bad"}\n' | truth validate --stdin
+            #   -> truth: line 1 is not valid JSON
+            #
+            # `validate` is the one verb whose entire contract is
+            # reporting EVERY bad record, and it dies from library depth
+            # on the first, never reaching line 2 or its own reporting
+            # loop. The behaviour predates A1; the stated reason was the
+            # defect.
+            #
+            # So the residual is now sharper, not softer: this exit is
+            # wrong for at least one caller, and the clean answer is a
+            # raised exception caught in main() -- catchable, testable,
+            # byte-identical for every other verb. That is a DESIGN
+            # CHOICE this brief does not authorise, and choosing rather
+            # than reporting is the failure mode A1's own licence
+            # forbids. Reported, not taken; `validate`'s all-records
+            # contract is the concrete case that should decide it.
             sys.exit(f"truth: line {n} is not valid JSON")
     return events
 

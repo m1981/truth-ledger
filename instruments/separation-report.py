@@ -14,7 +14,7 @@ Tier C wiring (ADR-046): instruments live in the meta-repo beside the
 template, so this driver imports truthlib directly (sys.path bootstrap
 to template/) and reads the ledger of the repo it runs in via
 truthlib.shellio.load_events. The pure report itself
-(truthlib.advisory.separation_report) never moved. Stdlib only.
+(truthlib.reports.separation_report) moved there with A2. Stdlib only.
 
 Usage: python3 instruments/separation-report.py [--json]
 Gate:  scripts/test-instruments.sh
