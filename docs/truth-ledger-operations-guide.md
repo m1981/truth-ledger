@@ -391,7 +391,7 @@ watcher:
   | `template/prompts/truth-verifier.md` — the verifier protocol | `tr-a59f7129` (four-step shape + the `agree\|diverge\|cannot_verify` verdict form) |
   | `docs/truth-ledger-explained.md` — the explainer | `tr-010f7e96` (the Scope header agrees with the CLI on the version — deliberately narrow. Its predecessor asserted the whole page was version-synced and four verifiers falsified it via four different stamps: a glossary CLI stamp, the schema `$id`, the ADR counts, the glossary size. A two-string grep cannot carry a page-wide property, so the sentence was cut to what it proves — ADR-007, applied to this repo's own prose) |
   | `template/docs/beads-integration-guide.md` — the ready/adapter seam | `tr-301931eb` (`bd ready --json` default + adapter seam) |
-  | `template/.truth/README.md` — the tracker-seam contract | `tr-ef37611b` (+ `tr-fc03d886`, `tr-c52e3e84`, `tr-ab10b5eb`) |
+  | `template/.truth/README.md` — the tracker-seam contract | `tr-ef37611b` (+ `tr-fc03d886`, `tr-c52e3e84`, `tr-0c9099c2`) |
   | kuchnie's wired spec-coverage pairs, one per slug in its `docs/specs/sc-slugs.txt` — today `catalog/docs/specs/configurator-api.md` and `catalog/docs/specs/worktop-uu-seeding.md`, each with its sibling `.sc.txt` manifest | cfgapi `kuchnie:tr-fcca2d96` + `kuchnie:tr-40a5beb5`, wtuu `kuchnie:tr-22772c10` + `kuchnie:tr-a2acd399` in the **kuchnie ledger** (per pair: the spec↔manifest and tests↔manifest sentinels; sentinel recipe = the slug-scoped `SC-<slug>-[0-9]{3}` grep-and-diff). Consumer-side claims — the per-file `impact` loop below sees only this repo's ledger, so these pairs' DARK check runs in kuchnie |
 
 **GUARDED CONTROL SURFACES — the machinery's own levers (2026-08-01).**
