@@ -29,6 +29,16 @@
 #
 # Exit codes follow check-truth.sh: 0 ok / 1 governance / 2 environment.
 set -u
+# A PUSH GATE MUST NEVER BLOCK ON INPUT. It runs from pre-push, where a
+# terminal is attached, and anything downstream that consults isatty() will
+# take its interactive branch and wait forever. Measured: the canary's
+# ADR-011 arms ran `TRUTH_HUMAN=1 truth verdict ... retracted` without
+# redirecting stdin, so from a terminal the CLI stopped at
+# `input("type <id> to confirm")` -- the operator pressed Enter twenty
+# times and the battery crawled. Those three call sites are fixed at
+# source; this line is the structural backstop, so the NEXT one cannot
+# hang a push.
+exec </dev/null
 cd "$(dirname "$0")/.."
 
 FAIL=0

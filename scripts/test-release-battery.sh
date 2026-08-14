@@ -10,6 +10,32 @@
 # defect on 2026-08-01 (a canary arm whose grep matched doctor's OK line
 # as happily as its WARN line, so it could never report a miss).
 set -u
+# Every arm below MUTATES a gate script into scripts/.armN-*.sh and removes
+# it on the next line. An interrupted run skips that line, so up to six
+# mutated copies of the release gates are left sitting in scripts/ -- and
+# they are dotfiles, so they read as noise rather than as damage. Observed:
+# a ^C during the battery left scripts/.arm5-forced-fail.sh behind. Same
+# class as reprove-fingerprint.sh's seeded mutations: an instrument that
+# edits the repo owes it a rollback on EVERY exit path, not just the happy
+# one.
+cleanup_mutants() {
+  local m found=0
+  # scripts/test-zz-dark-arm.sh is ARM 11's planted orphan and is NOT a
+  # dotfile, so a glob over .arm*.sh alone would leave it behind -- and an
+  # orphan check left in scripts/ is exactly what gate-reachability.sh
+  # fails on, so the debris would surface later as a confusing gate
+  # failure rather than as leftover test state.
+  for m in scripts/.arm*.sh scripts/test-zz-dark-arm.sh; do
+    [ -e "$m" ] || continue
+    rm -f "$m"; found=1
+    echo "test-release-battery: removed leftover mutant $m" >&2
+  done
+  [ "$found" = 1 ] && echo "test-release-battery: the run did not finish -- \
+mutants were cleaned up, but re-run it to completion" >&2
+  return 0
+}
+trap 'cleanup_mutants; exit 130' INT TERM HUP PIPE
+trap cleanup_mutants EXIT
 cd "$(dirname "$0")/.."
 PASS=0; FAIL=0
 ok()   { PASS=$((PASS+1)); printf '  CAUGHT: %s\n' "$*"; }

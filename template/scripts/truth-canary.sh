@@ -997,7 +997,13 @@ else
   ok "retraction refused without TRUTH_HUMAN=1"
 fi
 say "FAULT H1 (ADR-011): TRUTH_HUMAN=1 alone, headless, must be refused"
-if TRUTH_HUMAN=1 $T verdict "$CID_M" retracted --cause wrong --basis "agent set the env var" >/dev/null 2>&1; then
+# </dev/null is load-bearing, not tidiness: this arm asserts the HEADLESS
+# refusal, and headlessness is decided by isatty(). Run from a terminal
+# without it, the CLI takes the interactive branch and BLOCKS on
+# input("type <id> to confirm"). It then passes anyway -- on the typed
+# text mismatching, never on the rule this arm names -- so the arm was
+# both a hang and a dark arm: green on a tty for the wrong reason.
+if TRUTH_HUMAN=1 $T verdict "$CID_M" retracted --cause wrong --basis "agent set the env var" </dev/null >/dev/null 2>&1; then
   miss "env-var-only retraction accepted with no TTY and no acknowledgment"
 else
   ok "headless TRUTH_HUMAN=1 without acknowledgment refused"
@@ -1126,7 +1132,9 @@ if $T done "$WK_DEAD" --cancel --basis "agent overreach" >/dev/null 2>&1; then
 else
   ok "cancel refused without TRUTH_HUMAN=1"
 fi
-if TRUTH_HUMAN=1 $T done "$WK_DEAD" --cancel --basis "env var alone" >/dev/null 2>&1; then
+# </dev/null: same reason as FAULT H1 above -- this arm's subject IS the
+# headless branch, and on a terminal the CLI blocks on input() instead.
+if TRUTH_HUMAN=1 $T done "$WK_DEAD" --cancel --basis "env var alone" </dev/null >/dev/null 2>&1; then
   miss "env-var-only cancel accepted headless (ADR-011)"
 else
   ok "headless TRUTH_HUMAN=1 cancel without acknowledgment refused (ADR-011)"
@@ -2524,7 +2532,7 @@ fi
 # by, and not swallowing, the ADR-011 ladder.
 RX3A=0; $T verdict "$RX_ID" retracted --cause wrong --basis b >/dev/null 2>&1 || RX3A=$?
 RX3B=0; TRUTH_HUMAN=1 $T verdict "$RX_ID" retracted --cause wrong --basis b \
-        >/dev/null 2>&1 || RX3B=$?
+        </dev/null >/dev/null 2>&1 || RX3B=$?   # headless branch, see FAULT H1
 RX3C=0; TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-deadbeef $T verdict "$RX_ID" retracted \
         --cause wrong --basis b >/dev/null 2>&1 || RX3C=$?
 RX3D=$($T verdict "$RX_ID" retracted --basis b 2>&1); RX3DRC=$?
