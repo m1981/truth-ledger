@@ -362,7 +362,7 @@ freshness claim. Do **not** file per-record content claims to light
 records up: that manufactures churn and a false air of intentionality.
 
   *One deliberate exception, at the set level.* The ADR **series**
-  carries a single RECORD-integrity claim — `tr-58c2d1f8`, watching
+  carries a single RECORD-integrity claim — `tr-6207afe1`, watching
   `template/docs/adr/truth/*.md` (docs/adr/truth/ since v0.9.18) —
   asserting the series is dense (001-041,
   contiguous, endpoints present). Its predecessors also asserted that
@@ -388,7 +388,7 @@ watcher:
 
   | Living contract | Watching claim |
   |---|---|
-  | `template/prompts/truth-verifier.md` — the verifier protocol | `tr-1820b1aa` (four-step shape + the `agree\|diverge\|cannot_verify` verdict form) |
+  | `template/prompts/truth-verifier.md` — the verifier protocol | `tr-a59f7129` (four-step shape + the `agree\|diverge\|cannot_verify` verdict form) |
   | `docs/truth-ledger-explained.md` — the explainer | `tr-010f7e96` (the Scope header agrees with the CLI on the version — deliberately narrow. Its predecessor asserted the whole page was version-synced and four verifiers falsified it via four different stamps: a glossary CLI stamp, the schema `$id`, the ADR counts, the glossary size. A two-string grep cannot carry a page-wide property, so the sentence was cut to what it proves — ADR-007, applied to this repo's own prose) |
   | `template/docs/beads-integration-guide.md` — the ready/adapter seam | `tr-301931eb` (`bd ready --json` default + adapter seam) |
   | `template/.truth/README.md` — the tracker-seam contract | `tr-ef37611b` (+ `tr-fc03d886`, `tr-c52e3e84`, `tr-ab10b5eb`) |
