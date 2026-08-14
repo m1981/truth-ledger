@@ -431,5 +431,479 @@
     exit=0
     E| 
     O| reproduce: 1 live claim(s) -- 1 reproduces, 0 capsule-stale, 0 unexecutable, 0 no-capsule
+=== RD:tracker-failed
+    exit=1
+    E| truth: tracker command failed ('exit 7', exit 7).
+    E|   The ledger works without a tracker -- fallback: truth list --live.
+    E|   To wire one: set TRUTH_TRACKER_CMD to any command printing a JSON
+    E|   array of {id, title} issues, or pipe: <tracker-cmd> | truth ready --stdin
+    O| 
+=== RD:tracker-not-json
+    exit=1
+    E| truth: 'printf not-json' output is not JSON -- tracker contract may have drifted (known E1 risk); report, do not patch around
+    O| 
+=== RD:tracker-not-array
+    exit=1
+    E| truth: 'printf {}' output is JSON but not an array -- the adapter contract is a JSON array of issue objects
+    O| 
+=== RD:stdin-not-json
+    exit=1
+    E| truth: stdin output is not JSON -- tracker contract may have drifted (known E1 risk); report, do not patch around
+    O| 
+=== RD:stdin-not-array
+    exit=1
+    E| truth: stdin output is JSON but not an array -- the adapter contract is a JSON array of issue objects
+    O| 
+=== D:unknown-claim
+    exit=1
+    E| truth: unknown claim <TR>
+    O| 
+=== D:prompt-missing
+    exit=1
+    E| truth: verifier prompt missing at prompts/truth-verifier.md
+    O| 
+=== D:envelope
+    exit=0
+    E| 
+    O| INTEGRITY (check before following): a complete copy of this dispatch contains 3 numbered rules and ends with the line 'END-OF-DISPATCH <SHA>'. If any rule number is missing or that terminator is absent, your copy was altered in transit -- do not proceed from it; read prompts/truth-verifier.md from disk instead and compare its hash (shasum -a 256 prompts/truth-verifier.md).
+    O| 
+    O| Verify the claim below.
+    O| 
+    O| 1. Re-run the evidence command yourself.
+    O| 2. Compare its output against the claim's sentence.
+    O| 3. File agree, diverge, or cannot_verify with a basis.
+    O| 
+    O| 
+    O| CLAIM RECORD (verify exactly what is written):
+    O| 
+    O| {
+    O|   "actor": "fp",
+    O|   "id": "<TR>",
+    O|   "kind": "claim",
+    O|   "payload": {
+    O|     "anchor_commit": "<COMMIT>",
+    O|     "cost_tier": "P2",
+    O|     "evidence": {
+    O|       "command": "grep -c x f.txt",
+    O|       "output_hash": "<SHA>",
+    O|       "returncode": 0,
+    O|       "screened": true
+    O|     },
+    O|     "evidence_class": "VERIFIED",
+    O|     "evidence_paths": [
+    O|       "f.txt"
+    O|     ],
+    O|     "text": "f.txt carries exactly two x lines",
+    O|     "ttl_days": null
+    O|   },
+    O|   "session": "s-fp",
+    O|   "ts": "<TS>"
+    O| }
+    O| 
+    O| END-OF-DISPATCH <SHA>
+=== L:list
+    exit=0
+    E| 
+    O| <TR>  unverified    P2  UNVERIFIED the alpha fact holds here
+    O| <TR>  live          P2  VERIFIED   f.txt carries exactly two x lines
+    O| <TR>  unverified    P2  VERIFIED   f.txt line numbering probe
+=== L:list-json
+    exit=0
+    E| 
+    O| [
+    O|   {
+    O|     "id": "<TR>",
+    O|     "status": "unverified",
+    O|     "age_days": 0,
+    O|     "tier": "P2",
+    O|     "class": "UNVERIFIED",
+    O|     "text": "the alpha fact holds here"
+    O|   },
+    O|   {
+    O|     "id": "<TR>",
+    O|     "status": "live",
+    O|     "age_days": 0,
+    O|     "tier": "P2",
+    O|     "class": "VERIFIED",
+    O|     "text": "f.txt carries exactly two x lines"
+    O|   },
+    O|   {
+    O|     "id": "<TR>",
+    O|     "status": "unverified",
+    O|     "age_days": 0,
+    O|     "tier": "P2",
+    O|     "class": "VERIFIED",
+    O|     "text": "f.txt line numbering probe"
+    O|   }
+    O| ]
+=== L:list-filtered
+    exit=0
+    E| 
+    O| <TR>  live          P2  VERIFIED   f.txt carries exactly two x lines
+=== I:issue-filed
+    exit=0
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    O| <WK>
+=== I:issues
+    exit=0
+    E| 
+    O| <WK>  open      carry a premised work item  premises: <TR>
+=== I:issues-json
+    exit=0
+    E| 
+    O| [
+    O|   {
+    O|     "id": "<WK>",
+    O|     "status": "open",
+    O|     "title": "carry a premised work item",
+    O|     "deps": [],
+    O|     "premises": [
+    O|       "<TR>"
+    O|     ],
+    O|     "accept": null
+    O|   }
+    O| ]
+=== I:issues-ready-json
+    exit=0
+    E| 
+    O| [{"id": "<WK>", "title": "carry a premised work item"}]
+=== RD:ready-native
+    exit=0
+    E| 
+    O| <WK>  carry a premised work item
+=== RD:ready-json
+    exit=0
+    E| 
+    O| [
+    O|   {
+    O|     "id": "<WK>",
+    O|     "title": "carry a premised work item",
+    O|     "_truth": {
+    O|       "ready": true,
+    O|       "premises": [
+    O|         "<TR>"
+    O|       ],
+    O|       "warnings": []
+    O|     }
+    O|   }
+    O| ]
+=== RD:ready-stdin-join
+    exit=0
+    E| 
+    O| <WK>  carry a premised work item
+=== G:generated-ADR037
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: --paths entry matches the committed generated-artifact list (.truth/generated-paths): ['gen/out.txt'] -- a watch on a generated file restales on every regeneration (ADR-037). Watch the SOURCE the generator reads, or state why the artifact itself is the fact: --generated-ok "<sentence>".
+    O| 
+=== G:generated-ok
+    exit=0
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: advisory: --generated-ok override filed with no --ttl-days -- stamped a default 30-day expiry (ADR-032) so the override judgment is re-asked when it lapses. Pass an explicit --ttl-days (a large value is the visible opt-out) to choose a different shelf life.
+    O| <TR>
+=== G:generated-magic-SI1
+    exit=1
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: .truth/generated-paths line 1 starts with ':' -- pathspec magic is refused; the list holds CLI globs (ADR-037/SI-1)
+    O| 
+=== S:invalidate-scan
+    exit=0
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    O| stale: <TR> (paths changed)
+    O| stale: <TR> (paths changed)
+    O| invalidate-scan: 2 claim(s) marked stale
+=== S:invalidate-scan-again
+    exit=0
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    O| invalidate-scan: 0 claim(s) marked stale
+=== S:invalidate-scan-quiet
+    exit=0
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    O| 
+=== RA:reaffirm-same-session
+    exit=0
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    O| <TR>  same_session skipped -- authored by this session; reaffirm must not self-agree (ADR-010): dispatch to a fresh session
+    O| <TR>  same_session skipped -- authored by this session; reaffirm must not self-agree (ADR-010): dispatch to a fresh session
+    O| reaffirm: 2 stale claim(s) -- 0 reaffirmed, 0 diverged (dispatch), 0 ttl (re-file), 0 manual, 2 same-session
+=== RA:reaffirm-dry-json
+    exit=0
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    O| {
+    O|   "dry_run": true,
+    O|   "claims": [
+    O|     {
+    O|       "id": "<TR>",
+    O|       "arm": "match",
+    O|       "action": "hash-match -- would file agree (dry-run: nothing filed)",
+    O|       "filed": null
+    O|     },
+    O|     {
+    O|       "id": "<TR>",
+    O|       "arm": "manual",
+    O|       "action": "skipped -- never agreed by any verifier: first verification is a judgment, not a re-confirmation; dispatch it (ADR-030)",
+    O|       "filed": null
+    O|     }
+    O|   ],
+    O|   "counts": {
+    O|     "ttl": 0,
+    O|     "manual": 1,
+    O|     "same_session": 0,
+    O|     "match": 1,
+    O|     "mismatch": 0
+    O|   }
+    O| }
+=== RA:reaffirm-dry
+    exit=0
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    O| <TR>  match        hash-match -- would file agree (dry-run: nothing filed)
+    O| <TR>  manual       skipped -- never agreed by any verifier: first verification is a judgment, not a re-confirmation; dispatch it (ADR-030)
+    O| reaffirm: 2 stale claim(s) -- 1 reaffirmed, 0 diverged (dispatch), 0 ttl (re-file), 1 manual, 0 same-session [dry-run: nothing filed]
+=== RA:reaffirm-self-verdict
+    exit=0
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    E| truth: WARNING: TRUTH_SELF_VERDICT=1 override active -- reaffirm would auto-agree 1 claim(s) THIS SESSION authored (batch self-verification: the G11/ADR-010 independence seam is off for this sweep)
+    O| <TR>  match        hash-match -- would file agree (dry-run: nothing filed)
+    O| <TR>  manual       skipped -- never agreed by any verifier: first verification is a judgment, not a re-confirmation; dispatch it (ADR-030)
+    O| reaffirm: 2 stale claim(s) -- 1 reaffirmed, 0 diverged (dispatch), 0 ttl (re-file), 1 manual, 0 same-session [dry-run: nothing filed]
+=== RA:reaffirm-match
+    exit=0
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    O| <TR>  match        filed agree (<TR>): reaffirm: hash-match, no judgment re-run
+    O| <TR>  manual       skipped -- never agreed by any verifier: first verification is a judgment, not a re-confirmation; dispatch it (ADR-030)
+    O| reaffirm: 2 stale claim(s) -- 1 reaffirmed, 0 diverged (dispatch), 0 ttl (re-file), 1 manual, 0 same-session
+=== OK:claim-P0
+    exit=0
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    O| <TR>
+=== V:agree-goes-live
+    exit=0
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    O| <TR> -> agree
+=== R:reproduce-exit7
+    exit=7
+    E| 
+    O| <TR>  reproduces     output hash and returncode match the effective capsule (ADR-051)
+    O| <TR>  capsule-stale  the recorded capsule can no longer be produced here -- this claim is un-recheckable until someone judges it and refreshes (ADR-051)
+    O|                 shape=watched-moved, watched touched: g.txt
+    O| reproduce: 2 live claim(s) -- 1 reproduces, 1 capsule-stale, 0 unexecutable, 0 no-capsule
+    O| capsule-stale shapes: watched-moved=1
+=== R:impact-inverse-dark
+    exit=4
+    E| impact --inverse: 2 of 2 tracked file(s) watched by no active claim
+    O| docs/specs/anchor.md
+    O| docs/specs/cited.md
+=== S:invalidate-scan-P0
+    exit=0
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    O| stale: <TR> (paths changed)
+    O| invalidate-scan: 1 claim(s) marked stale
+=== RA:reaffirm-mismatch
+    exit=0
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    O| <TR>  mismatch     diverged evidence -- dispatch for judgment (nothing filed: mechanical-vs-genuine is ADR-012's call, never a batch verb's)
+    O| <TR>  manual       skipped -- never agreed by any verifier: first verification is a judgment, not a re-confirmation; dispatch it (ADR-030)
+    O| reaffirm: 2 stale claim(s) -- 0 reaffirmed, 1 diverged (dispatch), 0 ttl (re-file), 1 manual, 0 same-session [dry-run: nothing filed]
+=== Q:queue
+    exit=0
+    E| 
+    O| <TR>  P0  stale         age 0d    evidence invalidated: g.txt holds the first three letters
+=== Q:queue-json
+    exit=0
+    E| 
+    O| [
+    O|   {
+    O|     "id": "<TR>",
+    O|     "status": "stale",
+    O|     "tier": "P0",
+    O|     "age_days": 0,
+    O|     "reason": "evidence invalidated",
+    O|     "text": "g.txt holds the first three letters"
+    O|   }
+    O| ]
+=== I:issue-on-stale-premise
+    exit=0
+    E| truth: WARNING -- no commit gate is wired (no active check-truth hook, no CI config naming it).
+    E|   INV-A/INV-B and the ADR-008/016 detections are NOT enforced on commits in this clone.
+    E|   Run `scripts/truth doctor` for the wiring check (ADR-025). This message does not block.
+    O| <WK>
+=== RD:ready-held
+    exit=0
+    E| 
+    O| <WK>  carry a premised work item
+    O| HELD <WK>  broken premises: <TR> (stale)
+=== RD:ready-held-json
+    exit=0
+    E| 
+    O| [
+    O|   {
+    O|     "id": "<WK>",
+    O|     "title": "carry a premised work item",
+    O|     "_truth": {
+    O|       "ready": true,
+    O|       "premises": [
+    O|         "<TR>"
+    O|       ],
+    O|       "warnings": []
+    O|     }
+    O|   }
+    O| ]
+=== T:stats
+    exit=0
+    E| 
+    O| claims by status: live=1, stale=2, unverified=2
+    O| verdicts: agree=3 diverge_genuine=0 diverge_mechanical=0 cannot_verify=0 retracted=0
+    O| half-life P0: median 0.0d (n=1)
+    O| half-life P2: median 0.0d (n=1)
+    O| queue: 1 item(s), oldest 0d
+=== T:stats-json
+    exit=0
+    E| 
+    O| {
+    O|   "claims_by_status": {
+    O|     "unverified": 2,
+    O|     "live": 1,
+    O|     "stale": 2
+    O|   },
+    O|   "claims_by_tier": {
+    O|     "P2": {
+    O|       "unverified": 2,
+    O|       "live": 1,
+    O|       "stale": 1
+    O|     },
+    O|     "P0": {
+    O|       "stale": 1
+    O|     }
+    O|   },
+    O|   "verdicts": {
+    O|     "agree": 3,
+    O|     "diverge_genuine": 0,
+    O|     "diverge_mechanical": 0,
+    O|     "cannot_verify": 0,
+    O|     "retracted": 0
+    O|   },
+    O|   "half_life": {
+    O|     "P0": {
+    O|       "n": 1,
+    O|       "median_days": 0.0
+    O|     },
+    O|     "P2": {
+    O|       "n": 1,
+    O|       "median_days": 0.0
+    O|     }
+    O|   },
+    O|   "queue_size": 1,
+    O|   "queue_max_age_days": 0
+    O| }
+=== T:stats-since-empty
+    exit=0
+    E| 
+    O| claims by status: none
+    O| verdicts: agree=0 diverge_genuine=0 diverge_mechanical=0 cannot_verify=0 retracted=0
+    O| half-life: no live->stale observations yet
+    O| queue: 0 item(s)
+=== B:unreadable-ref
+    exit=2
+    E| truth: cannot read .truth/claims.jsonl at 'nosuchref' -- <GIT-ERR> (exit 2: usage)
+    O| 
+=== B:unreadable-ref-diff
+    exit=2
+    E| truth: cannot read .truth/claims.jsonl at 'nosuchref' -- <GIT-ERR> (exit 2: usage)
+    O| 
+=== B:baseline
+    exit=0
+    E| 
+    O| baseline fp-a (<SHORT>): 11 records
+    O| claims: 2 live, 1 stale, 2 unverified  [P0 1 / P2 4]
+    O| issues: 1 open
+=== B:baseline-json
+    exit=0
+    E| 
+    O| {
+    O|   "claims": {
+    O|     "by_status": {
+    O|       "live": 2,
+    O|       "stale": 1,
+    O|       "unverified": 2
+    O|     },
+    O|     "by_tier": {
+    O|       "P0": 1,
+    O|       "P2": 4
+    O|     },
+    O|     "ids": {
+    O|       "live": [
+    O|         "<TR>",
+    O|         "<TR>"
+    O|       ],
+    O|       "stale": [
+    O|         "<TR>"
+    O|       ],
+    O|       "unverified": [
+    O|         "<TR>",
+    O|         "<TR>"
+    O|       ]
+    O|     }
+    O|   },
+    O|   "commit": "<SHORT>",
+    O|   "issues": {
+    O|     "by_status": {
+    O|       "open": 1
+    O|     },
+    O|     "ids": {
+    O|       "open": [
+    O|         "<WK>"
+    O|       ]
+    O|     }
+    O|   },
+    O|   "records": 11,
+    O|   "ref": "fp-a"
+    O| }
+=== B:baseline-diff
+    exit=0
+    E| 
+    O| baseline diff fp-a -> fp-b (+3 records)
+    O| claims born: 1 (1 unverified)
+    O|   + <TR>  unverified
+    O| claims live->stale: 1
+    O|   ~ <TR>
+    O| issues born: 1 (1 open)
+    O|   + <WK>  open
+=== B:baseline-disappeared
+    exit=5
+    E| 
+    O| baseline diff fp-b -> fp-c (-1 records)
+    O| claims DISAPPEARED (was unverified): <TR> -- a record present at the older ref is gone: history was rewritten or the refs diverge (10007 omission)
 
 # end of fingerprint

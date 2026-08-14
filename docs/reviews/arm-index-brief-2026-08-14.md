@@ -22,6 +22,12 @@ Measured on macOS at `0a4a38f`, with the command that produces each. Treat
 them as the expected output of your own run (§0b of the A1–A5 brief); if one
 differs, report it, do not adjust it.
 
+One row has been re-measured since, and it is named here rather than quietly
+swapped: **the fingerprint went from 50 probes to 99** under wk-24db9abe,
+which closed the eight verbs it had never driven. That is a deliberate
+increase with its own commit, not drift — which is exactly the distinction
+this table exists to make visible.
+
 | measured | command |
 |---|---|
 | 283 canary arms | `cd template && bash scripts/truth-canary.sh` |
@@ -29,11 +35,11 @@ differs, report it, do not adjust it.
 | 23 instrument arms | `bash scripts/test-instruments.sh` |
 | 11 or 12 battery meta arms | `bash scripts/test-release-battery.sh` — **environment-dependent, see below** |
 | 10 / 5 / 3 arms | `test-fact-health.sh` / `test-whisper-hook.sh` / `test-session-digest.sh` |
-| 50 fingerprint probes | `bash instruments/fingerprint.sh \| grep -c '^=== '` |
+| 99 fingerprint probes | `bash instruments/fingerprint.sh \| grep -c '^=== '` |
 | 122 FAULT headers, **90 citing an ADR/INV/G** | `grep -E '^say "FAULT ' template/scripts/truth-canary.sh` |
 | 125 distinct FAULT labels | `grep -oE 'FAULT [A-Z][A-Z0-9-]*' template/scripts/truth-canary.sh \| sort -u` |
 
-**≈781 arms across nine instruments.** The battery meta count is 11 with
+**≈830 arms across nine instruments** (≈781 before the fingerprint's +49). The battery meta count is 11 with
 `jsonschema` importable and 12 without, because ARM 4 asserts that a missing
 `jsonschema` blocks with exit 2 and cannot be exercised on a machine that has
 it. The arm says so in its body; the summary line does not.
@@ -118,7 +124,7 @@ ADR-046 tiering: it sweeps THIS repo's instruments and is never shipped).
 - **The four species stay distinguishable** in the output, because they are
   not the same kind of thing and conflating them is half the cognitive load:
   seeded-fault arms (canary, 283), unit tests (core+v04, 395), meta-arms
-  (`test-*.sh`, ≈53), and behavioural probes (fingerprint, 50 — which assert
+  (`test-*.sh`, ≈53), and behavioural probes (fingerprint, 99 — which assert
   nothing and are compared as a whole file).
 - **Do not rename the 125 FAULT labels in this brief.** The duplicates and
   collisions are real (`FAULT AN1` beside `FAULT AN1-AN5`, `FAULT SD` beside
@@ -156,7 +162,9 @@ An arm whose family header names ADR-051 while its body exercises something
 else — reported by this index as guarding ADR-051. The index maps *declared*
 subjects; it cannot verify that an arm does what its header says. That limit
 must be written into the instrument's docstring as a **declared coverage
-limit**, beside the fingerprint's four, rather than discovered later.
+limit**, beside the fingerprint's own (four when this brief was written,
+twelve since wk-24db9abe found that the instrument's stated coverage and its
+actual coverage had diverged), rather than discovered later.
 
 ## What this deliberately does not do
 

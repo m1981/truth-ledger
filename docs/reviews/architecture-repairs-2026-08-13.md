@@ -9,12 +9,34 @@ verifies it.
 
 ## 0. The acceptance instrument — read this before any brief
 
-`instruments/fingerprint.sh` drives the real CLI through **43 probes** — every
-intake gate, the execution boundary, the verdict surface, the work kernel, and
-every non-trivial exit code — and records `(exit code, stderr, stdout)` as one
-canonical file. Ids, hashes, timestamps and commit shas are normalised; both
-the wall clock and git's clock are pinned, so the output is byte-deterministic
-across runs.
+`instruments/fingerprint.sh` drives the real CLI through **99 probes** covering
+**all 23 verbs** — every intake gate that can refuse, the execution boundary,
+the verdict surface, the work kernel, the tracker seam, and every exit code the
+CLI emits (0–8) — and records `(exit code, stderr, stdout)` as one canonical
+file. Ids, hashes, timestamps and abbreviated shas are normalised; both the wall
+clock and git's clock are pinned, so the output is byte-deterministic across
+runs, and two runs may execute concurrently without disturbing each other.
+
+**That sentence was false until wk-24db9abe, and how it was false is the
+warning.** It read "every refusal path … every intake gate … every non-trivial
+exit code" while **8 of the 23 verbs had no probe at all** (`ready`, `baseline`,
+`dispatch`, `stats`, `queue`, `issues`, `invalidate-scan`, `reaffirm` — plus
+`list`, which the instrument *used* to find a claim id but never recorded, so
+nine verbs were unrecorded and only eight were unexercised). Exit codes 4 and 7
+were emitted by no probe. The ADR-037 generated-artifact refusal was unreachable
+because the sandbox committed an EMPTY `.truth/generated-paths`, which SI-4
+reads as "consciously nothing is generated". And the tracker refusal in
+`shellio.tracker_issues` — moved there by a refactor whose own commit message
+certified *"the refusal strings are unchanged"* **against this instrument** —
+could have any word replaced with an empty diff.
+
+None of those verbs were forgotten in a hurry; each was omitted because it
+needed sandbox state (a stale claim, a committed ledger, a tracker) that the
+instrument did not build. **The cost of a probe is the reason the gap forms,
+and a coverage claim written from intent rather than from a count is how it
+survives.** The count above is `grep -c '^probe ' instruments/fingerprint.sh`;
+the verb list is the subparsers in `cli.main()`. Check both rather than
+believing this paragraph.
 
 ```bash
 ./instruments/fingerprint.sh > /tmp/after.txt
@@ -59,6 +81,21 @@ blinding the instrument (deleting a probe) shifts every later probe, so the
 the script refuses, but read the control line first — it is the arm that
 catches tampering with the instrument itself.
 
+Those four rows prove four **classes** are visible. They do not prove any
+particular probe can fail, and that gap is exactly how eight verbs stayed
+unprobed while this table read PROVEN. So the verb sweep has its own harness:
+
+```bash
+bash instruments/reprove-verbs.sh    # 28 rows, all must read DETECTED
+```
+
+It seeds one mutation per appended probe block — the tracker refusal, the
+ADR-037 refusal, `events_at_ref`'s exit 2, `baseline`'s exit 5, `reproduce`'s
+exit 7, `impact --inverse`'s exit 4, each `reaffirm` arm, the `queue` reason,
+the E1 `--ready-json` contract, the G11 envelope header, and the rest — and
+distinguishes MISSED (the probe cannot fail) from SEED FAILED (the mutation
+never landed, which is evidence about nothing at all).
+
 **The instrument's own first draft missed two of the four**, which is why this
 step is mandatory rather than advisory. The order probe was tuned to Jaccard
 0.556 — *below* G8's 0.6 threshold — so G8 never fired and the order of the
@@ -70,21 +107,87 @@ otherwise.**
 
 ### Declared coverage limits of this instrument
 
-Written because a reviewer asked whether `doctor`'s absence from the probes
-was scope or oversight. It was oversight; `doctor` is probed now (two arms,
-red-proven on its reachable branches). What follows is what the instrument
-does **not** cover, stated so the next reader does not have to ask:
+Written because a reviewer asked whether `doctor`'s absence from the probes was
+scope or oversight. It was oversight — twice, at two different scales: `doctor`
+first, then the eight verbs above. Both times the gap was found by someone
+mutating the code, never by reading the instrument. So this list is maintained
+as the thing you check BEFORE certifying anything against a clean diff. **Every
+verb is now driven; no verb is exhaustively driven.** What is still dark, after
+wk-24db9abe:
 
-- **Only reachable branches.** The `doctor` probe runs after claims have been
-  filed, so its `ledger exists` FAIL branch is unreachable and unpinned. The
-  same is true anywhere a probe's state makes a branch dead. A mutation on a
-  dead branch reads as NIEWYKRYTE and that is the instrument being honest, not
-  broken — but it means "the fingerprint is empty" never meant "every branch is
-  pinned".
+- **Verb coverage is not branch coverage.** The whole work kernel is probed
+  through refusals and two filings: **no issue is ever started or closed**, so
+  `start`, `done`, `done --claim` (claim-at-death), `--cancel` (G12), `--reopen`
+  and the entire ADR-014 acceptance-oracle path — screened, executed, refused on
+  non-zero exit — have no successful execution anywhere in this file. Likewise
+  on the verdict surface: `agree` is filed three times, but **`diverge`,
+  `diverge --mechanical`, `cannot_verify` and `retracted` never succeed**, so
+  the `diverged`/`disputed`/`retracted` statuses, the ADR-049 `--cause` arms and
+  `--successor` are pinned only by their refusals. `contradicts` never
+  completes, so DISPUTED is unreachable and `queue`'s disputed and diverged
+  reasons are unprobed (its stale-P0 reason is). `premise --supersedes` (the
+  ADR-013 redirect) is pinned only by its bad-id refusal.
+- **Arms the pinned clock makes unreachable.** `TRUTH_NOW` is frozen, so **no
+  TTL ever expires**: `invalidate-scan` only ever reports `paths changed` (never
+  the TTL or anchor-lost reasons), and `reaffirm`'s `ttl` arm is dead. Its
+  `manual` arm is reached only through *never agreed*, not through
+  `evidence.screened=false` or a missing command. This is the ADR-032/ADR-019
+  decay machinery: real, and unpinned here.
+- **Only reachable branches, generally.** The `doctor` probe runs after claims
+  have been filed, so its `ledger exists` FAIL branch is dead. The sandbox has
+  no hooks and no CI, so the commit-gate banner is always the *not wired* arm —
+  **the wired arm is unprobed**, in an instrument whose own baseline carries
+  that banner on 51 lines. A mutation on a dead branch reads as MISSED, and that is the
+  instrument being honest, not broken — but "the fingerprint is empty" has never
+  meant "every branch is pinned".
+- **ADR-037 has three loader states and this pins two.** `.truth/generated-paths`
+  is committed-EMPTY for the first 68 probes (`source='empty'`) and armed with a
+  real glob after (`source='file'`, which is what makes the refusal and the
+  `--generated-ok` override reachable at all). **`source='absent'` — no file, the
+  state that drives the "the generated check is dark" advisory — is unprobed**,
+  because the sandbox always writes the file.
+- **`--json` twins are pinned for 9 verbs, not for all.** `list`, `issues`,
+  `ready`, `queue`, `stats`, `baseline`, `reaffirm`, `reproduce` and `doctor`
+  have both arms. `citations`, `impact`, `staling`, `claim`, `verdict`, `issue`
+  and `done` have only the human arm; `validate --stdin` is unprobed entirely.
+  `staling` is probed over an EMPTY population only, so the ADR-050 split it
+  exists to report — and its `--since`/`--append-order` flags — is unpinned.
+- **Windowed reports are pinned only at their edges.** `stats --since` uses a
+  timestamp that filters EVERYTHING, deliberately: a cut through the middle of
+  the run would depend on how many probes preceded it, so appending a probe
+  later would silently rewrite existing baseline lines and destroy the
+  append-only property the next brief needs. The partially-filtered window, and
+  `reproduce --since`, are therefore unprobed.
+- **What `norm()` erases cannot be pinned.** Ids, hashes, timestamps and fold
+  latency, plus two additions made for this work: git's own wording inside the
+  `events_at_ref` exit-2 refusal (`<GIT-ERR>` — git has reworded it across
+  releases, and leaving it raw would fingerprint the reviewer's git version),
+  and abbreviated shas in `baseline` (`<SHORT>`). A change to HOW truthlib
+  interpolates git's stderr into that line is invisible; the prefix, the ref and
+  exit 2 are pinned.
+- **A live defect in `norm()`, declared rather than fixed.** The rule
+  `s/\b[0-9a-f]{40}\b/<COMMIT>/g` **is a no-op on macOS**: BSD `sed` has no
+  `\b`. The committed baseline therefore carries two RAW 40-hex commit shas (the
+  `head` field of `reproduce --json`). It is not a determinism fault — the
+  sandbox pins both git dates, so its commit shas are a pure function of its
+  tree — but the same instrument normalises those lines under GNU sed and not
+  here, so a baseline generated on Linux and one generated on macOS disagree for
+  a reason that has nothing to do with truthlib. **Repairing it rewrites two
+  existing baseline lines, which wk-24db9abe's append-only acceptance forbade.**
+  The rules added for the new probes are keyed to their own fields
+  (`anchor_commit`, `commit`) so no third leak was introduced. Whoever fixes the
+  `\b` rule owns a non-append-only baseline regeneration and must say so.
 - **Not the canary, not the suites.** The fingerprint pins the CLI's observable
   surface. Test-count and arm-count regressions are a separate acceptance
   criterion and must be checked separately.
-- **Not concurrency, not multi-machine.** Single process, single sandbox.
+- **Not concurrency of the SYSTEM, though the instrument is now concurrency-
+  safe.** Each run spools per-probe stderr to its own `mktemp` (it used to write
+  a hardcoded `/tmp/fp.err`, so two runs — the ordinary shape of `diff
+  before.txt after.txt`, and of any agent fleet — clobbered each other; measured
+  at 83 and 114 wrong lines with a two-second offset, including a torn read of a
+  half-written refusal). What is still unprobed is the system under test:
+  ADR-045's ledger lock is never contended, because every probe is one process.
+- **Not multi-machine.** Single sandbox, one platform per baseline.
 - **Not performance.** Fold latency is normalised away deliberately; a refactor
   that makes the fold ten times slower passes the fingerprint clean.
 

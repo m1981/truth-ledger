@@ -65,11 +65,25 @@ v0.9.38 (one new READ verb, one behaviour change to `doctor`, the
     `reaffirm_cleared`, riding 1072 records, whose only consumer asks
     whether it is there. The version that counted every read as a reader
     reported that field healthy.
-  * `instruments/fingerprint.sh` (50 probes) + baseline +
-    `reprove-fingerprint.sh`: the acceptance instrument for the A1-A5
-    refactor, with its sensitivity re-proved against four seeded mutations
-    in the reader's own tree. Its declared coverage limits are written
-    down rather than implied.
+  * `instruments/fingerprint.sh` (99 probes, all 23 verbs) + baseline +
+    `reprove-fingerprint.sh` (four classes) + `reprove-verbs.sh` (28 rows,
+    one per appended probe block): the acceptance instrument for the A1-A5
+    refactor, with its sensitivity re-proved against seeded mutations in
+    the reader's own tree. Its declared coverage limits are written down
+    rather than implied -- including the ones that remain.
+    It reached 99 the hard way. At 50 probes it claimed "every refusal
+    path ... every intake gate ... every non-trivial exit code" while
+    EIGHT verbs (`ready`, `baseline`, `dispatch`, `stats`, `queue`,
+    `issues`, `invalidate-scan`, `reaffirm`) had no probe at all, `list`
+    was used but never recorded, exit codes 4 and 7 were emitted by
+    nothing, and the ADR-037 generated-artifact refusal was unreachable
+    because the sandbox committed an EMPTY `.truth/generated-paths`
+    (SI-4: consciously nothing generated). Worst: the tracker refusal
+    that a refactor MOVED, whose commit certified "the refusal strings
+    are unchanged" against this instrument, could have any word replaced
+    with an empty diff. Per-probe stderr also went to a hardcoded
+    `/tmp/fp.err`, so two concurrent runs -- `diff before.txt after.txt`
+    is two runs -- clobbered each other into a garbage diff.
 
   -- THE STRUCTURAL VIEW --------------------------------------------------
   * NEW `docs/structure.md`: the decomposition the system never had. Nine
