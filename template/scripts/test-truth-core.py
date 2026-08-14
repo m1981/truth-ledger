@@ -4959,6 +4959,52 @@ class TestModulePurity(unittest.TestCase):
                         "allowlist is empty by design)")
 
 
+class TestIntakeStageReturns(unittest.TestCase):
+    """A1: run_intake_stage RETURNS the first refusal instead of exiting.
+
+    The point of the test is not the string, it is the calling
+    convention: before this, proving a refusal meant spawning a
+    subprocess, because the function under test killed the interpreter
+    that called it. This test is a plain function call, which is the
+    whole deliverable."""
+
+    def _ctx(self, **over):
+        ctx = {"text": "", "evidence_class": "UNVERIFIED", "evidence_cmd": None,
+               "paths": [], "tier": "P2", "ttl_days": None, "basis": None,
+               "claims": {}, "duplicate_ok": False, "scope_basis": None,
+               "evidence_exit_basis": None, "generated_basis": None,
+               "head": None, "overridden_duplicates": [], "ttl_default": False}
+        ctx.update(over)
+        return ctx
+
+    def test_a_tripped_gate_returns_the_refusal_string(self):
+        # Empty text trips the first row of the pre-execution stage.
+        err = tm.run_intake_stage("pre-execution", self._ctx())
+        self.assertIsInstance(err, str)
+        self.assertIn("text must be non-empty", err)
+
+    def test_it_does_not_exit(self):
+        # Explicit, because the defect being fixed was invisible to every
+        # other test: they all ran the CLI as a subprocess, where an exit
+        # and a return are indistinguishable.
+        try:
+            tm.run_intake_stage("pre-execution", self._ctx())
+        except SystemExit as e:
+            self.fail(f"run_intake_stage exited ({e}) instead of returning")
+
+    def test_a_passing_stage_returns_none(self):
+        ctx = self._ctx(text="the alpha fact holds in this repository")
+        self.assertIsNone(tm.run_intake_stage("pre-execution", ctx))
+
+    def test_the_first_refusal_wins_and_stops_the_stage(self):
+        # Order is the ADR-034 contract: a ctx tripping two rows must
+        # report the EARLIER one, which is only observable now that the
+        # value comes back instead of leaving through sys.exit.
+        ctx = self._ctx(text="")
+        self.assertIn("text must be non-empty",
+                      tm.run_intake_stage("pre-execution", ctx))
+
+
 class TestPolicyFileState(unittest.TestCase):
     """F3.1: the three-way SI-4 read, made decidable. `unattested` is the
     state that did not exist before -- and it is the one the shipped

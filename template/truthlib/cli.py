@@ -47,7 +47,11 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
            "generated_basis": generated_basis,
            "head": head_commit() if evidence_class == "VERIFIED" else None,
            "overridden_duplicates": [], "ttl_default": False}
-    run_intake_stage("pre-execution", ctx)
+    # A1: the stage RETURNS its first refusal; exiting is the shell's job
+    # and this is the shell. Same string, same exit, one frame further out.
+    err = run_intake_stage("pre-execution", ctx)
+    if err:
+        sys.exit(err)
     payload = {"text": text, "evidence_class": evidence_class,
                "cost_tier": tier, "ttl_days": ctx["ttl_days"],
                "evidence_paths": ctx["paths"]}
@@ -86,7 +90,15 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
                                "screened": screen_err is None}
         payload["anchor_commit"] = ctx["head"]
         ctx["payload"] = payload
-        run_intake_stage("post-execution", ctx)
+        # The SECOND of the two call sites, and the one I missed on the
+        # first pass -- the fingerprint caught it in seconds: the ADR-035
+        # exit gate lives in this stage, so a refusal became a silent
+        # advisory and the hollow VERIFIED filed. Left as a comment
+        # because "both call sites" is the whole of A1's shell half, and
+        # one of two is the shape of the mistake.
+        err = run_intake_stage("post-execution", ctx)
+        if err:
+            sys.exit(err)
     elif evidence_class == "INFERRED":
         payload["basis"] = basis
     facts = {"generated_source": ctx.get("generated_source"),
@@ -891,7 +903,10 @@ def cmd_ready(a):
     claims, premises = fold(events)
     issues_fold = fold_issues(events)
     native = native_ready_issues(issues_fold) if issues_fold else None
-    issues = tracker_issues(a, native)
+    # A1: the loader returns its refusal; the shell exits it, unchanged.
+    issues, err = tracker_issues(a, native)
+    if err:
+        sys.exit(err)
     # premise-at-birth links apply whichever source delivered the issues,
     # so native, --stdin, and adapter paths join identically (ADR-002);
     # redirects apply after the merge so payload links redirect too (ADR-013)
@@ -910,8 +925,19 @@ def cmd_ready(a):
                 print(f"HELD {i.get('id')}  broken premises: "
                       f"{', '.join(i['_truth']['broken_premises'])}")
 
+def _events_at_ref_or_exit(ref):
+    """A1: events_at_ref returns (events, err); the exit-2 usage contract
+    is `baseline`'s own (it is in the verb's --help), so it is enforced
+    here. Both call sites go through this, because two hand-written
+    copies of one exit rule is how the copies drift."""
+    events, err = events_at_ref(ref)
+    if err:
+        print(err, file=sys.stderr)
+        sys.exit(2)
+    return events
+
 def cmd_baseline(a):
-    snap_a = baseline_snapshot(events_at_ref(a.ref))
+    snap_a = baseline_snapshot(_events_at_ref_or_exit(a.ref))
     if not a.diff:
         snap_a["ref"] = a.ref
         snap_a["commit"] = _short_sha(a.ref)
@@ -926,7 +952,7 @@ def cmd_baseline(a):
                   f"[{' / '.join(f'{k} {v}' for k, v in c['by_tier'].items())}]")
             print(f"issues: {fmt(i['by_status'])}")
         return
-    snap_b = baseline_snapshot(events_at_ref(a.diff))
+    snap_b = baseline_snapshot(_events_at_ref_or_exit(a.diff))
     delta = baseline_diff(snap_a, snap_b)
     delta["from"], delta["to"] = a.ref, a.diff
     disappeared = any(delta[k]["disappeared"] for k in ("claims", "issues"))

@@ -199,11 +199,29 @@ INTAKE_GATES = (
 
 def run_intake_stage(stage, ctx):
     """Iterate the table's rows for one stage, in table order; the first
-    refusal wins (sys.exit). Any I/O lives inside individual gate fns
-    exactly as it did inline before ADR-034."""
+    refusal wins. Returns that refusal STRING, or None when the stage
+    passes. Any I/O lives inside individual gate fns exactly as it did
+    inline before ADR-034.
+
+    A1: this used to `sys.exit(err)`, and that was the table's own
+    contract broken one frame up -- every row of INTAKE_GATES returns a
+    refusal string and promises not to decide what happens to it, and
+    then the function that runs the table decided. ADR-043's R14a had
+    already made exactly this argument for two policy loaders ("they
+    sys.exit-ed two frames below a gate table whose stated contract is
+    'gate fns return a refusal string'") and the argument was never
+    applied to the runner itself.
+
+    The cost of the old shape was not style: nothing could compose. No
+    batch intake, no embedding, no recover-and-continue, and testing a
+    refusal meant spawning a subprocess instead of calling a function.
+    The two callers in build_claim_payload now exit on a non-None
+    return, so every refusal reaches the user through the same path with
+    the same bytes."""
     for st, _name, fn in INTAKE_GATES:
         if st != stage:
             continue
         err = fn(ctx)
         if err:
-            sys.exit(err)
+            return err
+    return None

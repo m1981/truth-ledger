@@ -4,8 +4,16 @@ subprocess (C5 edge).
 The only truthlib module that imports subprocess.  Gathers facts and
 applies effects -- repo/ledger paths, the ADR-015 clock, the single
 append_records writer path, loaders, the ADR-011 human-ack ceremony, and
-the hook/CI wiring probes.  Imports kernel and registry only; its
-pre-existing sys.exit sites stay as-is this phase (ADR-044).
+the hook/CI wiring probes.  Imports kernel and registry only.
+
+ADR-044 left the pre-existing sys.exit sites "as-is this phase"; A1 is
+that phase.  Four of the seven became returns (tracker_issues ×3,
+events_at_ref), because `ready` and `baseline` are their only callers
+and can act.  Three remain and each carries its reason inline:
+repo_root and ledger_lock have no partial answer to give, and
+load_events would need (events, err) threaded through twenty-three call
+sites to reproduce one identical exit.  An undeclared exception is the
+defect; a declared one is a decision.
 """
 import contextlib
 import fcntl
@@ -21,6 +29,12 @@ from truthlib.registry import *
 from truthlib.kernel import *
 
 def repo_root():
+    """A1 -- DECLARED EXCEPTION, this exit stays. Fourteen call sites take
+    the result as a path and build on it; there is no partial answer to
+    hand back, because outside a git repository there is no ledger, no
+    policy file and no anchor -- every verb's precondition is gone, not
+    one verb's input. An undeclared exception is the defect A1 names; a
+    declared one is a decision, and this is the decision."""
     r = subprocess.run(["git", "rev-parse", "--show-toplevel"],
                        capture_output=True, text=True)
     if r.returncode != 0:
@@ -216,6 +230,11 @@ def ledger_lock():
     r = subprocess.run(["git", "rev-parse", "--git-dir"],
                        capture_output=True, text=True)
     if r.returncode != 0:
+        # A1 -- DECLARED EXCEPTION, repo_root's twin and for its reason:
+        # this is a context manager whose whole purpose is the exclusive
+        # flock, and with no git dir there is nowhere to place the lock.
+        # Yielding unlocked would silently drop the ADR-045 critical
+        # section, which is worse than not running.
         sys.exit("truth: not inside a git repository")
     gd = os.path.abspath(r.stdout.strip())  # --git-dir is cwd-relative
     fd = os.open(os.path.join(gd, LEDGER_LOCK_NAME),
@@ -348,6 +367,21 @@ def load_events(stream=None):
         try:
             events.append((n, json.loads(line)))
         except json.JSONDecodeError:
+            # A1 -- DECLARED EXCEPTION, and the one I am least happy
+            # about. Twenty-three call sites take the event list, and a
+            # corrupt line means the same thing at every one of them: the
+            # fold cannot run, so no verb can answer. Threading (events,
+            # err) through all twenty-three to reproduce one identical
+            # exit would be churn with no reader, and it is exactly the
+            # kind of change whose diff hides a behaviour change.
+            #
+            # The composability this leaves unfixed is real: an embedder
+            # still cannot recover from one bad line. The clean answer is
+            # a raised exception caught in main() -- catchable, testable,
+            # byte-identical -- but that is a DESIGN CHOICE this brief
+            # does not authorise, and choosing rather than reporting is
+            # the failure mode A1's own licence forbids. Reported, not
+            # taken.
             sys.exit(f"truth: line {n} is not valid JSON")
     return events
 
@@ -488,42 +522,53 @@ def tracker_issues(a, native=None):
 
     The ledger stands alone without any tracker; `ready` is its consumer,
     not its dependency -- so failure here degrades, never tracebacks.
+
+    A1: returns (issues, err). Every failure here is a TRACKER contract
+    failure, and `ready` is the only caller -- so the caller can act, and
+    under R14a's rule that means the loader must let it. The refusal
+    strings are unchanged; cmd_ready exits them.
     """
     if getattr(a, "stdin_issues", False):
         raw, src = sys.stdin.read(), "stdin"
     else:
         cmd = os.environ.get("TRUTH_TRACKER_CMD")
         if cmd is None and native is not None:
-            return native
+            return native, None
         cmd = cmd or "bd ready --json"
         r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
         if r.returncode != 0:
-            sys.exit(f"truth: tracker command failed ({cmd!r}, exit {r.returncode}).\n"
-                     "  The ledger works without a tracker -- fallback: truth list --live.\n"
-                     "  To wire one: set TRUTH_TRACKER_CMD to any command printing a JSON\n"
-                     "  array of {id, title} issues, or pipe: <tracker-cmd> | truth ready --stdin")
+            return None, (
+                f"truth: tracker command failed ({cmd!r}, exit {r.returncode}).\n"
+                "  The ledger works without a tracker -- fallback: truth list --live.\n"
+                "  To wire one: set TRUTH_TRACKER_CMD to any command printing a JSON\n"
+                "  array of {id, title} issues, or pipe: <tracker-cmd> | truth ready --stdin")
         raw, src = r.stdout, repr(cmd)
     try:
         issues = json.loads(raw or "[]")
     except json.JSONDecodeError:
-        sys.exit(f"truth: {src} output is not JSON -- tracker contract may "
-                 "have drifted (known E1 risk); report, do not patch around")
+        return None, (f"truth: {src} output is not JSON -- tracker contract may "
+                      "have drifted (known E1 risk); report, do not patch around")
     if not isinstance(issues, list):
-        sys.exit(f"truth: {src} output is JSON but not an array -- the "
-                 "adapter contract is a JSON array of issue objects")
-    return issues
+        return None, (f"truth: {src} output is JSON but not an array -- the "
+                      "adapter contract is a JSON array of issue objects")
+    return issues, None
 
 def events_at_ref(ref):
-    """The ledger's content at a git ref, folded-ready. Exit 2 on an
-    unreadable ref/path: a baseline over nothing is usage, not data."""
+    """The ledger's content at a git ref, folded-ready.
+
+    A1: returns (events, err). An unreadable ref is USAGE, not data, and
+    the exit code for it is 2 -- but which code to exit with is the
+    verb's contract (`baseline` documents exit 2 in its own --help), not
+    a loader's, so the loader hands back the message and cmd_baseline
+    exits it. Same bytes on stderr, same exit 2."""
     r = subprocess.run(["git", "show", f"{ref}:{LEDGER_REL}"],
                        capture_output=True, text=True)
     if r.returncode != 0:
-        print(f"truth: cannot read {LEDGER_REL} at {ref!r} -- "
-              f"{r.stderr.strip().splitlines()[-1] if r.stderr.strip() else 'git show failed'} "
-              "(exit 2: usage)", file=sys.stderr)
-        sys.exit(2)
-    return load_events(io.StringIO(r.stdout))
+        return None, (
+            f"truth: cannot read {LEDGER_REL} at {ref!r} -- "
+            f"{r.stderr.strip().splitlines()[-1] if r.stderr.strip() else 'git show failed'} "
+            "(exit 2: usage)")
+    return load_events(io.StringIO(r.stdout)), None
 
 def _short_sha(ref):
     r = subprocess.run(["git", "rev-parse", "--short", ref],
