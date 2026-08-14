@@ -17,6 +17,8 @@ from truthlib.kernel import *
 from truthlib.evidence import *
 from truthlib.policy import *
 from truthlib.gates import *
+from truthlib.reports import *
+from truthlib.contract import *
 from truthlib.advisory import *
 from truthlib.shellio import *
 from truthlib.advisory import _escape_ctrl

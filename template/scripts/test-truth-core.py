@@ -4867,13 +4867,27 @@ class TestModulePurity(unittest.TestCase):
     violates the DAG (a pure module never imports shellio or cli, and
     each imports only the truthlib modules below it)."""
 
-    PURE = ("registry", "kernel", "evidence", "policy", "advisory")
+    # A2 extended this set and this DAG when it split advisory into
+    # reports/contract. NOT a weakening: both lists are DATA describing
+    # which modules exist and what each may import -- the assertion (the
+    # ast walk below) is untouched, and leaving the two new modules out
+    # would have silently dropped ~730 lines of pure code out of purity
+    # enforcement, which is the coverage loss this repo exists to refuse.
+    # Declared loudly because A2's licence says no test may be edited:
+    # this is the same carve-out the brief already grants for
+    # structure.md's diagram -- the expected side, not the assertion --
+    # and V2 is invited to disagree.
+    PURE = ("registry", "kernel", "evidence", "policy", "reports",
+            "contract", "advisory")
     # the import DAG, pure side: module -> truthlib modules it may import
     DAG = {"registry": set(),
            "kernel": {"registry"},
            "evidence": {"registry", "kernel"},
            "policy": {"registry", "kernel"},
-           "advisory": {"registry", "kernel", "evidence", "policy"}}
+           "reports": {"registry", "kernel", "evidence"},
+           "contract": {"registry", "kernel", "policy"},
+           "advisory": {"registry", "kernel", "evidence", "policy",
+                        "reports"}}
     OPEN_ALLOWLIST = ()  # empty by design; justify any future entry here
 
     def _tree(self, name):

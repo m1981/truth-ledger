@@ -41,6 +41,8 @@ from truthlib.registry import *
 from truthlib.kernel import *
 from truthlib.evidence import *
 from truthlib.policy import *
+from truthlib.reports import *
+from truthlib.contract import *
 from truthlib.shellio import *
 from truthlib.gates import *
 from truthlib.advisory import *
@@ -70,8 +72,8 @@ from truthlib.cli import _issue_or_exit
 # binds the same name (and restored the same way).  Reads are unaffected.
 _TRUTHLIB_MODULES = tuple(
     sys.modules["truthlib." + _n]
-    for _n in ("registry", "kernel", "evidence", "policy", "gates",
-               "advisory", "shellio", "cli"))
+    for _n in ("registry", "kernel", "evidence", "policy", "reports",
+               "contract", "gates", "advisory", "shellio", "cli"))
 
 class _MirrorModule(_types.ModuleType):
     def __setattr__(self, name, value):

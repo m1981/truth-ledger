@@ -548,3 +548,15 @@ def join_ready(issues, claims, premises):
             ready.append(issue)
         annotated.append(issue)
     return ready, annotated
+
+# --- moved here by A2 -----------------------------------------------------
+# citation_block_paths decides which grep hits BLOCK a tombstone. That is a
+# refusal decision, and policy's criterion is "it is a refusal"; advisory's
+# is "what the CLI prints beside a result". It was in the wrong module.
+def citation_block_paths(hits, scope_globs):
+    """Pure (ADR-036): which grep hits actually block -- inside the
+    scope and never the ledger itself (retraction bases legitimately
+    cite predecessors/successors, so an unexcluded ledger would make
+    every second retraction self-blocking). TG4/TG9 pin this."""
+    return sorted(h for h in hits
+                  if h != LEDGER_REL and match_paths(h, scope_globs))

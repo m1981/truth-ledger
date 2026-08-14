@@ -30,7 +30,7 @@ import sys
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "template"))
 
-from truthlib.advisory import retraction_cause_report  # noqa: E402
+from truthlib.reports import retraction_cause_report  # noqa: E402
 from truthlib.registry import RETRACTION_CAUSES  # noqa: E402
 from truthlib.shellio import load_events  # noqa: E402
 

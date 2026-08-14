@@ -43,11 +43,13 @@ description of the thing that mechanises citation.
 flowchart TB
     subgraph PURE["PURE CORE — no I/O, no clock, no env, no subprocess"]
         direction TB
-        REG["<b>registry</b><br/>46 constants, 0 functions<br/><i>owns: the vocabulary</i><br/>statuses · verdict map · tiers · kinds<br/>lexicons · id/ts shapes · policy paths"]
-        KER["<b>kernel</b><br/>23 fn<br/><i>owns: records and the folds</i><br/>canon · fold_key · fold · fold_issues<br/>order_check · validate mirror · match_paths"]
-        EVI["<b>evidence</b><br/>14 fn<br/><i>owns: the evidence discipline</i><br/>the ONE screen · recipe lints<br/>determinism · recheck · reaffirm triage"]
-        POL["<b>policy</b><br/>15 fn<br/><i>owns: refusal decisions</i><br/>ADR-001 matrix · supersede · contradicts<br/>capsule coherence · invalidation strategies"]
-        ADV["<b>advisory</b><br/>25 fn<br/><i>owns: assembly and reports</i><br/>CC-1 block · queue · impact · stats<br/>staling · vocab · the Tier C report family"]
+        REG["<b>registry</b><br/>51 constants, 0 functions<br/><i>owns: the vocabulary</i><br/>statuses · verdict map · tiers · kinds<br/>lexicons · id/ts shapes · policy paths"]
+        KER["<b>kernel</b><br/>24 fn<br/><i>owns: records and the folds</i><br/>canon · fold_key · fold · fold_issues<br/>order_check · validate mirror · match_paths"]
+        EVI["<b>evidence</b><br/>17 fn<br/><i>owns: the evidence discipline</i><br/>the ONE screen · recipe lints · determinism<br/>recheck · reaffirm and reproduce triage"]
+        POL["<b>policy</b><br/>22 fn<br/><i>owns: refusal decisions</i><br/>ADR-001 matrix · supersede · contradicts<br/>capsule coherence · invalidation strategies<br/>policy-file attestation · citation blocking"]
+        REP["<b>reports</b><br/>16 fn<br/><i>owns: derivation into numbers</i><br/>queue · impact · inverse · baseline · stats<br/>staling · blast · override · separation<br/><i>no refusal, no advice, no I/O</i>"]
+        CON["<b>contract</b><br/>2 fn<br/><i>owns: exact surfaces others consume</i><br/>dispatch_text — the G11 verifier envelope<br/>vocab_report — the P2 vocabulary export"]
+        ADV["<b>advisory</b><br/>8 fn<br/><i>owns: what prints BESIDE a result</i><br/>CC-1 block · intake advisories · gate banner<br/>dirty-watch facts · ttl suggestion"]
     end
 
     subgraph EDGE["IMPERATIVE SHELL"]
@@ -59,6 +61,9 @@ flowchart TB
     REG --> KER
     KER --> EVI
     KER --> POL
+    EVI --> REP
+    POL --> CON
+    REP --> ADV
     EVI --> ADV
     POL --> ADV
     KER --> SIO
@@ -67,6 +72,7 @@ flowchart TB
     EVI --> GAT
     SIO --> GAT
     ADV --> CLI
+    CON --> CLI
     GAT --> CLI
     SIO --> CLI
 
