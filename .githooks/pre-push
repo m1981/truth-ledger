@@ -22,9 +22,19 @@ if ! git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
   echo "  Consumers sync via copier, which resolves versions from tags;" >&2
   echo "  an untagged release is invisible to them. When the release is" >&2
   echo "  complete: git tag v$V && git push --tags" >&2
-  exit 0
-fi
-if ! git show "refs/tags/v$V:template/scripts/truth" 2>/dev/null \
+  # NO exit HERE. This branch used to `exit 0`, which ended the whole hook
+  # and SILENTLY SKIPPED THE RELEASE BATTERY BELOW -- canary, core suite,
+  # fact-health, doc-health, reachability, all of it. And it skipped them
+  # in exactly the state where they matter most: the window between
+  # bumping the CLI version and tagging the release, which is when the
+  # most change lands. Every other gate in this repo fails CLOSED; this
+  # one failed open, and the comment beneath it says "detection that runs
+  # on nobody's schedule runs after the incident."
+  # Found the honest way: a push of 24 commits at an untagged v0.9.38
+  # printed this WARN and returned instantly. The commits were sound --
+  # they had been checked by hand first -- but the gate had not checked
+  # them. An advisory must not be able to cancel a gate.
+elif ! git show "refs/tags/v$V:template/scripts/truth" 2>/dev/null \
     | sed -n '2p' | grep -q "truth v$V "; then
   echo "tag-check: FAIL -- tag v$V exists but its tree does not state" >&2
   echo "  v$V on template/scripts/truth line 2: the tag points at the" >&2
