@@ -1560,370 +1560,410 @@ def cmd_doctor(a):
     sys.exit(1 if fails else 0)
 
 # ---------------------------------------------------------------- main
+#
+# The verb surface is declared as DATA -- the same trick INTAKE_GATES
+# already uses for the gate surface.  One row per verb, `(name, help,
+# flags, fn)`, where a flag is the `(args, kwargs)` of a single deferred
+# add_argument call.  main() below is the interpreter of that table and
+# nothing else.
+#
+# Order is load-bearing: argparse renders `truth <verb> --help` in
+# declaration order and that help is a user-facing surface, so a shared
+# group is SPLICED at the position its flags occupied, never appended.
+#
+# The shared groups are the whole point.  R7 found that `done --claim`
+# had silently lost `--json` to a hand-copy, declared exactly ONE group
+# once (the claim-intake flags below), and left the other twenty verbs
+# hand-copied -- after which `--refresh-evidence` was added by hand.  A
+# flag declared once cannot drift between the surfaces that share it; a
+# flag copied cannot help but.
 
-def add_claim_intake_flags(p):
-    """R7: the claim-intake flags `claim` and `done --claim` share
-    verbatim, declared once so the two surfaces cannot drift (done had
-    already lost --json by hand-copy). Deliberately per-verb, NOT here:
-    claim's `text` positional; --basis vs --claim-basis (done's claim
-    basis must not shadow the close's own --basis); --json; and the four
-    override flags whose done-side help deliberately reads 'see `truth
-    claim ...`' (--scope-ok, --evidence-unsafe-ok, --generated-ok,
-    --evidence-exit-ok). --concern is GONE from both (D4/ADR-046: the
-    concerns surface is Tier C; the field is closed to new records)."""
-    p.add_argument("--class", dest="evidence_class", default="UNVERIFIED",
-                   choices=EVIDENCE_CLASSES)
-    p.add_argument("--evidence-cmd", help="re-runnable command whose output is the evidence")
-    p.add_argument("--paths", help="comma-separated globs the evidence depends on")
-    p.add_argument("--tier", default="P2", choices=TIERS)
-    p.add_argument("--ttl-days", type=int, default=None,
-                   help="expiry for facts the repo cannot invalidate (G10)")
-    p.add_argument("--single-run", action="store_true",
-                   help="skip the determinism double-run (expensive commands; "
-                        "accepts false-divergence risk, G6)")
-    p.add_argument("--duplicate-ok", action="store_true",
-                   help="file despite similarity to an active claim (G8)")
+
+def _flag(*args, **kwargs):
+    """One deferred `parser.add_argument(*args, **kwargs)`, as data."""
+    return (args, kwargs)
+
+
+# The bare machine-output flag, shared by every verb that emits one.
+JSON_FLAG = _flag("--json", action="store_true")
+
+# The event-window flag `stats` and `staling` share verbatim.  NOT
+# `reproduce --since`, whose help says a different thing (it narrows
+# which claims are live, not just the report), so it stays per-verb.
+WINDOW_FLAG = _flag("--since", metavar="ISO_TS",
+                    help="only count events with ts >= this ISO timestamp")
+
+# R7: the claim-intake flags `claim` and `done --claim` share verbatim,
+# declared once so the two surfaces cannot drift (done had already lost
+# --json by hand-copy).  Deliberately per-verb, NOT here: claim's `text`
+# positional; --basis vs --claim-basis (done's claim basis must not
+# shadow the close's own --basis); --json; and the four override flags
+# whose done-side help deliberately reads 'see `truth claim ...`'
+# (--scope-ok, --evidence-unsafe-ok, --generated-ok,
+# --evidence-exit-ok).  --concern is GONE from both (D4/ADR-046: the
+# concerns surface is Tier C; the field is closed to new records).
+CLAIM_INTAKE_FLAGS = [
+    _flag("--class", dest="evidence_class", default="UNVERIFIED",
+          choices=EVIDENCE_CLASSES),
+    _flag("--evidence-cmd",
+          help="re-runnable command whose output is the evidence"),
+    _flag("--paths", help="comma-separated globs the evidence depends on"),
+    _flag("--tier", default="P2", choices=TIERS),
+    _flag("--ttl-days", type=int, default=None,
+          help="expiry for facts the repo cannot invalidate (G10)"),
+    _flag("--single-run", action="store_true",
+          help="skip the determinism double-run (expensive commands; "
+               "accepts false-divergence risk, G6)"),
+    _flag("--duplicate-ok", action="store_true",
+          help="file despite similarity to an active claim (G8)"),
+]
+
+VERB_TABLE = [
+    ("claim", "file a claim (one command, end to end)", [
+        _flag("text"),
+        *CLAIM_INTAKE_FLAGS,  # R7: shared verbatim with `done --claim`
+        _flag("--basis", help="reasoning basis (required for INFERRED)"),
+        _flag("--scope-ok", metavar="SENTENCE",
+              help="one sentence: why the evidence command's scope "
+                   "covers the claim's universal quantifier (ADR-007; "
+                   "stored as scope_basis, attackable by verifiers)"),
+        _flag("--evidence-unsafe-ok", action="store_true",
+              help="file despite a failed evidence-command safety "
+                   "screen (ADR-009); recheck will refuse to execute "
+                   "the command, so verification becomes manual"),
+        _flag("--generated-ok", metavar="SENTENCE",
+              help="watch a path on the committed generated-artifact "
+                   "list anyway (ADR-037): one sentence why the "
+                   "artifact itself is the fact; stored as "
+                   "generated_ok_basis, counted, and decays like "
+                   "--scope-ok (ADR-032 default expiry)"),
+        _flag("--evidence-exit-ok", metavar="SENTENCE",
+              help="one sentence: why a FAILING evidence command "
+                   "proves this positive sentence (ADR-035; stored "
+                   "as evidence_exit_basis, attackable by verifiers; "
+                   "refused when the evidence exits 0 -- nothing to "
+                   "excuse)"),
+        JSON_FLAG,
+    ], cmd_claim),
+
+    ("verdict", "record a verification verdict; "
+                "retraction is human-only (TRUTH_HUMAN=1 plus an "
+                "interactive typed-id confirmation, or "
+                "TRUTH_HUMAN_ACK=<id> for headless human use) and "
+                "records WHY (--cause, ADR-049)", [
+        _flag("claim_id"),
+        _flag("verdict", nargs="?", choices=VERDICTS),
+        _flag("--basis"),
+        _flag("--recheck", action="store_true",
+              help="re-run the claim's evidence command and compare hashes"),
+        _flag("--mechanical", action="store_true",
+              help="annotate a diverge: the measuring recipe changed, "
+                   "not necessarily the fact (ADR-012)"),
+        _flag("--cause", choices=RETRACTION_CAUSES,
+              help="REQUIRED on a retraction (ADR-049): why the belief "
+                   "dies. Two questions about the sentence -- restated "
+                   "= still true, a successor states it better "
+                   "(--successor required); expired = was true, the "
+                   "world moved past it; wrong = never true, or its "
+                   "evidence never demonstrated it. There is no "
+                   "override flag: the question is always answerable "
+                   "by the human retracting"),
+        _flag("--successor", metavar="TR_ID",
+              help="the claim that carries the fact forward (ADR-049): "
+                   "must exist and not itself be retracted. Required "
+                   "with --cause restated, optional with "
+                   "expired/wrong (a corrected re-file is a normal "
+                   "`wrong` retraction). A CLAIM-level pointer -- "
+                   "ADR-013's --supersedes is per-ISSUE premise "
+                   "redirection and stays separate"),
+        _flag("--refresh-evidence", dest="refresh_evidence",
+              metavar="SENTENCE",
+              help="REQUIRED on an agree whose evidence no longer "
+                   "reproduces (ADR-051): one sentence why the "
+                   "changed output still supports the claim's "
+                   "sentence -- a line-number shift, a count that "
+                   "grew. Stores the newly observed capsule on the "
+                   "verdict so the anchor and the capsule advance "
+                   "TOGETHER; without it the agree would leave the "
+                   "claim live and permanently un-recheckable. If "
+                   "the fact itself moved, file diverge instead "
+                   "(--mechanical if only the recipe drifted)"),
+        _flag("--orphan-ok", metavar="SENTENCE",
+              help="retract despite scope-covered citations of the id "
+                   "(ADR-036): one sentence why deliberate orphaning "
+                   "is right; stored as orphan_basis, counted in the "
+                   "override report"),
+        JSON_FLAG,
+    ], cmd_verdict),
+
+    ("citations", "ADR-036 preflight: which "
+                  "scope-covered files cite these ledger ids "
+                  "(read-only, no ceremony; exit 0 = clean, "
+                  f"{CITATIONS_EXIT_CITED} = cited -- sweep before "
+                  "a batch retraction)", [
+        _flag("ids", nargs="+"),
+        JSON_FLAG,
+    ], cmd_citations),
+
+    ("invalidate-scan",
+     "mark claims stale: paths changed, TTL expired, or anchor lost", [
+        _flag("--quiet", action="store_true"),
+    ], cmd_invalidate_scan),
+
+    ("reaffirm", "batch re-confirm stale claims "
+                 "whose evidence is unchanged (ADR-030): re-run "
+                 "each claim's evidence through the screened "
+                 "recheck path; hash-match auto-files agree "
+                 "(anchor advances), mismatch is listed for "
+                 "dispatch and files NOTHING; TTL-staled, "
+                 "unscreened, never-agreed, and same-session "
+                 "claims are skipped with the reason", [
+        _flag("--dry-run", dest="dry_run", action="store_true",
+              help="triage and report every arm; file nothing"),
+        JSON_FLAG,
+    ], cmd_reaffirm),
+
+    ("premise", "link a tracker issue (external or wk-) "
+                "to a claim it depends on; --supersedes redirects a "
+                "dead premise to its corrected claim (ADR-013)", [
+        _flag("issue"),
+        _flag("claim_id"),
+        _flag("--supersedes", metavar="OLD_TR",
+              help="dead premise claim this link replaces for the issue "
+                   "-- an auditable redirect the ready-fold honors; "
+                   "refused while the old premise still passes ready "
+                   "(ADR-013)"),
+        JSON_FLAG,
+    ], cmd_premise),
+
+    ("contradicts", "declare two claims cannot both "
+                    "hold (issue #4): while both would otherwise be "
+                    "live, both derive DISPUTED -- premised work HOLDs "
+                    "and specs citing either side fail; resolve by "
+                    "retract/supersede/re-file, no new verb", [
+        _flag("claim_a"),
+        _flag("claim_b"),
+        _flag("--basis", required=True,
+              help="why these cannot both hold -- the attackable "
+                   "record of the accusation"),
+    ], cmd_contradicts),
+
+    ("issue", "file a work item in the ledger (ADR-002); "
+              "link the facts it stands on with --premise", [
+        _flag("title"),
+        _flag("--text", help="longer description"),
+        _flag("--deps", help="comma-separated wk- ids this issue depends on"),
+        _flag("--premise", action="append",
+              help="claim id this work stands on (repeatable; "
+                   "premise-at-birth)"),
+        _flag("--accept-cmd", dest="accept_cmd",
+              help="executable finish line: `done` runs this from the "
+                   "repo root and refuses the close on non-zero exit; "
+                   "screened against .truth/accept-allow (ADR-014)"),
+        _flag("--accept-kind", dest="accept_kind",
+              choices=ACCEPT_KINDS,
+              help="which of 12207's two V's the oracle is: "
+                   "verification = suite/gate ('built right'), "
+                   "validation = golden-diff ('built the right "
+                   "thing'); default verification (ADR-014)"),
+        _flag("--accept-unsafe-ok", dest="accept_unsafe_ok",
+              action="store_true",
+              help="file despite a failed acceptance-command screen "
+                   "(ADR-014); `done` will refuse to execute the "
+                   "oracle, so the close will need this flag again"),
+        JSON_FLAG,
+    ], cmd_issue),
+
+    ("start", "claim a work item (files 'claimed')", [
+        _flag("issue_id"),
+        _flag("--release", action="store_true",
+              help="file 'released' instead: give the item back"),
+        _flag("--basis"),
+    ], cmd_start),
+
+    ("done", "close a work item; --claim files what "
+             "the finished work made true (claim-at-death)", [
+        _flag("issue_id"),
+        _flag("--basis", help="required: what was done / why it dies"),
+        _flag("--cancel", action="store_true",
+              help="terminal tombstone (G12): TRUTH_HUMAN=1 plus an "
+                   "interactive typed-id confirmation, or "
+                   "TRUTH_HUMAN_ACK=<id> for headless human use"),
+        _flag("--reopen", action="store_true",
+              help="reopen a closed item (work is cyclical)"),
+        _flag("--orphan-ok", metavar="SENTENCE",
+              help="cancel despite scope-covered citations of the "
+                   "wk- id (ADR-036); stored as orphan_basis on the "
+                   "event, counted in the override report"),
+        _flag("--claim", dest="claim_text",
+              help="text of the completion fact to file atomically"),
+        *CLAIM_INTAKE_FLAGS,  # R7: shared verbatim with `claim`
+        _flag("--claim-basis", help="basis for an INFERRED completion claim"),
+        _flag("--scope-ok", metavar="SENTENCE",
+              help="see `truth claim --scope-ok` (ADR-007)"),
+        _flag("--evidence-unsafe-ok", action="store_true",
+              help="see `truth claim --evidence-unsafe-ok` (ADR-009)"),
+        _flag("--generated-ok", metavar="SENTENCE",
+              help="see `truth claim --generated-ok` (ADR-037)"),
+        _flag("--evidence-exit-ok", metavar="SENTENCE",
+              help="see `truth claim --evidence-exit-ok` (ADR-035)"),
+        _flag("--accept-unsafe-ok", dest="accept_unsafe_ok",
+              action="store_true",
+              help="close WITHOUT executing an acceptance oracle that "
+                   "CANNOT run (unscreened or unscreenable); stamped "
+                   "executed=false on the event. Never overrides an "
+                   "oracle that ran and failed (ADR-014)"),
+        _flag("--json", action="store_true",
+              help="print one JSON object {issue, event, claim, "
+                   "accept, advisories} -- the SI-3 machine surface "
+                   "extended to claim-at-death (advisories ride the "
+                   "echo, never the ledger line)"),
+    ], cmd_done),
+
+    ("issues", "list work items with derived status; "
+               "--ready-json emits the E1 adapter contract", [
+        JSON_FLAG,
+        _flag("--ready-json", dest="ready_json", action="store_true",
+              help="JSON array of {id,title} for open, dep-satisfied "
+                   "items (pipe into `truth ready --stdin`)"),
+    ], cmd_issues),
+
+    ("list", "list claims by derived status", [
+        *[_flag("--" + flag.replace("_", "-"), dest=flag,
+                action="store_true") for flag in STATUSES],
+        JSON_FLAG,
+    ], cmd_list),
+
+    ("queue",
+     "human review queue: diverged + stale P0/P1 + unverifiable P0", [
+        JSON_FLAG,
+    ], cmd_queue),
+
+    ("stats", "ledger metrics (FS-1): status/tier "
+              "counts, verdict rates, claim half-life, queue "
+              "aging -- the monthly audit's mechanical half", [
+        WINDOW_FLAG,
+        JSON_FLAG,
+    ], cmd_stats),
+
+    ("staling", "what the path-touched-means-"
+                "stale rule cost (ADR-050): every resolved "
+                "staling split into the fact had NOT changed "
+                "(mechanically re-confirmed / re-read by a "
+                "human) vs it HAD, plus which kind of watched "
+                "path triggered them", [
+        WINDOW_FLAG,
+        _flag("--append-order", dest="append_order",
+              action="store_true",
+              help="walk the raw FILE (append) order instead of the "
+                   "fold's (ts, id, canon) order -- reproduction "
+                   "only, for measurements taken that way before "
+                   "this verb existed (ADR-050); the two disagree "
+                   "on union-merged ledgers"),
+        JSON_FLAG,
+    ], cmd_staling),
+
+    ("reproduce", "re-run every LIVE claim's "
+                  "evidence capsule here and now (F1.1): reproduces "
+                  "/ capsule-stale / unexecutable / no-capsule. The "
+                  "question no other verb asks -- invalidate-scan "
+                  "watches PATHS, recheck and reaffirm only reach "
+                  "claims already knocked out of live. Files "
+                  "nothing. Exit 7 when any capsule no longer "
+                  "reproduces; exit 8 when the sweep examined zero "
+                  "claims (ADR-042 rule 2: measuring nothing is a "
+                  "failure, not a pass)", [
+        _flag("--since", metavar="ISO_TS",
+              help="only fold events with ts >= this ISO timestamp "
+                   "(same window convention as `stats`/`staling`; it "
+                   "narrows which claims are live, not just the "
+                   "report)"),
+        _flag("--arm", choices=REPRODUCE_ARMS,
+              help="print only this arm's rows (the summary line and "
+                   "the exit code still cover the whole sweep)"),
+        JSON_FLAG,
+    ], cmd_reproduce),
+
+    ("ready", "unblocked issues filtered by premise "
+              "validity (ADR-001); source: --stdin, TRUTH_TRACKER_CMD, "
+              "native work kernel if issue records exist, else "
+              "`bd ready --json` (ADR-002 precedence)", [
+        JSON_FLAG,
+        _flag("--stdin", dest="stdin_issues", action="store_true",
+              help="read the issues JSON array from stdin instead of "
+                   "invoking a tracker command"),
+    ], cmd_ready),
+
+    ("impact", "what knowledge does editing these "
+               "paths endanger? (ADR-005; read-only prediction; "
+               "exit 0 silent / 3 watched). --inverse flips the "
+               "question: which tracked files does no active "
+               "claim watch? (issue #5; exit 0 clean / 4 dark)", [
+        _flag("paths", nargs="*",
+              help="repo-root-relative paths about to be edited "
+                   "(forward mode; forbidden with --inverse)"),
+        _flag("--inverse", action="store_true",
+              help="list tracked files watched by NO active "
+                   "(non-retracted) claim -- the 24765 backward "
+                   "trace; exit 4 when dark files exist"),
+        _flag("--under", metavar="DIR",
+              help="restrict --inverse to files under this "
+                   "repo-root-relative directory"),
+        _flag("--exclude", metavar="PREFIX", action="append",
+              help="drop files under this path prefix from "
+                   "--inverse (repeatable; lockfiles, assets)"),
+        JSON_FLAG,
+    ], cmd_impact),
+
+    ("baseline", "fold the ledger at a git ref: "
+                 "the frozen status account (10007, issue #3); "
+                 "--diff folds a second ref and prints the delta "
+                 "(exit 5 if any record DISAPPEARED -- rewritten "
+                 "history; exit 2 unreadable ref)", [
+        _flag("ref", help="git ref to fold the ledger at (tag, sha, HEAD)"),
+        _flag("--diff", metavar="REF_B",
+              help="second (newer) ref: print born/transitions/"
+                   "disappeared between ref and REF_B"),
+        _flag("--json", action="store_true",
+              help="deterministic JSON (sorted; redirect to a file "
+                   "and commit it if you want a persisted baseline)"),
+    ], cmd_baseline),
+
+    ("dispatch",
+     "print the verifier context (prompt + claim only) for a fresh session", [
+        _flag("claim_id"),
+    ], cmd_dispatch),
+
+    ("doctor", "check the installation, not just the scripts (G4)", [
+        _flag("--json", action="store_true",
+              help="the same run as one object: {ok, warn, fail} "
+                   "lists of {check, detail} plus failures/warnings "
+                   "counts; the exit code is unchanged (1 on "
+                   "failures)"),
+    ], cmd_doctor),
+
+    ("validate", "schema-check every ledger record", [
+        _flag("--stdin", action="store_true", help="read ledger from stdin"),
+    ], cmd_validate),
+
+    ("vocab", "the machine vocabulary (P2 "
+              "contract): statuses, active set, verdict->status "
+              "map, ADR-001 premise derivations, and the "
+              "satellites' citation-blocking set -- one "
+              "greppable line per key, or --json", [
+        JSON_FLAG,
+    ], cmd_vocab),
+]
 
 def main():
     ap = argparse.ArgumentParser(prog="truth", description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    c = sub.add_parser("claim", help="file a claim (one command, end to end)")
-    c.add_argument("text")
-    add_claim_intake_flags(c)  # R7: shared verbatim with `done --claim`
-    c.add_argument("--basis", help="reasoning basis (required for INFERRED)")
-    c.add_argument("--scope-ok", metavar="SENTENCE",
-                   help="one sentence: why the evidence command's scope "
-                        "covers the claim's universal quantifier (ADR-007; "
-                        "stored as scope_basis, attackable by verifiers)")
-    c.add_argument("--evidence-unsafe-ok", action="store_true",
-                   help="file despite a failed evidence-command safety "
-                        "screen (ADR-009); recheck will refuse to execute "
-                        "the command, so verification becomes manual")
-    c.add_argument("--generated-ok", metavar="SENTENCE",
-                   help="watch a path on the committed generated-artifact "
-                        "list anyway (ADR-037): one sentence why the "
-                        "artifact itself is the fact; stored as "
-                        "generated_ok_basis, counted, and decays like "
-                        "--scope-ok (ADR-032 default expiry)")
-    c.add_argument("--evidence-exit-ok", metavar="SENTENCE",
-                   help="one sentence: why a FAILING evidence command "
-                        "proves this positive sentence (ADR-035; stored "
-                        "as evidence_exit_basis, attackable by verifiers; "
-                        "refused when the evidence exits 0 -- nothing to "
-                        "excuse)")
-    c.add_argument("--json", action="store_true")
-    c.set_defaults(fn=cmd_claim)
-
-    v = sub.add_parser("verdict", help="record a verification verdict; "
-                       "retraction is human-only (TRUTH_HUMAN=1 plus an "
-                       "interactive typed-id confirmation, or "
-                       "TRUTH_HUMAN_ACK=<id> for headless human use) and "
-                       "records WHY (--cause, ADR-049)")
-    v.add_argument("claim_id")
-    v.add_argument("verdict", nargs="?", choices=VERDICTS)
-    v.add_argument("--basis")
-    v.add_argument("--recheck", action="store_true",
-                   help="re-run the claim's evidence command and compare hashes")
-    v.add_argument("--mechanical", action="store_true",
-                   help="annotate a diverge: the measuring recipe changed, "
-                        "not necessarily the fact (ADR-012)")
-    v.add_argument("--cause", choices=RETRACTION_CAUSES,
-                   help="REQUIRED on a retraction (ADR-049): why the belief "
-                        "dies. Two questions about the sentence -- restated "
-                        "= still true, a successor states it better "
-                        "(--successor required); expired = was true, the "
-                        "world moved past it; wrong = never true, or its "
-                        "evidence never demonstrated it. There is no "
-                        "override flag: the question is always answerable "
-                        "by the human retracting")
-    v.add_argument("--successor", metavar="TR_ID",
-                   help="the claim that carries the fact forward (ADR-049): "
-                        "must exist and not itself be retracted. Required "
-                        "with --cause restated, optional with "
-                        "expired/wrong (a corrected re-file is a normal "
-                        "`wrong` retraction). A CLAIM-level pointer -- "
-                        "ADR-013's --supersedes is per-ISSUE premise "
-                        "redirection and stays separate")
-    v.add_argument("--refresh-evidence", dest="refresh_evidence",
-                   metavar="SENTENCE",
-                   help="REQUIRED on an agree whose evidence no longer "
-                        "reproduces (ADR-051): one sentence why the "
-                        "changed output still supports the claim's "
-                        "sentence -- a line-number shift, a count that "
-                        "grew. Stores the newly observed capsule on the "
-                        "verdict so the anchor and the capsule advance "
-                        "TOGETHER; without it the agree would leave the "
-                        "claim live and permanently un-recheckable. If "
-                        "the fact itself moved, file diverge instead "
-                        "(--mechanical if only the recipe drifted)")
-    v.add_argument("--orphan-ok", metavar="SENTENCE",
-                   help="retract despite scope-covered citations of the id "
-                        "(ADR-036): one sentence why deliberate orphaning "
-                        "is right; stored as orphan_basis, counted in the "
-                        "override report")
-    v.add_argument("--json", action="store_true")
-    v.set_defaults(fn=cmd_verdict)
-
-    ci = sub.add_parser("citations", help="ADR-036 preflight: which "
-                        "scope-covered files cite these ledger ids "
-                        "(read-only, no ceremony; exit 0 = clean, "
-                        f"{CITATIONS_EXIT_CITED} = cited -- sweep before "
-                        "a batch retraction)")
-    ci.add_argument("ids", nargs="+")
-    ci.add_argument("--json", action="store_true")
-    ci.set_defaults(fn=cmd_citations)
-
-    s = sub.add_parser("invalidate-scan",
-                       help="mark claims stale: paths changed, TTL expired, or anchor lost")
-    s.add_argument("--quiet", action="store_true")
-    s.set_defaults(fn=cmd_invalidate_scan)
-
-    ra = sub.add_parser("reaffirm", help="batch re-confirm stale claims "
-                        "whose evidence is unchanged (ADR-030): re-run "
-                        "each claim's evidence through the screened "
-                        "recheck path; hash-match auto-files agree "
-                        "(anchor advances), mismatch is listed for "
-                        "dispatch and files NOTHING; TTL-staled, "
-                        "unscreened, never-agreed, and same-session "
-                        "claims are skipped with the reason")
-    ra.add_argument("--dry-run", dest="dry_run", action="store_true",
-                    help="triage and report every arm; file nothing")
-    ra.add_argument("--json", action="store_true")
-    ra.set_defaults(fn=cmd_reaffirm)
-
-    p = sub.add_parser("premise", help="link a tracker issue (external or wk-) "
-                       "to a claim it depends on; --supersedes redirects a "
-                       "dead premise to its corrected claim (ADR-013)")
-    p.add_argument("issue")
-    p.add_argument("claim_id")
-    p.add_argument("--supersedes", metavar="OLD_TR",
-                   help="dead premise claim this link replaces for the issue "
-                        "-- an auditable redirect the ready-fold honors; "
-                        "refused while the old premise still passes ready "
-                        "(ADR-013)")
-    p.add_argument("--json", action="store_true")
-    p.set_defaults(fn=cmd_premise)
-
-    ct = sub.add_parser("contradicts", help="declare two claims cannot both "
-                        "hold (issue #4): while both would otherwise be "
-                        "live, both derive DISPUTED -- premised work HOLDs "
-                        "and specs citing either side fail; resolve by "
-                        "retract/supersede/re-file, no new verb")
-    ct.add_argument("claim_a")
-    ct.add_argument("claim_b")
-    ct.add_argument("--basis", required=True,
-                    help="why these cannot both hold -- the attackable "
-                         "record of the accusation")
-    ct.set_defaults(fn=cmd_contradicts)
-
-    i = sub.add_parser("issue", help="file a work item in the ledger (ADR-002); "
-                       "link the facts it stands on with --premise")
-    i.add_argument("title")
-    i.add_argument("--text", help="longer description")
-    i.add_argument("--deps", help="comma-separated wk- ids this issue depends on")
-    i.add_argument("--premise", action="append",
-                   help="claim id this work stands on (repeatable; "
-                        "premise-at-birth)")
-    i.add_argument("--accept-cmd", dest="accept_cmd",
-                   help="executable finish line: `done` runs this from the "
-                        "repo root and refuses the close on non-zero exit; "
-                        "screened against .truth/accept-allow (ADR-014)")
-    i.add_argument("--accept-kind", dest="accept_kind",
-                   choices=ACCEPT_KINDS,
-                   help="which of 12207's two V's the oracle is: "
-                        "verification = suite/gate ('built right'), "
-                        "validation = golden-diff ('built the right "
-                        "thing'); default verification (ADR-014)")
-    i.add_argument("--accept-unsafe-ok", dest="accept_unsafe_ok",
-                   action="store_true",
-                   help="file despite a failed acceptance-command screen "
-                        "(ADR-014); `done` will refuse to execute the "
-                        "oracle, so the close will need this flag again")
-    i.add_argument("--json", action="store_true")
-    i.set_defaults(fn=cmd_issue)
-
-    st = sub.add_parser("start", help="claim a work item (files 'claimed')")
-    st.add_argument("issue_id")
-    st.add_argument("--release", action="store_true",
-                    help="file 'released' instead: give the item back")
-    st.add_argument("--basis")
-    st.set_defaults(fn=cmd_start)
-
-    dn = sub.add_parser("done", help="close a work item; --claim files what "
-                        "the finished work made true (claim-at-death)")
-    dn.add_argument("issue_id")
-    dn.add_argument("--basis", help="required: what was done / why it dies")
-    dn.add_argument("--cancel", action="store_true",
-                    help="terminal tombstone (G12): TRUTH_HUMAN=1 plus an "
-                         "interactive typed-id confirmation, or "
-                         "TRUTH_HUMAN_ACK=<id> for headless human use")
-    dn.add_argument("--reopen", action="store_true",
-                    help="reopen a closed item (work is cyclical)")
-    dn.add_argument("--orphan-ok", metavar="SENTENCE",
-                    help="cancel despite scope-covered citations of the "
-                         "wk- id (ADR-036); stored as orphan_basis on the "
-                         "event, counted in the override report")
-    dn.add_argument("--claim", dest="claim_text",
-                    help="text of the completion fact to file atomically")
-    add_claim_intake_flags(dn)  # R7: shared verbatim with `claim`
-    dn.add_argument("--claim-basis", help="basis for an INFERRED completion claim")
-    dn.add_argument("--scope-ok", metavar="SENTENCE",
-                    help="see `truth claim --scope-ok` (ADR-007)")
-    dn.add_argument("--evidence-unsafe-ok", action="store_true",
-                    help="see `truth claim --evidence-unsafe-ok` (ADR-009)")
-    dn.add_argument("--generated-ok", metavar="SENTENCE",
-                    help="see `truth claim --generated-ok` (ADR-037)")
-    dn.add_argument("--evidence-exit-ok", metavar="SENTENCE",
-                    help="see `truth claim --evidence-exit-ok` (ADR-035)")
-    dn.add_argument("--accept-unsafe-ok", dest="accept_unsafe_ok",
-                    action="store_true",
-                    help="close WITHOUT executing an acceptance oracle that "
-                         "CANNOT run (unscreened or unscreenable); stamped "
-                         "executed=false on the event. Never overrides an "
-                         "oracle that ran and failed (ADR-014)")
-    dn.add_argument("--json", action="store_true",
-                    help="print one JSON object {issue, event, claim, "
-                         "accept, advisories} -- the SI-3 machine surface "
-                         "extended to claim-at-death (advisories ride the "
-                         "echo, never the ledger line)")
-    dn.set_defaults(fn=cmd_done)
-
-    iss = sub.add_parser("issues", help="list work items with derived status; "
-                         "--ready-json emits the E1 adapter contract")
-    iss.add_argument("--json", action="store_true")
-    iss.add_argument("--ready-json", dest="ready_json", action="store_true",
-                     help="JSON array of {id,title} for open, dep-satisfied "
-                          "items (pipe into `truth ready --stdin`)")
-    iss.set_defaults(fn=cmd_issues)
-
-    l = sub.add_parser("list", help="list claims by derived status")
-    for flag in STATUSES:
-        l.add_argument("--" + flag.replace("_", "-"), dest=flag, action="store_true")
-    l.add_argument("--json", action="store_true")
-    l.set_defaults(fn=cmd_list)
-
-    q = sub.add_parser("queue",
-                       help="human review queue: diverged + stale P0/P1 + unverifiable P0")
-    q.add_argument("--json", action="store_true")
-    q.set_defaults(fn=cmd_queue)
-
-    stt = sub.add_parser("stats", help="ledger metrics (FS-1): status/tier "
-                         "counts, verdict rates, claim half-life, queue "
-                         "aging -- the monthly audit's mechanical half")
-    stt.add_argument("--since", metavar="ISO_TS",
-                     help="only count events with ts >= this ISO timestamp")
-    stt.add_argument("--json", action="store_true")
-    stt.set_defaults(fn=cmd_stats)
-
-    stl = sub.add_parser("staling", help="what the path-touched-means-"
-                         "stale rule cost (ADR-050): every resolved "
-                         "staling split into the fact had NOT changed "
-                         "(mechanically re-confirmed / re-read by a "
-                         "human) vs it HAD, plus which kind of watched "
-                         "path triggered them")
-    stl.add_argument("--since", metavar="ISO_TS",
-                     help="only count events with ts >= this ISO timestamp")
-    stl.add_argument("--append-order", dest="append_order",
-                     action="store_true",
-                     help="walk the raw FILE (append) order instead of the "
-                          "fold's (ts, id, canon) order -- reproduction "
-                          "only, for measurements taken that way before "
-                          "this verb existed (ADR-050); the two disagree "
-                          "on union-merged ledgers")
-    stl.add_argument("--json", action="store_true")
-    stl.set_defaults(fn=cmd_staling)
-
-    rp = sub.add_parser("reproduce", help="re-run every LIVE claim's "
-                        "evidence capsule here and now (F1.1): reproduces "
-                        "/ capsule-stale / unexecutable / no-capsule. The "
-                        "question no other verb asks -- invalidate-scan "
-                        "watches PATHS, recheck and reaffirm only reach "
-                        "claims already knocked out of live. Files "
-                        "nothing. Exit 7 when any capsule no longer "
-                        "reproduces; exit 8 when the sweep examined zero "
-                        "claims (ADR-042 rule 2: measuring nothing is a "
-                        "failure, not a pass)")
-    rp.add_argument("--since", metavar="ISO_TS",
-                    help="only fold events with ts >= this ISO timestamp "
-                         "(same window convention as `stats`/`staling`; it "
-                         "narrows which claims are live, not just the "
-                         "report)")
-    rp.add_argument("--arm", choices=REPRODUCE_ARMS,
-                    help="print only this arm's rows (the summary line and "
-                         "the exit code still cover the whole sweep)")
-    rp.add_argument("--json", action="store_true")
-    rp.set_defaults(fn=cmd_reproduce)
-
-    r = sub.add_parser("ready", help="unblocked issues filtered by premise "
-                       "validity (ADR-001); source: --stdin, TRUTH_TRACKER_CMD, "
-                       "native work kernel if issue records exist, else "
-                       "`bd ready --json` (ADR-002 precedence)")
-    r.add_argument("--json", action="store_true")
-    r.add_argument("--stdin", dest="stdin_issues", action="store_true",
-                   help="read the issues JSON array from stdin instead of "
-                        "invoking a tracker command")
-    r.set_defaults(fn=cmd_ready)
-
-    im = sub.add_parser("impact", help="what knowledge does editing these "
-                        "paths endanger? (ADR-005; read-only prediction; "
-                        "exit 0 silent / 3 watched). --inverse flips the "
-                        "question: which tracked files does no active "
-                        "claim watch? (issue #5; exit 0 clean / 4 dark)")
-    im.add_argument("paths", nargs="*",
-                    help="repo-root-relative paths about to be edited "
-                         "(forward mode; forbidden with --inverse)")
-    im.add_argument("--inverse", action="store_true",
-                    help="list tracked files watched by NO active "
-                         "(non-retracted) claim -- the 24765 backward "
-                         "trace; exit 4 when dark files exist")
-    im.add_argument("--under", metavar="DIR",
-                    help="restrict --inverse to files under this "
-                         "repo-root-relative directory")
-    im.add_argument("--exclude", metavar="PREFIX", action="append",
-                    help="drop files under this path prefix from "
-                         "--inverse (repeatable; lockfiles, assets)")
-    im.add_argument("--json", action="store_true")
-    im.set_defaults(fn=cmd_impact)
-
-    bl = sub.add_parser("baseline", help="fold the ledger at a git ref: "
-                        "the frozen status account (10007, issue #3); "
-                        "--diff folds a second ref and prints the delta "
-                        "(exit 5 if any record DISAPPEARED -- rewritten "
-                        "history; exit 2 unreadable ref)")
-    bl.add_argument("ref", help="git ref to fold the ledger at (tag, sha, HEAD)")
-    bl.add_argument("--diff", metavar="REF_B",
-                    help="second (newer) ref: print born/transitions/"
-                         "disappeared between ref and REF_B")
-    bl.add_argument("--json", action="store_true",
-                    help="deterministic JSON (sorted; redirect to a file "
-                         "and commit it if you want a persisted baseline)")
-    bl.set_defaults(fn=cmd_baseline)
-
-    d = sub.add_parser("dispatch",
-                       help="print the verifier context (prompt + claim only) for a fresh session")
-    d.add_argument("claim_id")
-    d.set_defaults(fn=cmd_dispatch)
-
-    doc = sub.add_parser("doctor", help="check the installation, not just the scripts (G4)")
-    doc.add_argument("--json", action="store_true",
-                     help="the same run as one object: {ok, warn, fail} "
-                          "lists of {check, detail} plus failures/warnings "
-                          "counts; the exit code is unchanged (1 on "
-                          "failures)")
-    doc.set_defaults(fn=cmd_doctor)
-
-    val = sub.add_parser("validate", help="schema-check every ledger record")
-    val.add_argument("--stdin", action="store_true", help="read ledger from stdin")
-    val.set_defaults(fn=cmd_validate)
-
-    vb = sub.add_parser("vocab", help="the machine vocabulary (P2 "
-                        "contract): statuses, active set, verdict->status "
-                        "map, ADR-001 premise derivations, and the "
-                        "satellites' citation-blocking set -- one "
-                        "greppable line per key, or --json")
-    vb.add_argument("--json", action="store_true")
-    vb.set_defaults(fn=cmd_vocab)
+    for name, help_text, flags, fn in VERB_TABLE:
+        p = sub.add_parser(name, help=help_text)
+        for args_, kwargs_ in flags:
+            p.add_argument(*args_, **kwargs_)
+        p.set_defaults(fn=fn)
 
     args = ap.parse_args()
     # R2 (roadmap-v3): loud fail-open. An unwired commit gate means INV-A/
