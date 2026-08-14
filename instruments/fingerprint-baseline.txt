@@ -393,7 +393,7 @@
     O|     "no-capsule": 0
     O|   },
     O|   "capsule_stale_shapes": {},
-    O|   "head": "b4f1ac05f92c06a0c3ef11ebe69a1b6a6f3abc7c",
+    O|   "head": "<COMMIT>",
     O|   "dirty": true,
     O|   "claims": []
     O| }
@@ -414,7 +414,7 @@
     O|     "no-capsule": 0
     O|   },
     O|   "capsule_stale_shapes": {},
-    O|   "head": "b4f1ac05f92c06a0c3ef11ebe69a1b6a6f3abc7c",
+    O|   "head": "<COMMIT>",
     O|   "dirty": true,
     O|   "claims": [
     O|     {

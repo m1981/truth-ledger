@@ -63,12 +63,21 @@ norm() {
          -e 's/tr-[0-9a-f]{8}/<TR>/g' -e 's/wk-[0-9a-f]{8}/<WK>/g' \
          -e 's/sha256:[0-9a-f]{64}/<SHA>/g' \
          -e 's/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+]+/<TS>/g' \
-         -e 's/\b[0-9a-f]{40}\b/<COMMIT>/g' \
+         `# NO \b RULE HERE, deliberately. It used to read` \
+         `# s/\\b[0-9a-f]{40}\\b/<COMMIT>/g and was a NO-OP on macOS:` \
+         `# BSD sed has no \\b, so it silently matched nothing and two raw` \
+         `# 40-hex shas sat in the baseline. A baseline made on Linux and` \
+         `# one made here then disagreed for a reason that is not truthlib,` \
+         `# which is the worst kind of fingerprint diff: real, and about` \
+         `# nothing. Every sha is now normalised by the FIELD that carries` \
+         `# it, below -- keyed rules cannot silently match nothing, because` \
+         `# a field that stops appearing shows up as a diff.` \
          -e 's/[0-9]+\.[0-9]+ms|[0-9]+ms/<MS>/g' \
          -e 's/(-- )fatal:.*( \(exit 2: usage\))/\1<GIT-ERR>\2/' \
          -e 's/(baseline [^ ]+ )\([0-9a-f]{7,40}\)/\1(<SHORT>)/' \
          -e 's/("commit": ")[0-9a-f]{7,40}(")/\1<SHORT>\2/' \
-         -e 's/("anchor_commit": ")[0-9a-f]{40}(")/\1<COMMIT>\2/'
+         -e 's/("anchor_commit": ")[0-9a-f]{40}(")/\1<COMMIT>\2/' \
+         -e 's/("head": ")[0-9a-f]{40}(")/\1<COMMIT>\2/'
 }
 # `baseline` prints the ref's ABBREVIATED sha, in the text arm and as
 # "commit" in --json; the dispatch envelope prints the claim's full
