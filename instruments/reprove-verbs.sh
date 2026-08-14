@@ -85,7 +85,7 @@ row "M-F  ADR-037 generated refusal" gates \
 row "M-F2 SI-1 pathspec-magic refusal" shellio \
   'pathspec magic is refused' \
   'pathspec magic is rejected'
-row "M-A  events_at_ref exit 2 -> 3" shellio \
+row "M-A  events_at_ref exit 2 -> 3" cli \
   '        sys.exit(2)' \
   '        sys.exit(3)'
 row "M-G  baseline exit 5 -> 0" cli \
@@ -97,7 +97,7 @@ row "M-H  dispatch unknown-claim" cli \
 row "M-I  dispatch prompt-missing" cli \
   'truth: verifier prompt missing at {PROMPT_REL}' \
   'truth: verifier prompt absent at {PROMPT_REL}'
-row "M-J  G11 envelope integrity header" advisory \
+row "M-J  G11 envelope integrity header" contract \
   'numbered rules and ends with the ' \
   'numbered rules, ending with the '
 row "M-K  list row format" cli \
@@ -127,7 +127,7 @@ row "M-R  REAFFIRM_BASIS (filing arm)" evidence \
 row "M-S  reaffirm self-verdict warning" cli \
   'truth: WARNING: TRUTH_SELF_VERDICT=1 override active -- ' \
   'truth: WARNING: TRUTH_SELF_VERDICT=1 override on -- '
-row "M-T  queue reason (stale P0/P1)" advisory \
+row "M-T  queue reason (stale P0/P1)" reports \
   'reason = "evidence invalidated"' \
   'reason = "evidence went stale"'
 row "M-U  stats verdicts line" cli \
