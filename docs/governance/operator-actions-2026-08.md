@@ -43,7 +43,7 @@ scripts/truth claim "operator ruling 2026-08: the 3650-day TTL on the retracted 
 
 **Re-file** (you want a set-level ADR-series sentinel again): the live
 lineage descendant already exists without any scope override
-(tr-58c2d1f8, the ADR-series count sentinel), so a re-file is only needed
+(tr-6207afe1, the ADR-series count sentinel), so a re-file is only needed
 if that one is retired; the honest shape is the default 30-day decay:
 
 ```sh
@@ -215,10 +215,10 @@ The P6 release bump did stale the previous sentinel generation as this
 note predicted; the closing session filed and citation-swapped the
 successors the same day, and an independent verifier session
 (s-verifier-p6-pins) agreed all three: the ADR-series sentinel then
-counting 001–047 (fourth link in that chain today: tr-58c2d1f8),
+counting 001–047 (fourth link in that chain today: tr-6207afe1),
 tr-010f7e96 (explainer Scope at v0.9.31), and the check-truth gate
 sentinel then pinned at the v0.9.31 lockstep line (current link in that
-chain: tr-9dd65399). The three staled intermediates were appended
+chain: tr-84a9a3e3). The three staled intermediates were appended
 to the (c) retraction block above. Nothing further is owed here; the
 standing rule stays: every release bump re-runs this succession
 ceremony from the committing session.
