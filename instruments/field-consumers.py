@@ -86,7 +86,21 @@ ZERO KEYS EXAMINED IS A FAILURE, never a pass (ADR-042 rule 2). A sweep
 that measured nothing has not proven anything clean.
 
 Usage: python3 instruments/field-consumers.py [--json]
-Gate:  scripts/test-instruments.sh
+
+GATE: NONE, and that is a defect this file must not hide. This line used
+to read "Gate: scripts/test-instruments.sh", which is false -- that suite
+gates five other instruments and has never referenced this one. So this
+check runs on nobody's schedule, which is exactly what ADR-048 calls
+prose rather than a check.
+
+Not wiring it was deliberate and is on record: it exits 1 today on the
+`reaffirm_cleared` finding, and wiring a knowingly-red gate into pre-push
+trains `--no-verify`, which is worse than the gap. The claim in the
+docstring was NOT deliberate -- it was drift, found by an adversary pass,
+in the very instrument whose subject is "a field nothing reads". Wire
+this the moment the finding is closed (F3.5 / wk-ec243a48), or exempt the
+field in .truth/field-consumer-opt-out and wire it now. Either closes it;
+a docstring naming a gate that does not exist closes nothing.
 """
 import ast
 import json
