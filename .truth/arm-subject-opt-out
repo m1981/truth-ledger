@@ -1,0 +1,27 @@
+# Families exempted from declaring what they guard (A6,
+# instruments/arm-index.py). One entry per line:
+#
+#   <family header text> -- <why this arm guards nothing nameable>
+#
+# ABSENT          -> no policy on record; the sweep excuses NOTHING and
+#                    says so loudly (it cannot tell an exemption from an
+#                    oversight).
+# COMMITTED EMPTY -> a conscious "every enforced family must name its
+#                    subject". Armed and silent.
+# POPULATED       -> armed, and every entry is re-checked: an exemption
+#                    for a family that no longer exists FAILS.
+#
+# THIS FILE IS DELIBERATELY EMPTY. Two families fail as it is committed
+# and that is the point of the instrument, not a reason to excuse them:
+#
+#   (no family header)   12 assertions sit above the canary's first
+#                        `say "FAULT ..."` line, so they belong to no
+#                        family and nothing says what they guard.
+#   FAULT L              the only canary family with no parenthesised
+#                        subject tag at all.
+#
+# Exempting them here would convert the finding into a list nobody reads,
+# which is the failure mode the opt-out mechanism itself warns about.
+#
+# attested 2026-08-15: nothing here guards nothing; the two failures are a
+# backlog to close, not a policy to record.
