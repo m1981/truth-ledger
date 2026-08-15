@@ -7,9 +7,20 @@ signal.
 
 ## 1. Fork-permanent hash-tree ordering (TLR)
 
-`tlr-target-architecture-and-adrs.md` + executable spec `test-tlr-fold.py`
-— 18/18 checks including negative controls (re-run 2026-07-20 from this
-location). The falsified-then-repaired hash-TREE redesign of the ledger's
+`tlr-target-architecture-and-adrs.md`. The design record stays; its
+executable spec `test-tlr-fold.py` was DELETED on 2026-08-15 (18/18 when
+last re-run, 2026-07-20). Why: an architecture review named the prototype
+scientific decoration and the argument holds — Git is already a Merkle
+DAG, so a second one inside a JSONL file it tracks is a matryoshka; the
+anti-grinding property defends against nonce grinding by an attacker who,
+in a private repository, already has write access to the code and the
+hooks; and the order-contestation property enumerated all N! linear
+extensions with an arbitrary N<=6 cap where a deterministic precedence
+lattice answers the same question. The DESIGN record is kept deliberately
+and separately: it carries two adversarial review rounds, including a
+falsification that mattered, and deleting an argument because its
+prototype was over-built is how a repository forgets why it decided
+something. The falsified-then-repaired hash-TREE redesign of the ledger's
 ordering primitive (TLR-002/013/014 and dependents, two adversarial review
 rounds deep). The linear prev-hash chain was falsified for this regime
 (concurrent O_APPEND appenders fork it; union merge breaks it both ways);
