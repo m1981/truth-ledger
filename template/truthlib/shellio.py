@@ -30,6 +30,54 @@ from datetime import datetime, timedelta, timezone
 from truthlib.registry import *
 from truthlib.kernel import *
 
+# --- A3: the explicit substitution seam ----------------------------------
+# What this replaces: `scripts/truth` used to install a _MirrorModule whose
+# __setattr__ pushed every assignment into the eight truthlib modules, and
+# a _self_module() that found its own module object via gc.get_referrers().
+# All of that existed so a test could write `tm.ledger_path = ...` and have
+# the three modules that star-imported the name (gates, shellio, cli) see
+# it. Seven assignments of TWO names, paid for with metaclass surgery in
+# the production loading path and a gc walk that a Python upgrade could
+# break in a way nobody could read (ADR-044 shipped it knowingly, as the
+# equivalence proof for the package split; the migration is over).
+#
+# The indirection now lives INSIDE the function instead of in module
+# namespaces, so every star-imported binding already points at the one
+# object that consults this dict. Nothing needs mirroring.
+_OVERRIDES = {}
+# An allowlist, not a free dict: the old seam silently did nothing when a
+# name was bound nowhere, so a typo was indistinguishable from a patch.
+CONFIGURABLE = frozenset(("repo_root", "ledger_path"))
+
+def configure(**fns):
+    """A3: the ONE supported way to substitute an I/O primitive, for tests.
+    Returns a zero-argument restore callable, so each caller puts back
+    exactly what it found and nesting is safe -- `reset_configuration()`
+    clears everything and is the blunt instrument."""
+    unknown = sorted(set(fns) - CONFIGURABLE)
+    if unknown:
+        raise ValueError(
+            f"truthlib.configure: {', '.join(unknown)} is not configurable "
+            f"(allowed: {', '.join(sorted(CONFIGURABLE))}). The old mirror "
+            "seam accepted any name and silently did nothing when it was "
+            "bound nowhere, which made a typo look like a patch.")
+    missing = object()
+    previous = {k: _OVERRIDES.get(k, missing) for k in fns}
+    _OVERRIDES.update(fns)
+
+    def restore():
+        for k, v in previous.items():
+            if v is missing:
+                _OVERRIDES.pop(k, None)
+            else:
+                _OVERRIDES[k] = v
+    return restore
+
+def reset_configuration():
+    """Drop every override. Production never calls this; it is the reset a
+    suite runs between cases when it does not want to thread restores."""
+    _OVERRIDES.clear()
+
 def repo_root():
     """A1 -- DECLARED EXCEPTION, this exit stays. Fourteen call sites take
     the result as a path and build on it; there is no partial answer to
@@ -43,6 +91,8 @@ def repo_root():
     and never calls this function. The operative claim (every CALLER of
     repo_root needs a path) holds; the universal one did not, and a
     plausible-sounding reason that does not hold is worse than none."""
+    if "repo_root" in _OVERRIDES:            # A3 seam; empty in production
+        return _OVERRIDES["repo_root"]()
     r = subprocess.run(["git", "rev-parse", "--show-toplevel"],
                        capture_output=True, text=True)
     if r.returncode != 0:
@@ -50,6 +100,8 @@ def repo_root():
     return r.stdout.strip()
 
 def ledger_path():
+    if "ledger_path" in _OVERRIDES:          # A3 seam; empty in production
+        return _OVERRIDES["ledger_path"]()
     return os.path.join(repo_root(), LEDGER_REL)
 
 def now_dt():

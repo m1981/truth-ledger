@@ -2847,21 +2847,24 @@ class TestAppendSingleWrite(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, ".truth", "claims.jsonl")
-            orig_lp, orig_write = tm.ledger_path, tm.os.write
+            orig_write = tm.os.write
             calls = []
 
             def counting_write(fd, data):
                 calls.append(len(data))
                 return orig_write(fd, data)
 
-            tm.ledger_path = lambda: path
+            # A3: the explicit seam replaced the entry's __setattr__
+            # mirror; tm.os.write stays a plain attribute patch because
+            # `os` is the real module, shared by every importer.
+            restore_lp = tm.configure(ledger_path=lambda: path)
             tm.os.write = counting_write
             try:
                 big = claim_p(text="scope " * 4000)  # ~24KB > stdio buffer
                 tm.append_record("claim", big)
             finally:
                 tm.os.write = orig_write
-                tm.ledger_path = orig_lp
+                restore_lp()
             self.assertEqual(len(calls), 1,
                              "append_record must issue exactly one write(2)")
             with open(path, encoding="utf-8") as f:
@@ -2878,19 +2881,19 @@ class TestAppendRecords(unittest.TestCase):
 
     def _counting(self, path):
         """Monkeypatch ledger_path + os.write; returns (calls, restore)."""
-        orig_lp, orig_write = tm.ledger_path, tm.os.write
+        orig_write = tm.os.write
         calls = []
 
         def counting_write(fd, data):
             calls.append(bytes(data))
             return orig_write(fd, data)
 
-        tm.ledger_path = lambda: path
+        restore_lp = tm.configure(ledger_path=lambda: path)
         tm.os.write = counting_write
 
         def restore():
             tm.os.write = orig_write
-            tm.ledger_path = orig_lp
+            restore_lp()
         return calls, restore
 
     def test_two_record_batch_is_one_write_parseable_and_ordered(self):
@@ -3096,9 +3099,7 @@ class TestLastLedgerTsTailSeek(unittest.TestCase):
         os.makedirs(os.path.dirname(path))
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
-        orig_lp = tm.ledger_path
-        tm.ledger_path = lambda: path
-        self.addCleanup(setattr, tm, "ledger_path", orig_lp)
+        self.addCleanup(tm.configure(ledger_path=lambda: path))
         return path
 
     @staticmethod
@@ -3968,12 +3969,11 @@ class TestLoadersReturnErr(unittest.TestCase):
             os.makedirs(os.path.join(d, ".truth"), exist_ok=True)
             with open(os.path.join(d, rel), "w", encoding="utf-8") as f:
                 f.write(content)
-            orig = tm.repo_root
-            tm.repo_root = lambda: d
+            restore = tm.configure(repo_root=lambda: d)
             try:
                 return fn()
             finally:
-                tm.repo_root = orig
+                restore()
 
     def test_generated_globs_magic_line_returns_error(self):
         globs, source, err = self._load(tm.GENERATED_PATHS_REL,
@@ -4971,6 +4971,100 @@ class TestModulePurity(unittest.TestCase):
                         f"truthlib/{name}.py calls open() -- pure modules "
                         "take file content as data (ADR-044; the "
                         "allowlist is empty by design)")
+
+
+class TestConfigureSeam(unittest.TestCase):
+    """A3: the explicit substitution seam that replaced the entry's
+    _MirrorModule.__setattr__ and its gc.get_referrers self-lookup.
+
+    The property that made the mirror necessary, and that this seam must
+    reproduce: three modules star-import `ledger_path` and `repo_root`
+    (gates, shellio, cli), so rebinding the name on ONE of them used to
+    leave the other two on the original. The indirection now lives inside
+    the function, so all three bindings are the same object."""
+
+    def tearDown(self):
+        tm.reset_configuration()
+
+    def test_the_override_reaches_every_star_importing_module(self):
+        # The exact property the mirror existed for. If this passes while
+        # the mirror is gone, the mirror was replaceable.
+        import truthlib.gates, truthlib.cli, truthlib.shellio
+        tm.configure(ledger_path=lambda: "/seam/probe")
+        for mod in (truthlib.gates, truthlib.cli, truthlib.shellio):
+            self.assertEqual(mod.ledger_path(), "/seam/probe",
+                             f"{mod.__name__} did not see the override")
+
+    def test_restore_is_exact_and_nests(self):
+        outer = tm.configure(ledger_path=lambda: "/outer")
+        inner = tm.configure(ledger_path=lambda: "/inner")
+        self.assertEqual(tm.ledger_path(), "/inner")
+        inner()
+        self.assertEqual(tm.ledger_path(), "/outer",
+                         "restoring the inner override must not clear the "
+                         "outer one -- the mirror's blunt restore is the "
+                         "behaviour this seam is supposed to improve on")
+        outer()
+        self.assertNotIn("ledger_path", tm._OVERRIDES)
+
+    def test_production_default_is_no_override(self):
+        # The seam must be inert unless a test asks for it.
+        self.assertEqual(tm._OVERRIDES, {})
+
+    def test_an_unconfigurable_name_raises(self):
+        # The mirror accepted ANY name and silently did nothing when it
+        # was bound nowhere, so a typo looked exactly like a patch.
+        with self.assertRaises(ValueError) as cm:
+            tm.configure(ledger_pth=lambda: "/typo")
+        self.assertIn("not configurable", str(cm.exception))
+        self.assertEqual(tm._OVERRIDES, {},
+                         "a refused configure must leave no partial state")
+
+
+class TestEntryLoadingStyles(unittest.TestCase):
+    """A3 constraint: SourceFileLoader compatibility is a SHIPPED contract
+    (ADR-044) -- consumers and suites load the entry that way. The mirror
+    is gone; the three loading styles must not be."""
+
+    ENTRY = os.path.join(HERE, "truth")
+
+    def test_source_file_loader_style(self):
+        from importlib.machinery import SourceFileLoader
+        mod = SourceFileLoader("truth_probe_a", self.ENTRY).load_module()
+        self.assertTrue(callable(mod.fold))
+        self.assertTrue(callable(mod.configure))
+
+    def test_spec_exec_module_style(self):
+        import importlib.util
+        from importlib.machinery import SourceFileLoader
+        # An explicit loader is REQUIRED: the entry has no .py suffix, so
+        # spec_from_file_location cannot infer one and returns None. That
+        # is a property of the shipped filename, not of this refactor.
+        spec = importlib.util.spec_from_file_location(
+            "truth_probe_b", self.ENTRY,
+            loader=SourceFileLoader("truth_probe_b", self.ENTRY))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)          # NOT registered in sys.modules
+        self.assertTrue(callable(mod.fold))
+
+    def test_main_style_runs(self):
+        # The third style: executed as a script. `vocab` is the cheapest
+        # verb that needs no repository.
+        import subprocess
+        r = subprocess.run(["python3", self.ENTRY, "vocab"],
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("statuses:", r.stdout)
+
+    def test_the_entry_no_longer_reaches_into_the_gc(self):
+        with open(self.ENTRY, encoding="utf-8") as f:
+            src = f.read()
+        code = "\n".join(l for l in src.split("\n")
+                         if not l.lstrip().startswith("#"))
+        for banned in ("import gc", "get_referrers", "_MirrorModule",
+                       "_self_module"):
+            self.assertNotIn(banned, code,
+                             f"{banned} is back in the production entry")
 
 
 class TestIntakeStageReturns(unittest.TestCase):
