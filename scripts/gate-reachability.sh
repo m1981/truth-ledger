@@ -91,7 +91,8 @@ LS="git ls-files --cached --others --exclude-standard"
 CHECKS="$($LS \
   'scripts/test-*.sh' 'scripts/*-health.sh' 'scripts/gate-*.sh' \
   'template/scripts/*-health.sh' 'template/scripts/truth-canary.sh' \
-  'template/scripts/test-*.py' 'template/scripts/session-close.sh' | sort -u)"
+  'template/scripts/test-*.py' 'template/scripts/session-close.sh' \
+  'instruments/field-consumers.py' | sort -u)"
 ROOTS="$($LS '.githooks/*' | sort -u)
 $($LS '.claude/settings.json')
 $($LS 'template/scripts/install-hooks.sh')"

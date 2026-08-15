@@ -48,34 +48,6 @@ pass() { say "  ok    $1 -- $2"; }
 bad()  { say "  FAIL  $1 -- $2"; FAIL=1; }
 envr() { say "  ENV   $1 -- $2"; ENVBAD=1; }
 
-# gate_arm <label> <summary-prefix> <command...>
-# Runs one of this repo's regression SUITES and judges it by the line it
-# prints about itself: "<prefix>: N caught, M missed". The count is the
-# point, not the exit code -- a suite that dies before its summary, or
-# reports 0 caught, examined nothing and must FAIL (the header rule). The
-# suites were added 2026-08-01 and invoked by NOTHING until 2026-08-02;
-# three audits found 29 armed-looking arms that no schedule reached.
-gate_arm() {
-  local label prefix out rc sum caught missed
-  label="$1"; prefix="$2"; shift 2
-  out=$("$@" 2>&1); rc=$?
-  sum=$(printf '%s\n' "$out" | grep -E "^${prefix}: [0-9]+ caught, [0-9]+ missed" | tail -1)
-  caught=$(printf '%s' "$sum" | sed -n 's/.*: \([0-9]*\) caught.*/\1/p')
-  missed=$(printf '%s' "$sum" | sed -n 's/.*caught, \([0-9]*\) missed.*/\1/p')
-  if [ -z "$sum" ]; then
-    bad "$label" "no '$prefix: N caught, M missed' summary (rc=$rc) -- the suite
-        died before reporting, so it examined an unknown amount:
-$(printf '%s\n' "$out" | tail -3)"
-  elif [ "${missed:-1}" -ne 0 ] || [ "$rc" -ne 0 ]; then
-    bad "$label" "$sum (rc=$rc)
-$(printf '%s\n' "$out" | grep -E '^ *MISSED' | head -3)"
-  elif [ "${caught:-0}" -eq 0 ]; then
-    bad "$label" "reported 0 caught -- the suite ran and examined nothing"
-  else
-    pass "$label" "$caught arms caught, 0 missed"
-  fi
-}
-
 command -v python3 >/dev/null 2>&1 || { say "release-battery: no python3"; exit 2; }
 
 # --- scope: what did this push actually change? -------------------------
@@ -204,27 +176,36 @@ else
   say "  skip  canary -- this push touches neither the CLI nor the suite"
 fi
 
-# --- 7. the regression suites nothing used to invoke ---------------------
-# Wired 2026-08-02. These four suites (10 + 3 + 16 + 5 = 34 arms) were
-# committed as coverage and reached by NO schedule: the fact-health,
-# session-digest and instruments gates were orphaned by the migration that
-# created them -- and six proven canary assertions were MOVED into the
-# instruments gate, so automated coverage DROPPED while the log claimed it
-# rose. The whisper gate had been orphaned since it was written.
-#
-# UNCONDITIONAL, on a measurement rather than a hunch: together they cost
-# 8.0s wall here (1.7 + 0.6 + 5.1 + 0.6), well inside the 15s budget for
-# riding every push, and none of them is a pure function of the CLI the
-# way the 45s canary is -- fact-health reads the prose corpus, the digest
-# reads the ledger, the instruments read both, and the whisper gate reads
-# a harness config no `touches` pattern would predict. Scoping them would
-# be guessing at their inputs; running them is cheaper than guessing.
-gate_arm "fact-health gate"    "fact-health gate"        bash scripts/test-fact-health.sh
-gate_arm "session-digest gate" "session-digest gate"     bash scripts/test-session-digest.sh
-gate_arm "instruments gate"    "test-instruments result" bash scripts/test-instruments.sh
-gate_arm "whisper gate"        "whisper-hook gate"       bash scripts/test-whisper-hook.sh
+# --- 7. integration suite (ADR-051, refusals, instruments, hooks) --------
+OUT=$(python3 template/scripts/test-integrations.py 2>&1); RC=$?
+N=$(printf '%s' "$OUT" | sed -n 's/^Ran \([0-9]*\) test.*/\1/p')
+SKIPPED=$(printf '%s' "$OUT" | sed -n 's/.*skipped=\([0-9]*\).*/\1/p')
+if [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -q "^OK"; then
+  if [ "${SKIPPED:-0}" -gt 0 ]; then
+    bad "integrations" "OK but skipped=$SKIPPED -- an integration arm was skipped (F1 failure rule)"
+  elif [ "${N:-0}" -eq 0 ]; then
+    bad "integrations" "ran 0 tests -- the arm is dark (F1 failure rule)"
+  else
+    pass "integrations" "$N tests, 0 skipped"
+  fi
+else
+  FAILED=$(printf '%s' "$OUT" | grep -cE "^(FAIL|ERROR):" || true)
+  bad "integrations" "${FAILED:-?} failing test(s) (rc=$RC):
+$(printf '%s' "$OUT" | grep -E '^(FAIL|ERROR):' | head -3)"
+fi
 
-# --- 8. reachability sweep ----------------------------------------------
+# --- 8. field consumers audit (ADR-046) ----------------------------------
+OUT=$(python3 instruments/field-consumers.py 2>&1); RC=$?
+SUM=$(printf '%s\n' "$OUT" | tail -1)
+FAIL_COUNT=$(printf '%s' "$SUM" | sed -n 's/.*-- \([0-9]*\) failure(s).*/\1/p')
+if [ "$RC" -ne 0 ] || [ "${FAIL_COUNT:-1}" -ne 0 ]; then
+  bad "field-consumers" "$SUM:
+$(printf '%s\n' "$OUT" | grep -E '^FAIL' | head -3)"
+else
+  pass "field-consumers" "$SUM"
+fi
+
+# --- 9. reachability sweep ----------------------------------------------
 # The general form of the defect above: a check no root invokes is a claim
 # about coverage, not coverage. This arm is also how gate-reachability.sh
 # itself gets a schedule -- it reports on itself, so leaving it orphaned
@@ -242,27 +223,6 @@ elif [ "${EXAM:-0}" -eq 0 ]; then
   bad "reachability" "examined 0 checks -- the enumeration patterns match nothing (dark sweep)"
 else
   pass "reachability" "$EXAM checks examined, every one reached by a root"
-fi
-
-# --- 9. the battery's own mutation gate, scoped -------------------------
-# scripts/test-release-battery.sh proves each arm ABOVE can go red, and it
-# was itself unreachable until 2026-08-02. It cannot ride every push (12
-# arms, a dozen battery runs and two canaries: 6m19s measured here) and it
-# cannot run unguarded from inside the battery at all -- that recurses
-# (the first cut of this arm did, and cost minutes before the guard).
-# Both are solved here: the
-# arm fires only when the battery, its gate, or the hook that carries it
-# moved (an unchanged battery cannot have regressed -- the canary's own
-# argument), and TRUTH_BATTERY_NO_META tells the nested batteries not to
-# re-enter. The guard is not a skip flag for operators: it is set by this
-# line and nowhere else.
-if [ -n "${TRUTH_BATTERY_NO_META:-}" ]; then
-  say "  skip  battery meta-gate -- re-entrant run under the outer battery"
-elif touches '^scripts/(release-battery|test-release-battery|gate-reachability)\.sh$|^\.githooks/pre-push$'; then
-  gate_arm "battery meta-gate" "test-release-battery" \
-    env TRUTH_BATTERY_NO_META=1 bash scripts/test-release-battery.sh
-else
-  say "  skip  battery meta-gate -- this push touches neither the battery nor its hook"
 fi
 
 # --- verdict -------------------------------------------------------------

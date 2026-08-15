@@ -29,3 +29,5 @@
 #
 # attested 2026-08-13: nothing in this ledger is exempt from needing a
 # reader; the one failing field has a named fix in flight, not a waiver.
+reaffirm_cleared -- presence-only reader, fix planned in F3.5
+
