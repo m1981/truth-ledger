@@ -5,7 +5,7 @@
 > Jedno zadanie naraz. Po każdym: weryfikacja → status → wpis w JOURNAL → commit.
 
 Gałąź robocza: `claude/git-hooks-architecture-zc97y3`
-Commit bazowy: `fa2e85b` · rewizja runbooka: `r3` (2026-08-16, po audycie 1.1)
+Commit bazowy: `fa2e85b` · rewizja runbooka: `r4` (2026-08-16, blokada J-018)
 
 ---
 
@@ -58,6 +58,32 @@ z góry w runbooku** (patrz 2.6).
 | żywych claimów | 61 | **≥ 61** (patrz 1.2 — nie wolno stracić) |
 | `unexecutable` | 0 | **0** |
 | ADR-y / wycofane | 54 / 0 | 54 / 54 zarchiwizowane |
+
+---
+
+# FAZA 0 — BLOKADA (wykryta 2026-08-16, J-018)
+
+### [ ] 0.1 Naprawić przekazywanie ledgera do bramek zdrowia — **BLOKUJE KAŻDY PUSH**
+
+`truth list --json` = **145 576 B** > `MAX_ARG_STRLEN` = **131 072 B**.
+Dwie bramki są MARTWE (`Argument list too long`):
+
+| plik | tier |
+|---|---|
+| `scripts/fact-health.sh` | meta-repo |
+| `template/scripts/spec-health.sh` | **Tier A — ships do konsumenta** |
+
+Korekta: JSON plikiem tymczasowym zamiast zmienną środowiskową
+(`mktemp` + `trap` + `json.load(open(os.environ["CLAIMS_FILE"]))`).
+
+**Weryfikacja:**
+```bash
+bash scripts/fact-health.sh | tail -1              # niezerowa liczba cytowań
+bash template/scripts/spec-health.sh | tail -1
+git push                                            # bateria przechodzi
+```
+**Zaliczone gdy:** obie bramki raportują **niezerową** liczbę zbadanych
+pozycji (sweep pusty = sweep ciemny), a push przechodzi bez `--no-verify`.
 
 ---
 

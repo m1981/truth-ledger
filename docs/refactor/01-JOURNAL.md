@@ -535,3 +535,98 @@ poprawiony w r3.
 i podstawienia procesów), oraz `.truth/evidence-allow` konsumenta, który może
 zawierać programy z własnymi kanałami wykonania (ADR-040 audytował 28 wpisów
 i usunął trzy: `rg`, `file`, `date`).
+
+---
+
+## J-018 · BLOKADA: dwie bramki zdrowia są MARTWE — przekroczony limit rozmiaru zmiennej środowiskowej · 2026-08-16
+
+Push zablokowany przez `release-battery.sh` (hooki uzbrojone w J-015 — bramka
+zadziałała zgodnie z przeznaczeniem):
+
+```
+FAIL  fact-health -- scripts/fact-health.sh: line 76:
+      /usr/local/bin/python3: Argument list too long
+```
+
+**To nie jest szum środowiskowy. To sufit systemowy, trafiony na żywo.**
+
+### Pomiar
+
+```
+truth list --json                        → 145 576 bajtów (142 KiB)
+MAX_ARG_STRLEN (Linux, 32 × PAGESIZE)    → 131 072 bajtów (128 KiB)
+                                           PRZEKROCZONY o 14 504 bajtów
+ARG_MAX (całość argv+env)                → 2 097 152 bajtów
+```
+
+### Zasięg — dwie bramki, nie jedna
+
+```
+bash template/scripts/spec-health.sh
+→ line 37: /usr/local/bin/python3: Argument list too long
+```
+
+Wzorzec „JSON przez zmienną środowiskową" występuje w trzech plikach:
+
+| plik | tier | stan |
+|---|---|---|
+| `scripts/fact-health.sh` | meta-repo | **MARTWY** |
+| `template/scripts/spec-health.sh` | **Tier A — SHIPS DO KONSUMENTA** | **MARTWY** |
+| `scripts/release-battery.sh` | meta-repo | działa (nie eksportuje ledgera) |
+
+### Przyczyna źródłowa: komentarz mierzył NIEWŁAŚCIWĄ STAŁĄ
+
+`template/scripts/spec-health.sh` niesie własne ostrzeżenie:
+
+> *„JSON travels via env vars — fine at current ledger size; revisit before the
+> ledger approaches ARG_MAX (~1MB on macOS)."*
+
+Wiążącym limitem na Linuksie **nie jest ARG_MAX (2 MiB)**, tylko
+**MAX_ARG_STRLEN = 128 KiB** — limit na POJEDYNCZY łańcuch, 16× mniejszy.
+Zapowiedziany margines był zawyżony o ponad rząd wielkości: bramka miała
+umrzeć przy ~1 MB, umarła przy 142 KiB.
+
+### Dobra połowa: awaria jest GŁOŚNA
+
+Pytanie z analizy wstępnej brzmiało: ciche obcięcie czy głośne `E2BIG`?
+**Odpowiedź: głośne.** `execve` odmawia, skrypt kończy niezerowo, bateria
+blokuje push. Żadna z bramek nie raportowała fałszywej zieleni. To jest
+najlepszy możliwy tryb tej awarii — ale bramki są martwe od momentu, w którym
+ledger przekroczył 128 KiB, i **nikt tego nie zauważył, dopóki hooki nie
+zostały uzbrojone** (J-015). Bez decyzji właściciela o uzbrojeniu ten defekt
+byłby nadal niewidoczny.
+
+### Konsekwencja dla produktu
+
+`spec-health.sh` jest Tier A i **trafia do każdego konsumenta**. Umiera
+w momencie, w którym ledger konsumenta przekroczy 128 KiB — u nas stało się to
+przy **223 claimach / 4 555 rekordach**. To nie jest odległe ryzyko; to typowa
+wielkość po kilku tygodniach użycia.
+
+### Proponowana korekta — precyzyjna, dwie linie na plik
+
+Przekazać JSON **plikiem tymczasowym**, nie zmienną środowiskową:
+
+```bash
+TMP="$(mktemp)"; trap 'rm -f "$TMP"' EXIT
+scripts/truth list --json > "$TMP"
+export CLAIMS_FILE="$TMP"          # zamiast: export CLAIMS_JSON
+# w bloku python:
+claims = {r["id"]: r for r in json.load(open(os.environ["CLAIMS_FILE"]))}
+```
+
+Limit znika (ścieżka ma kilkadziesiąt bajtów), semantyka bez zmian, `trap`
+sprząta. `VOCAB_JSON` i `FILES` mogą zostać — są małe; ale ten sam wzorzec
+warto zastosować do `FILES` w repo z dużą liczbą plików.
+
+**To jest zmiana w kodzie produkcyjnym** (`template/scripts/spec-health.sh`
+jest Tier A), więc leży poza zakresem kroku 1.1 i wymaga decyzji właściciela
+o wpięciu do runbooka.
+
+### Stan bieżący
+
+* Commit `72a0099` (krok 1.1) **jest wykonany lokalnie**.
+* **Push zablokowany.** `--no-verify` **NIE użyte** — bateria zgłasza realny
+  defekt, a obejście byłoby dokładnie zamiataniem pod dywan, którego zakazuje
+  reguła 4.
+* Praca nie jest wypchnięta; kontener jest efemeryczny.
