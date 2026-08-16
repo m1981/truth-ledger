@@ -350,3 +350,188 @@ JEST tą decyzją.
 
 **Żaden plik produkcyjny nadal nie został dotknięty.**
 Następny krok: **1.1 — audyt screenera dowodowego (read-only)**.
+
+---
+
+## J-015 · DECYZJA: hooki uzbrojone — i natychmiast wyprodukowały 16 FAŁSZYWYCH zestaleń · 2026-08-16
+
+```
+git config core.hooksPath .githooks     → ustawione
+python3 template/scripts/truth invalidate-scan
+→ stale: tr-599e7561 (anchor unreachable)
+→ ... 16 razy ...
+→ invalidate-scan: 16 claim(s) marked stale
+```
+
+Skutek natychmiastowy: ledger **4555 → 4571**, żywych claimów **61 → 47 (−23%)**.
+
+**Diagnoza.** Sprawdziłem kotwice wszystkich 16 zestalonych claimów przeciwko
+historii klonu:
+
+```
+tr-58707dac  kotwica 8a5595451520  obecna_w_klonie=NIE
+tr-0caaf857  kotwica 56c5af368b4e  obecna_w_klonie=NIE
+... (16/16) ...
+obecnych: 0   nieobecnych: 16
+```
+
+**Wszystkie 16 kotwic leżało poza 52-commitowym oknem płytkiego klonu (J-003).**
+Żaden z tych claimów nie był zestały w rzeczywistości — `anchor unreachable
+(history rewritten)` opisywał wyłącznie artefakt kontenera.
+
+**Precyzja tego uruchomienia: 0/16.** To jest ta sama teza, którą refaktor
+adresuje, zaobserwowana na żywo: heurystyka zestalenia wystrzeliła 16 razy
+i nie miała racji ani razu.
+
+**Korekta.** 16 rekordów było **niezacommitowanych**, więc `git checkout --
+.truth/claims.jsonl` je cofnął — **żadna historia nie została przepisana**,
+bo nigdy nie weszły do historii. Gdyby weszły, ledger jest append-only i te
+16 fałszywych zestaleń zostałoby w nim na zawsze.
+
+**Usunięcie przyczyny źródłowej:** `git fetch --unshallow` → 431 commitów,
+`shallow: false`. Skan powtórzony:
+
+```
+invalidate-scan: 0 claim(s) marked stale
+rekordów: 4555   żywych: 61   git status: (czysto)
+```
+
+Stan przywrócony w całości. Hooki pozostają uzbrojone zgodnie z decyzją
+właściciela — **przyczyną nie były hooki, tylko płytki klon pod nimi.**
+
+**Wniosek operacyjny dla konsumentów:** `install-hooks.sh` w płytkim klonie
+(CI z `fetch-depth: 1` jest normą w GitHub Actions) wyprodukuje dokładnie ten
+sam kaskadowy fałszywy alarm. To kandydat na osobną pozycję — bramka powinna
+odmówić skanu przy `is-shallow-repository = true` zamiast raportować cudze
+kotwice jako nieosiągalne.
+
+---
+
+## J-016 · ZMIANA BASELINE: pogłębienie klonu rozwiązało J-003 · 2026-08-16
+
+```
+python3 template/scripts/test-integrations.py → Ran 28 tests, OK
+```
+
+Porażka `test_blast_report_real_and_sandbox` (`'shallow' != 'ok'`) **zniknęła**.
+`zastępuje: J-003` w części dotyczącej baseline'u suit (diagnoza przyczyny
+w J-003 pozostaje poprawna).
+
+**Nowy baseline bramki regresji:**
+
+| suita | było | jest |
+|---|---|---|
+| test-integrations | `Ran 28`, 1 failure | **`Ran 28`, OK** |
+
+Pozostałe bez zmian. J-002 (jsonschema: 1 failure + 3 skipy) obowiązuje dalej —
+`git fetch` tego nie dotyka.
+
+---
+
+## J-017 · KROK 1.1 — audyt screenera dowodowego · 2026-08-16 · WERDYKT: GO
+
+**Mechanizm (odczyt kodu).** Receptury wykonują się przez `/bin/sh`:
+
+```
+template/truthlib/shellio.py:185
+  r = subprocess.run(cmd, shell=True, capture_output=True, cwd=cwd)
+```
+
+Screener (`evidence.py:178 screen_evidence_command`) jest zatem jedyną obroną.
+**Jest istotnie mocniejszy, niż zakładałem w analizie wstępnej** — moja hipoteza
+„allowlista sprawdza tylko pierwszy token" była **BŁĘDNA**. Screener:
+
+* odrzuca `$(` i backtick bezwarunkowo, przed tokenizacją;
+* odrzuca każdy znak sterujący ASCII poza tabem (ADR-021 — udokumentowana
+  rozbieżność między lexerem `shlex` a `/bin/sh`, gdzie newline jest
+  separatorem instrukcji);
+* tokenizuje **quote-aware** (`shlex` w trybie punctuation), więc `|` wewnątrz
+  cytowanego regexa jest argumentem, nie potokiem;
+* traktuje `;`, `&&`, `|`, `&` jako granice segmentów i screenuje program
+  **KAŻDEGO segmentu**, nie tylko pierwszego;
+* denylist wygrywa z allowlistą (ADR-022);
+* dopuszcza redirect wyjścia wyłącznie do `/dev/null` lub deskryptora;
+* odrzuca ścieżki w pozycji programu.
+
+**Macierz prób (19 wektorów, sandbox `mktemp -d`, allowlista: grep cat wc ls
+head tail echo):**
+
+| # | wektor | werdykt | powód / skutek |
+|---|---|---|---|
+| 1 | `cat f.txt` | PRZYJĘTA | baseline pozytywny, brak skutku ubocznego |
+| 2 | `rm f.txt` | ODRZUCONA | `'rm' is not in .truth/evidence-allow` |
+| 3 | `awk '{print}' f.txt` | ODRZUCONA | `'awk' is not in .truth/evidence-allow` |
+| 4 | `cat f.txt; rm f.txt` | ODRZUCONA | **`'rm' is not in ...`** — screening per segment |
+| 5 | `cat f.txt && rm f.txt` | ODRZUCONA | j.w. |
+| 6 | `cat f.txt \| sh` | ODRZUCONA | `'sh' is on the template-owned evidence deny baseline` |
+| 7 | `cat $(echo f.txt)` | ODRZUCONA | `command substitution ... is not screenable (ADR-009)` |
+| 8 | ``cat `echo f.txt` `` | ODRZUCONA | j.w. |
+| 9 | `cat f.txt > pwned.txt` | ODRZUCONA | `output redirection to 'pwned.txt' is refused` |
+| 10 | `cat f.txt >/dev/null` | PRZYJĘTA | dozwolony sink, brak skutku |
+| 11 | `cat < f.txt` | PRZYJĘTA | odczyt, brak skutku |
+| 12 | `cat *.txt` | PRZYJĘTA | glob rozwijany przez sh — **tylko odczyt** |
+| 13 | `cat <> f.txt` | PRZYJĘTA | kanał read-write otwarty, **brak eksploatu przy tej allowliście** |
+| 14 | `cat f.txt >2` | **PRZYJĘTA** | **PLIK `2` UTWORZONY — potwierdzony kanał zapisu** |
+| 15 | `sh -c 'rm f.txt'` | ODRZUCONA | denylist |
+| 16 | `/bin/cat f.txt` | ODRZUCONA | `program '/bin/cat' is a path, not a bare command name` |
+| 17 | `wc -l ${PWD}/f.txt` | PRZYJĘTA | rozwinięcie zmiennej, nie wykonanie — brak skutku |
+| 18 | `cat f.txt & rm f.txt` | ODRZUCONA | `'rm' is not in ...` |
+| 19 | newline injection | ODRZUCONA | `control character '\n' is not screenable` (ADR-021) |
+
+### USTALENIE SEC-1 · potwierdzony kanał zapisu, ograniczony
+
+```
+cat f.txt >2    PRZYJĘTA  utworzono: 2
+cat f.txt >22   PRZYJĘTA  utworzono: 22
+cat f.txt >2a   ODRZUCONA output redirection to '2a' is refused
+cat f.txt >.git/x  ODRZUCONA j.w.
+wc -l f.txt 2>&1   PRZYJĘTA  utworzono: nic   (poprawny fd dup)
+```
+
+**Przyczyna źródłowa** (`evidence.py`, gałąź `redir == "out"`):
+
+```python
+if redir == "out" and tok != "/dev/null" and not tok.isdigit():
+    return "output redirection to ... is refused"
+```
+
+`tok.isdigit()` istnieje po to, by dopuścić `1` w `2>&1` (dup deskryptora).
+Ale `>2` (zapis do PLIKU `2`) i `2>&1` (dup) trafiają w tę samą gałąź, bo
+screener nie odróżnia tokenu `>` od `>&`.
+
+**Granice ryzyka — nazwane precyzyjnie:** można utworzyć/nadpisać wyłącznie plik
+o nazwie złożonej **z samych cyfr**, **w bieżącym katalogu**. Nie można nazwać
+`.git/hooks/pre-commit` ani niczego ze ścieżką. Treść ograniczona do wyjścia
+programu z allowlisty. To **zanieczyszczenie**, nie dowolny zapis.
+
+**Status:** kanał **preegzystujący i już udokumentowany** — ADR-040 wymienia
+„digit redirect targets" wśród trzech otwartych kanałów SHELL, których żadna
+allowlista nie zamknie, a ADR-041 (PROPOSED, niezaimplementowany) jest ich
+nazwaną domknięciem. **Refaktor go nie wprowadza.** Podnosi natomiast
+ekspozycję: dziś odpala się przy ręcznej komendzie, po kroku 2.3 przy **każdym
+pchnięciu**.
+
+**Proponowana poprawka (jednolinijkowa, do kroku 2.3):** rozróżnić token `>&`
+od `>` i dopuszczać `tok.isdigit()` wyłącznie po `>&`. Zamyka SEC-1 bez ruszania
+`2>&1`, na którym opiera się konwencja przypinania wyjścia.
+
+### WERDYKT: **GO**
+
+Screener zamyka wszystkie wektory wykonania kodu, które testowałem: podstawienia,
+wstrzyknięcie przez separator, potok do powłoki, znaki sterujące, ścieżki
+i denylist. Jedyne przejście to ograniczony kanał zapisu SEC-1, preegzystujący
+i udokumentowany.
+
+**Warunek do GO:** SEC-1 zamknięte **przed** wdrożeniem kroku 2.3 (automatyczne
+wykonanie na pre-push). Nie blokuje kroków 1.2, 1.3, 2.1, 2.2.
+
+**Korekta runbooka:** GO/NO-GO warunkuje **krok 2.3** (`reproduce` na pre-push —
+to on wprowadza automatyczne wykonanie), nie 2.4 (wyłączenie `invalidate-scan`,
+które nic nie uruchamia). Runbook r2 przypisywał bramkę do 2.4 — błąd etykiety,
+poprawiony w r3.
+
+**Nie testowane, zapisane jako granica audytu:** zachowanie przy innej powłoce
+`/bin/sh` niż w tym kontenerze (dash vs bash zmienia semantykę `<>`
+i podstawienia procesów), oraz `.truth/evidence-allow` konsumenta, który może
+zawierać programy z własnymi kanałami wykonania (ADR-040 audytował 28 wpisów
+i usunął trzy: `rg`, `file`, `date`).

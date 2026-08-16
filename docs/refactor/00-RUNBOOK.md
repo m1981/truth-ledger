@@ -5,7 +5,7 @@
 > Jedno zadanie naraz. Po każdym: weryfikacja → status → wpis w JOURNAL → commit.
 
 Gałąź robocza: `claude/git-hooks-architecture-zc97y3`
-Commit bazowy: `fa2e85b` · rewizja runbooka: `r2` (2026-08-16, wytyczne wykonawcze)
+Commit bazowy: `fa2e85b` · rewizja runbooka: `r3` (2026-08-16, po audycie 1.1)
 
 ---
 
@@ -37,7 +37,7 @@ python3 template/scripts/test-integrations.py 2>&1 | tail -3
 |---|---|---|
 | test-truth-core | `Ran 394`, **1 failure, 3 skipped** | środowiskowe — brak `jsonschema` (J-002) |
 | test-truth-v04 | `Ran 13`, OK | — |
-| test-integrations | `Ran 28`, **1 failure** | środowiskowe — klon shallow (J-003) |
+| test-integrations | `Ran 28`, **OK** | J-003 rozwiązane przez `fetch --unshallow` (J-016) |
 | truth-canary | **283 caught, 0 missed** | 44,8 s |
 
 **Reguła F1:** wzrost liczby skipów albo spadek liczby ramion canary to
@@ -63,7 +63,7 @@ z góry w runbooku** (patrz 2.6).
 
 # FAZA 1 — Korpus decyzji i audyt bezpieczeństwa
 
-### [ ] 1.1 Audyt screenera dowodowego — READ-ONLY · BLOKUJE 2.4
+### [x] 1.1 Audyt screenera dowodowego — ZROBIONE · WERDYKT **GO** (J-017)
 
 Czy allowlista zamyka metaznaki powłoki: `;`, `&&`, `|`, `` ` ``, `$()`, `>`,
 `<`, glob? Powód: Faza 2 przenosi wykonanie receptur z komendy ręcznej na
@@ -72,8 +72,18 @@ przyjść z cudzej gałęzi.
 
 Zero zmian w kodzie. Próby wyłącznie w `mktemp -d`.
 
-**Zaliczone gdy:** tabela ≥8 prób (komenda → werdykt) w JOURNAL + jawne
-**GO/NO-GO** dla 2.4. NO-GO ⇒ Faza 2 kończy się na 2.3.
+**Wynik:** 19 wektorów w sandboxie, tabela w J-017. Screener zamyka podstawienia,
+wstrzyknięcie przez separator (`;`/`&&`/`&` — screening **per segment**), potok do
+powłoki, znaki sterujące (ADR-021), ścieżki w pozycji programu i denylist.
+
+**USTALENIE SEC-1:** `cat f.txt >2` przechodzi i TWORZY plik `2`. Kanał zapisu
+ograniczony do nazw złożonych z samych cyfr, w cwd (`>2a` i `>.git/x` odrzucone).
+Preegzystujący, udokumentowany w ADR-040. Poprawka: rozróżnić token `>&` od `>`.
+
+**Korekta etykiety:** bramka GO/NO-GO warunkuje **2.3** (`reproduce` na pre-push —
+to on wprowadza automatyczne wykonanie), nie 2.4. r2 miał tu błąd.
+
+**WERDYKT: GO**, pod warunkiem zamknięcia SEC-1 **przed** krokiem 2.3.
 
 ---
 
@@ -143,22 +153,16 @@ skrypt odczytu zwraca **0** aktywnych claimów ADR.
 
 ---
 
-### [ ] 1.3 Archiwizacja korpusu ADR + `docs/ARCHITECTURE.md`
+### [ ] 1.3 Archiwizacja korpusu ADR + `docs/ARCHITECTURE.md` — **WARIANT A** (decyzja właściciela 2026-08-16)
 
 > **KOREKTA WYTYCZNYCH — patrz J-010.** `git mv template/docs/adr/truth/*.md
 > docs/archive/adr/` to **nie archiwizacja, tylko usunięcie artefaktu
 > z produktu**: `template/` jest tym, co copier wysyła konsumentowi.
 
-**Decyzja do podjęcia PRZED wykonaniem** — dwa warianty, oba dopuszczalne, ale
-muszą być świadome:
-
-* **A (zgodnie z literą wytycznych):** ADR-y znikają z tego, co dostaje
-  konsument. Uzasadnione, jeśli ADR-y są historią rozwoju maszynerii, a nie
-  dokumentacją produktu.
-* **B:** `git mv template/docs/adr/truth/ template/docs/archive/adr/` —
-  konsument nadal je dostaje, ale jako archiwum. `doc-health.sh` już wyłącza
-  ze sweepu każdą ścieżkę z segmentem `adr/` **i** `archive/`, więc oba warianty
-  są dla niego neutralne.
+**WARIANT A wybrany.** ADR-y opuszczają szablon: `git mv template/docs/adr/truth/*.md
+docs/archive/adr/`. Konsument otrzymuje wyłącznie `template/docs/ARCHITECTURE.md`.
+Konsekwencja przyjęta świadomie: ADR-y są historią rozwoju maszynerii, nie
+dokumentacją produktu.
 
 Pomiar ryzyka linków: **0 linków markdown** na `adr/` w `template/` (sprawdzone),
 ale **5 plików** niesie referencje prozą: `template/.truth/README.md`,
@@ -208,7 +212,9 @@ python3 instruments/field-consumers.py
 Przypiąć obecne zachowanie **przed** zmianą: 4 klasy wyniku
 (`reproduces`/`capsule-stale`/`unexecutable`/`no-capsule`) + kody 7 i 8.
 
-### [ ] 2.3 `reproduce` jako autorytet na pre-push
+### [ ] 2.3 `reproduce` jako autorytet na pre-push — WYMAGA zamknięcia SEC-1 (J-017)
+
+**SEC-0 (warunek wstępny):** rozróżnić `>&` od `>` w `evidence.py`, gałąź `redir == "out"`; `tok.isdigit()` dopuszczalne wyłącznie po `>&`. Zamyka SEC-1 bez ruszania `2>&1`.
 
 Mapowanie kodów wyjścia — **rozszerzone wobec wytycznych (J-011)**:
 
@@ -223,7 +229,7 @@ przechodziłby przez bramkę po cichu.
 
 **Weryfikacja:** `bash .githooks/pre-push` w sandboxie; czas < 2 s.
 
-### [ ] 2.4 Wyłączenie `invalidate-scan` z post-merge — WYMAGA GO z 1.1
+### [ ] 2.4 Wyłączenie `invalidate-scan` z post-merge
 
 ### [ ] 2.5 Usunięcie stanu `stale` z folda
 Stan wyliczany z logu: `unverified` → `live` → `diverged`/`retracted`.
