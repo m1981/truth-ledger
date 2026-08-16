@@ -764,3 +764,100 @@ reguła F1 dotyczy ubytków i skipów.
 core 396 (1 failure, 3 skipped -- J-002)   v04 13 OK
 integrations 28 OK                          canary 283 caught, 0 missed
 ```
+
+---
+
+## J-022 · KROK 1.2 — kategoria B zamknięta (5 z 14); kategoria A wymaga decyzji · 2026-08-16
+
+### Ustalenie 1: runbook zakładał jedną operację, są dwie
+
+Klasyfikacja po tym, czy **receptura otwiera plik ADR** (parsowanie `shlex`
++ `os.path.exists`, nie substring — pierwszy pomiar dał 12/14 fałszywie,
+bo łapał ciąg `ADR-018` we **wzorcu** `grep`, nie w ścieżce):
+
+| kategoria | ile | operacja |
+|---|---:|---|
+| **B** — receptura NIE czyta ADR | **5** | zawęzić obserwację; twierdzenie i receptura nietknięte |
+| **A** — receptura CZYTA plik ADR | **9** | zawężenie NIE wystarczy — trzeba tknąć recepturę |
+
+Runbook (krok 1.2) opisywał wyłącznie operację B i przypisywał ją do wszystkich 14.
+
+### Ustalenie 2: wszystkie 5 claimów kategorii B miało dziurę w pokryciu — od początku
+
+```
+tr-a101be2f  czyta:     test-truth-core.py, truth-canary.sh
+             obserwuje: 019-ttl-expiry-semantics.md, test-truth-core.py
+             DZIURA:    truth-canary.sh czytany, nieobserwowany
+             NADMIAR:   ADR-019 obserwowany, nigdy nieotwierany
+```
+
+Identycznie w pozostałych czterech. **Zbiór obserwacji i realne odczyty były
+rozjechane w OBIE strony**: pilnowano pliku, którego receptura nie otwiera,
+i nie pilnowano pliku, od którego twierdzenie zależy.
+
+To jest defekt D-A (brak warstwy polityki obserwacji) pokazany na konkretach:
+skoro każdy claim wybiera zbiór obserwacji z palca, nic nie sprawdza, czy ten
+zbiór ma cokolwiek wspólnego z dowodem.
+
+**Przyjęty niezmiennik: obserwuj dokładnie te ścieżki, które receptura czyta.**
+Uwaga o koszcie: to dokłada `truth-canary.sh` (drugi najgłośniejszy plik w repo,
+763 trafienia) do pięciu claimów, więc krótkoterminowo **podnosi** szum.
+Świadomie — zaniżanie pokrycia dla lepszej metryki byłoby optymalizacją pod
+wskaźnik, który Faza 2 i tak usuwa.
+
+### Błąd własny, odnotowany
+
+Pierwsza próba (`tr-726376a3` → `tr-cd6856ed`) zawęziła obserwację mechanicznie,
+przez odjęcie ścieżek ADR — i przeniosła dziurę dalej: nowy claim obserwował
+jeden z dwóch czytanych plików. Naprawione przez ponowne przefilowanie
+(`tr-cd6856ed` → `tr-7c4966ad`) z retrakcją `restated`. Ledger jest append-only,
+więc pomyłka została w historii — tak ma być.
+
+Druga pomyłka, w skrypcie weryfikującym: porównywałem surowy hex z polem
+`output_hash`, które niesie prefiks `sha256:`. Dało to pięć fałszywych
+`MISMATCH`. Po poprawce wszystkie pięć: **MATCH**.
+
+### Wykonanie kategorii B
+
+Dla każdego z 5: re-file z poprawnym zbiorem obserwacji (`--duplicate-ok`,
+bo tekst jest identyczny wobec wciąż żywego poprzednika) → retrakcja starego
+`--cause restated --successor <NOWY>` → **niezależna weryfikacja kapsuły**
+(ponowne uruchomienie receptury, porównanie `output_hash` i `returncode`)
+→ `agree` z osobnej sesji (ADR-010).
+
+```
+tr-a101be2f -> tr-56a8e36c    tr-45d8bf7a -> tr-49f53967
+tr-c9c8372e -> tr-6140a005    tr-9e717e86 -> tr-994f7e8f
+tr-726376a3 -> tr-cd6856ed -> tr-7c4966ad
+wszystkie kapsuły: MATCH (rc=0)
+```
+
+### Stan
+
+```
+żywych: 62 (baseline 61)      validate: 4605 record(s) OK
+reproduce: 62 live -- 61 reproduces, 1 capsule-stale, 0 unexecutable
+aktywnych claimów ADR: 9 (było 14)
+core 396 (1F/3S = J-002) · v04 13 OK · integrations 28 OK · canary 283/0
+```
+
+### DO DECYZJI: kategoria A (9 claimów)
+
+Ich receptury **otwierają plik ADR**, więc zawężenie ścieżek nie zamyka sprawy.
+Trzy możliwe operacje, różne epistemicznie:
+
+1. **Przepiąć recepturę na `docs/archive/adr/…`** — wariant A przenosi pliki,
+   nie kasuje ich, więc twierdzenie przeżywa w całości. Koszt: żywy claim stoi
+   na dokumencie zamrożonym, a `fact-health` celowo wyłącza `docs/archive/`
+   ze sweepu cytowań.
+2. **Usunąć z receptury fragment czytający ADR** — twierdzenie **słabnie**
+   (traci część, którą dotąd weryfikowało). To nie jest `restated`, tylko
+   zawężenie zakresu i trzeba je nazwać wprost.
+3. **Wycofać** — dla claimów, których **przedmiotem jest sam ADR**
+   (np. `tr-75070d09`: „ADR-013 documents supersede cycle resolution: its
+   Amended-by note states…", `tr-6207afe1`: liczy pliki w korpusie). Tu
+   `--cause expired` jest **poprawne**: *„it WAS true and the world moved past
+   it"* — świat faktycznie się ruszył, korpus jest wycofywany.
+
+Wybór jest per claim i zależy od tego, **czym dany claim jest** — a to osąd
+właściciela, nie mechanika. Nie wykonuję go jednostronnie.
