@@ -1202,3 +1202,59 @@ core 396 OK · integrations 28 OK · canary 283 caught, 0 missed
 
 **FAZA 1 ZAMKNIĘTA.** Korpus decyzji nie ships; konsument dostaje
 `template/docs/ARCHITECTURE.md` jako jedyny kontrakt behawioralny.
+
+---
+
+## J-029 · KROK 2.1 — inwentarz powierzchni Reproduce-on-Read · 2026-08-16
+
+```
+python3 instruments/field-consumers.py
+→ 30 payload key(s) over 4646 record(s) -- 0 failure(s)
+   OK     anchor_commit     2271   cli.py, evidence.py, kernel.py
+   OK     touched           1995   cli.py, reports.py
+   EXEMPT reaffirm_cleared  1306   presence-only reader, fix planned in F3.5
+```
+
+### Powierzchnia do usunięcia, pole po polu
+
+**`anchor_commit` (2271 rekordów) — najgłębiej wrośnięte.**
+
+| rola | miejsce |
+|---|---|
+| ZAPIS | `cli.py:93` (intake), `:413` (re-anchor przy agree), `:513` (reaffirm) |
+| ODCZYT | `cli.py:427,524,1164` · `evidence.py:592` · `kernel.py:139,148,150,571,584,673,681` |
+
+Siedem miejsc odczytu w samym `kernel.py`, w tym w folcie (`:148-150` ustawia
+`claims[c]["anchor"]`) i w walidacji (`:681` sprawdza kształt). **To nie jest
+pole do skasowania jednym ruchem** — to zmienna stanu, na której stoi cała
+logika unieważniania.
+
+**`reaffirm_cleared` (1306 rekordów) — najpłycej.**
+
+| rola | miejsce |
+|---|---|
+| ZAPIS | `cli.py:533` — jedno miejsce |
+| ODCZYT | `reports.py:572` — **tylko test obecności** (`is not None`) |
+
+`field-consumers` klasyfikuje je jako `EXEMPT / presence-only`. Potwierdza to
+pomiar z analizy wstępnej: 28% ledgera to ślad audytowy własnych fałszywych
+alarmów, którego zawartości nikt nigdy nie odczytał. **Krok 2.6 usuwa ścieżkę
+zapisu; ścieżka odczytu i tak jest pusta.**
+
+**Stan `stale`.** Ustawiany w jednym miejscu — `kernel.py:161`, na rekordzie
+`invalidation`. Czytany przez `cli.py:468` (bramka reaffirm), `registry.py`
+(`STATUSES`, `CITATION_BAD`, `DEAD_CLAIM_STATUSES`) i `reports.py:104,127,382`
+(rozbicie staleń, kolejka, ready). Usunięcie stanu dotyka **wokabularza**, więc
+propaguje do `spec-health`/`fact-health` przez `truth vocab --json` — te dwa
+skrypty nie wymagają zmiany, bo pobierają zbiór w czasie wykonania (ADR-043).
+
+**Rekord `invalidation` (1971).** Zapis: `cli.py:437`. Odczyt: `kernel.py:158,686`,
+`evidence.py:374,404`, `reports.py:56,99,104,125,329,625,631`.
+
+### Wniosek dla kolejności Fazy 2
+
+Kolejność w runbooku (2.5 fold → 2.6 komendy) jest **odwrotna do trudności**.
+Najpłytsze pole (`reaffirm_cleared`, jeden zapis, zerowy odczyt treści) można
+zamknąć niezależnie; najgłębsze (`anchor_commit`, 7 odczytów w kernelu) trzyma
+fold i musi iść ostatnie. **Nie zmieniam runbooka bez pomiaru z kroku 2.2** —
+odnotowuję jako hipotezę do sprawdzenia testami charakteryzującymi.

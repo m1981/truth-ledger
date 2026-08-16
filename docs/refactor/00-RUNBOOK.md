@@ -5,7 +5,7 @@
 > Jedno zadanie naraz. Po każdym: weryfikacja → status → wpis w JOURNAL → commit.
 
 Gałąź robocza: `claude/git-hooks-architecture-zc97y3`
-Commit bazowy: `fa2e85b` · rewizja runbooka: `r11` (2026-08-16, FAZA 1 ZAMKNIĘTA)
+Commit bazowy: `fa2e85b` · rewizja runbooka: `r12` (2026-08-16, 2.1 zrobiony)
 
 ---
 
@@ -231,7 +231,7 @@ cytowań (sweep pusty = sweep ciemny, nie sukces).
 
 # FAZA 2 — Reproduce-on-Read (rdzeń)
 
-### [ ] 2.1 Inwentarz powierzchni — READ-ONLY
+### [x] 2.1 Inwentarz powierzchni — **ZROBIONE** (J-029)
 Kto pisze i czyta: `anchor_commit`, `stale`, `reaffirm_cleared`, `invalidation`.
 ```bash
 python3 instruments/field-consumers.py
