@@ -14,7 +14,7 @@
 
 This is the **structural** view. The behavioural views — triggers, lifecycles,
 sequences, human seams — live in the consumer's machinery atlas; the arguments
-live in `docs/adr/truth/`. Three documents, three jobs.
+live in `docs/ARCHITECTURE.md`. Three documents, three jobs.
 
 ---
 
@@ -112,7 +112,7 @@ flowchart LR
         A1["truthlib/ · scripts/truth"]
         A2["check-truth.sh · truth-canary.sh"]
         A3["spec-health · doc-health · session-close"]
-        A4["docs/adr/truth/*"]
+        A4["docs/ARCHITECTURE.md"]
     end
 
     subgraph B["Tier B — governance<br/>each gate owes a metric"]

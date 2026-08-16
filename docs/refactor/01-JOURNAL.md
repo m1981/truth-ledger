@@ -1019,3 +1019,138 @@ aktywnych claimów ADR: 0  (było 14)
 reproduce: 61 live -- 60 reproduces, 0 unexecutable, 0 no-capsule
 wszystkie 13 nowych kapsuł zweryfikowane niezależnie: MATCH
 ```
+
+---
+
+## J-026 · KROK 1.3 ZROBIONY — korpus ADR poza szablonem, ARCHITECTURE.md na jego miejscu · 2026-08-16
+
+```
+git mv template/docs/adr/truth/*.md docs/archive/adr/   → 54 plików
+katalog template/docs/adr usunięty
+reproduce → 0 unexecutable          żywych → 61 (baseline)
+```
+
+**`0 unexecutable` jest tu pointą.** Gdyby krok 1.2 nie przekierował 14 claimów,
+ta liczba wynosiłaby teraz 14 — i to jest dokładnie ta katastrofa, którą skrypt
+z pierwotnych wytycznych przepuściłby, raportując „0 aktywnych claimów ADR"
+(J-008).
+
+### `template/docs/ARCHITECTURE.md`
+
+Cztery rozdziały wg szablonu właściciela. **Każdy fakt odczytany z kodu**, nie
+przepisany z ADR-a — nagłówek nosi `STATUS: OBSERVED` i klauzulę rozstrzygającą
+spór na korzyść kodu. Odczytane w tej sesji, nie z pamięci:
+`fold_key` i jego trzeci klucz `canon()`; `TS_RE`; `merge=union`
+z `.gitattributes`; 9 wierszy `INTAKE_GATES` w kolejności tabeli;
+`DUPLICATE_THRESHOLD = 0.6`; `RETRACTION_CAUSES`; `ACTIVE_STATUSES`;
+`CITATION_BAD`; `TIERS`; reguła `>&` vs `>` z SEC-0.
+
+Rozdział 4 nazywa wprost granicę, której nie zamyka żaden gate: **receptura
+kształtowa nie wykryje zmiany wartości, a hash całego pliku rozjedzie się na
+komentarzu.** Screen gwarantuje bezpieczeństwo i determinizm, nigdy
+informatywność.
+
+### Referencje prozą
+
+Poprawione 3 pliki szablonu (`.truth/README.md` ×5, `structure.md` ×2,
+`machinery.md` ×1) — wszystkie przepięte na `docs/ARCHITECTURE.md`.
+`template/CHANGELOG.md` **zostawiony**: to zapis historyczny, a jego wpisy
+opisują stan z dnia wydania.
+
+Pin `TestStructureDocMatchesDisk` przeszedł po zmianie węzła `A4` w diagramie
+tierów — sprawdzone osobno, bo to jedyny diagram w repo, który jest asercją.
+
+### Luka między dwoma zasięgami cytowań — znalezione przy okazji
+
+`fact-health` zgłosił **5 porażek** na `tr-6207afe1`, mimo że retrakcja przeszła.
+Przyczyna: to **dwie różne bramki o różnym zasięgu**.
+
+| bramka | zasięg | werdykt |
+|---|---|---|
+| nagrobkowa (ADR-036) | `.truth/citation-scope` (`docs/specs/**`, README) | przepuściła z `--orphan-ok` |
+| `fact-health` | **cała żywa proza** | 5 × FAIL |
+
+`--orphan-ok` uzasadniał, że pięć cytowań referuje id jako **wzorzec**, nie jako
+fakt. Dla wąskiej bramki to wystarczyło; szeroki sweep ma inny kontrakt —
+*żywa proza nie stoi na martwym fakcie*, bez wyjątków. **Override jednej bramki
+nie jest override'em drugiej**, i dobrze, że nie jest.
+
+Naprawione u źródła: id usunięty z pięciu miejsc w żywej prozie, wzorzec opisany
+z nazwy („the ADR-series count sentinel, retired 2026-08-16"). Zero utraty
+informacji dla czytelnika, zero martwych cytowań.
+
+### Stan po 1.3
+
+```
+fact-health: 0 failure(s), 2 warning(s), 23 citation(s)
+doc-health:  0 failure(s) across 14 live doc(s)
+core 396 OK · v04 13 OK · integrations 28 OK · canary 283/0
+reproduce: 61 live, 0 unexecutable    validate: 4633 record(s) OK
+```
+
+---
+
+## J-027 · KROK 1.3 ZABLOKOWANY przez zamrożenie `docs/archive/` · 2026-08-16 · zastępuje: J-026 (część o przeniesieniu)
+
+J-026 zapisał krok 1.3 jako zrobiony. **To było przedwczesne** — commit został
+odrzucony przez hook pre-commit i nigdy nie wszedł do historii. Wpis jest
+korygowany tu, a nie edytowany w miejscu.
+
+```
+pre-commit: docs/archive/ is frozen verbatim (AGENTS.md); staged:
+  docs/archive/adr/001-premise-validity-semantics.md
+  ... 54 pliki ...
+A human must lift the freeze deliberately before this can land.
+```
+
+Mechanizm (`.githooks/pre-commit`, linie 1–12) jest jawny i celowy:
+
+> *„Consumer policy, this repo only (ADR-003 rule 2): docs/archive/ is frozen
+> verbatim. Harness hooks block edit tools; this guard is the
+> harness-independent backstop at the git layer — the 2026-07-11 trial showed
+> norms alone do not hold."*
+
+`AGENTS.md`, linia 23: *„`docs/archive/` is frozen verbatim; never update it."*
+
+**Nie użyłem `--no-verify`.** Ta bramka istnieje wyłącznie po to, żeby wymagać
+człowieka, a jej komentarz wprost mówi, że powstała, bo same normy nie
+wytrzymały próby. Agent, który ją omija, jest dokładnie tym zdezorientowanym
+pełnomocnikiem, przed którym ostrzega ADR-014.
+
+### Wariant obejścia sprawdzony i ODRZUCONY
+
+Przeniesienie do `docs/adr-archive/` nie tknęłoby zamrożenia — ale `fact-health`
+wyłącza ze sweepu wyłącznie `^docs/archive/`, więc 54 ADR-y pełne cytowań `tr-`
+wpadłyby w zasięg żywej prozy i posypały bramkę. `docs/archive/adr/` jest
+właściwym celem **właśnie dlatego**, że jest wyłączony. Obejście byłoby gorsze
+niż blokada.
+
+### Co zostało zrobione i wchodzi tym commitem (1.3a)
+
+* `template/docs/ARCHITECTURE.md` — cztery rozdziały, każdy fakt odczytany
+  z kodu. Sformułowania o lokalizacji korpusu urealnione: mówią, że korpus jest
+  **wycofywany** z szablonu, a nie że już został.
+* Referencje prozą przepięte na `docs/ARCHITECTURE.md` — poprawne od chwili,
+  gdy ten plik istnieje, czyli od tego commitu.
+* `tr-6207afe1` usunięty z pięciu miejsc żywej prozy (wzorzec opisany z nazwy).
+
+### Co czeka na człowieka (1.3b) — przepis odtworzenia
+
+```bash
+mkdir -p docs/archive/adr
+git mv template/docs/adr/truth/*.md docs/archive/adr/
+rmdir template/docs/adr/truth template/docs/adr
+python3 template/scripts/truth reproduce | tail -2   # MUSI dać 0 unexecutable
+bash scripts/fact-health.sh | tail -1
+(cd template && bash scripts/doc-health.sh | tail -1)
+```
+
+Przy poprzednim przebiegu ta sekwencja dała: `0 unexecutable`, żywych 61,
+`fact-health 0F/23`, `doc-health 0F/14`, `core 396 OK`, `canary 283/0`.
+**Treść jest przetestowana; brakuje wyłącznie zdjęcia zamrożenia.**
+
+### Stan drzewa
+
+Przeniesienie cofnięte — 54 ADR-y wróciły do `template/docs/adr/truth/`,
+`docs/archive/` nietknięte (`git diff --cached -- docs/archive/` → 0 plików).
+Drzewo jest spójne: nic nie udaje, że korpus już się przeprowadził.

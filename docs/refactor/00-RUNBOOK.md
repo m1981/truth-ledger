@@ -5,7 +5,7 @@
 > Jedno zadanie naraz. Po każdym: weryfikacja → status → wpis w JOURNAL → commit.
 
 Gałąź robocza: `claude/git-hooks-architecture-zc97y3`
-Commit bazowy: `fa2e85b` · rewizja runbooka: `r8` (2026-08-16, 1.2 domknięty)
+Commit bazowy: `fa2e85b` · rewizja runbooka: `r10` (2026-08-16, 1.3 zablokowany zamrożeniem)
 
 ---
 
@@ -60,7 +60,7 @@ wyjaśnienia środowiskowego.** Reżim mocniejszy niż na starcie sesji.
 | `reproduce` (61 żywych) | 0,53 s | ≤ 2 s |
 | żywych claimów | 61 | **≥ 61** (patrz 1.2 — nie wolno stracić) |
 | `unexecutable` | 0 | **0** |
-| ADR-y / wycofane | 54 / 0 | 54 / 54 zarchiwizowane |
+| ADR-y / wycofane | 54 / 0 | 54 zarchiwizowane (czeka na 1.3b) |
 
 ---
 
@@ -168,7 +168,7 @@ the behaviour this claim asserts is unchanged and stays evidenced by code/tests"
 the world moved past it"* (`policy.py:66`) — fakt nadal jest prawdziwy, więc
 `expired` byłby zapisem fałszywym w polu, które `retraction-causes.py` mierzy.
 
-**Szczególny przypadek:** `tr-6207afe1` (`unverified`) obserwuje wyłącznie glob
+**Szczególny przypadek:** metryka korpusu ADR (`unverified`) obserwowała wyłącznie glob
 `template/docs/adr/truth/*.md` — nie ma czego zawężać. Ten jeden wycofać bez
 następcy, `--cause expired`, z uzasadnieniem odnoszącym się do archiwizacji.
 
@@ -182,7 +182,7 @@ skrypt odczytu zwraca **0** aktywnych claimów ADR.
 
 ---
 
-### [ ] 1.3 Archiwizacja korpusu ADR + `docs/ARCHITECTURE.md` — **WARIANT A** (decyzja właściciela 2026-08-16)
+### [~] 1.3 — `ARCHITECTURE.md` ZROBIONY; przeniesienie **ZABLOKOWANE** zamrożeniem `docs/archive/` (J-027) (decyzja właściciela 2026-08-16)
 
 > **KOREKTA WYTYCZNYCH — patrz J-010.** `git mv template/docs/adr/truth/*.md
 > docs/archive/adr/` to **nie archiwizacja, tylko usunięcie artefaktu
