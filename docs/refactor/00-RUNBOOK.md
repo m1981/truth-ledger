@@ -5,7 +5,7 @@
 > Jedno zadanie naraz. Po każdym: weryfikacja → status → wpis w JOURNAL → commit.
 
 Gałąź robocza: `claude/git-hooks-architecture-zc97y3`
-Commit bazowy: `fa2e85b` · rewizja runbooka: `r10` (2026-08-16, 1.3 zablokowany zamrożeniem)
+Commit bazowy: `fa2e85b` · rewizja runbooka: `r11` (2026-08-16, FAZA 1 ZAMKNIĘTA)
 
 ---
 
@@ -60,7 +60,7 @@ wyjaśnienia środowiskowego.** Reżim mocniejszy niż na starcie sesji.
 | `reproduce` (61 żywych) | 0,53 s | ≤ 2 s |
 | żywych claimów | 61 | **≥ 61** (patrz 1.2 — nie wolno stracić) |
 | `unexecutable` | 0 | **0** |
-| ADR-y / wycofane | 54 / 0 | 54 zarchiwizowane (czeka na 1.3b) |
+| ADR-y / wycofane | 54 / 0 | **54 zarchiwizowane, 0 w szablonie** ✔ |
 
 ---
 
@@ -182,7 +182,7 @@ skrypt odczytu zwraca **0** aktywnych claimów ADR.
 
 ---
 
-### [~] 1.3 — `ARCHITECTURE.md` ZROBIONY; przeniesienie **ZABLOKOWANE** zamrożeniem `docs/archive/` (J-027) (decyzja właściciela 2026-08-16)
+### [x] 1.3 — `ARCHITECTURE.md` + archiwizacja 54 ADR-ów — **ZROBIONE** (J-027 · J-028, zgoda człowieka) (decyzja właściciela 2026-08-16)
 
 > **KOREKTA WYTYCZNYCH — patrz J-010.** `git mv template/docs/adr/truth/*.md
 > docs/archive/adr/` to **nie archiwizacja, tylko usunięcie artefaktu

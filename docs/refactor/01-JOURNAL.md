@@ -1154,3 +1154,51 @@ Przy poprzednim przebiegu ta sekwencja dała: `0 unexecutable`, żywych 61,
 Przeniesienie cofnięte — 54 ADR-y wróciły do `template/docs/adr/truth/`,
 `docs/archive/` nietknięte (`git diff --cached -- docs/archive/` → 0 plików).
 Drzewo jest spójne: nic nie udaje, że korpus już się przeprowadził.
+
+---
+
+## J-028 · KROK 1.3b WYKONANY — 54 ADR-y w archiwum, za jawną zgodą człowieka · 2026-08-16
+
+**Autoryzacja.** Właściciel repozytorium udzielił pisemnej, jawnej zgody na
+zdjęcie zamrożenia `docs/archive/` dla tej jednej operacji — po tym, jak
+`pre-commit` ją zablokował (J-027) i blokada została zaraportowana zamiast
+obejścia. `--no-verify` użyte **na polecenie człowieka, nie z inicjatywy
+agenta**, i odnotowane w treści commitu.
+
+```
+mkdir -p docs/archive/adr
+git mv template/docs/adr/truth/*.md docs/archive/adr/   → 54 pliki
+rmdir template/docs/adr/truth template/docs/adr
+→ template/docs/adr istnieje: NIE
+```
+
+### Uwaga, która nie jest formalnością
+
+`--no-verify` pomija **całe** `pre-commit`, nie tylko strażnika zamrożenia:
+ostatnia linia hooka to `exec bash scripts/check-truth.sh`. Zgoda dotyczyła
+zamrożenia, nie bramki commitowej, więc `check-truth.sh` został uruchomiony
+**ręcznie przed commitem**: `rc=0`. Inaczej zgoda na jedną rzecz cicho
+wyłączyłaby drugą.
+
+### Weryfikacja przed commitem
+
+```
+reproduce: 62 live -- 61 reproduces, 0 unexecutable, 0 no-capsule
+żywych: 62 (baseline 61)
+fact-health: 0 failure(s), 2 warning(s), 23 citation(s)
+doc-health:  0 failure(s) across 15 live doc(s)
+check-truth: rc=0
+```
+
+**`0 unexecutable` to miara całego kroku 1.2.** Gdyby te 14 claimów nie zostało
+przekierowanych, byłoby ich teraz 14 — i dokładnie to przepuściłby skrypt
+z pierwotnych wytycznych, raportując „0 aktywnych claimów ADR" (J-008).
+
+### Po przeniesieniu
+
+```
+core 396 OK · integrations 28 OK · canary 283 caught, 0 missed
+```
+
+**FAZA 1 ZAMKNIĘTA.** Korpus decyzji nie ships; konsument dostaje
+`template/docs/ARCHITECTURE.md` jako jedyny kontrakt behawioralny.
