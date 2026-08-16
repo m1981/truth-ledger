@@ -5,7 +5,7 @@
 > Jedno zadanie naraz. Po każdym: weryfikacja → status → wpis w JOURNAL → commit.
 
 Gałąź robocza: `claude/git-hooks-architecture-zc97y3`
-Commit bazowy: `fa2e85b` · rewizja runbooka: `r6` (2026-08-16, po 1.2-B)
+Commit bazowy: `fa2e85b` · rewizja runbooka: `r7` (2026-08-16, baseline w pełni zielony)
 
 ---
 
@@ -35,7 +35,7 @@ python3 template/scripts/test-integrations.py 2>&1 | tail -3
 
 | suita | wynik bazowy | uwaga |
 |---|---|---|
-| test-truth-core | `Ran 396`, **1 failure, 3 skipped** | 394→396: dwa ramiona SEC-0 (J-021); failure/skipy = J-002 |
+| test-truth-core | `Ran 396`, **OK** | J-002 zamknięte przez instalację jsonschema (J-024) |
 | test-truth-v04 | `Ran 13`, OK | — |
 | test-integrations | `Ran 28`, **OK** | J-003 rozwiązane przez `fetch --unshallow` (J-016) |
 | truth-canary | **283 caught, 0 missed** | 44,8 s |
@@ -43,6 +43,9 @@ python3 template/scripts/test-integrations.py 2>&1 | tail -3
 **Reguła F1:** wzrost liczby skipów albo spadek liczby ramion canary to
 **PORAŻKA**, nawet gdy suita pisze OK — **chyba że delta była zadeklarowana
 z góry w runbooku** (patrz 2.6).
+
+**Od J-024 baseline jest w pełni zielony: żadna porażka ani skip nie ma już
+wyjaśnienia środowiskowego.** Reżim mocniejszy niż na starcie sesji.
 
 ---
 

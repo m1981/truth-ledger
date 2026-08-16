@@ -905,3 +905,46 @@ runbook instruuje teraźniejszość.**
 Uboczny, ale wart nazwania: to pierwszy raz, gdy `fact-health` cokolwiek
 zablokował, odkąd przekroczył `MAX_ARG_STRLEN`. Przez ten czas raportował
 sukces przez śmierć.
+
+---
+
+## J-024 · J-002 ROZWIĄZANE — kontrakt rekordu jest wreszcie sprawdzany · 2026-08-16 · zastępuje: J-002
+
+Po J-023 bateria zgłosiła wszystkie arm-y treściowe na zielono i zablokowała
+wyłącznie na `exit 2` — środowisko, nie zmiany:
+
+```
+release-battery: BLOCKED on an environment problem (exit 2), not on your changes.
+```
+
+Zamiast waivera (`TRUTH_ALLOW_NO_JSONSCHEMA=1`, zakazanego przez właściciela
+i słusznie — wyłącza połowę kontraktu, a suita i tak pisze OK) usunięta
+przyczyna:
+
+```
+python3 -m pip install jsonschema   → jsonschema 4.26.0
+python3 template/scripts/test-truth-core.py → Ran 396 tests, OK
+```
+
+**Zero porażek, zero skipów.** Trzy testy zgodności schematu
+(`TestConformanceSchema` ×2, `TestGeneratedMutantsAgree`), pomijane od
+początku tej sesji, wreszcie się wykonują, a `TestJsonschemaPresent` przestał
+krzyczeć.
+
+### Nowy baseline bramki regresji
+
+| suita | było (J-005) | jest |
+|---|---|---|
+| test-truth-core | `Ran 394`, 1 failure, 3 skipped | **`Ran 396`, OK** |
+| test-truth-v04 | `Ran 13`, OK | bez zmian |
+| test-integrations | `Ran 28`, 1 failure (J-003) | **`Ran 28`, OK** (J-016) |
+| truth-canary | 283/0 | bez zmian |
+
+**Od tej chwili każda porażka i każdy skip w bramce jest defektem, bez
+wyjątków środowiskowych.** To jest mocniejszy reżim niż ten, w którym zaczynałem.
+
+### Skutek dla planu
+
+Ryzyko zapisane w J-002 — *„kroki 2.5 i 2.6 mają tu niepełne pokrycie, muszą
+zostać przewalidowane na maszynie z jsonschema"* — **jest zamknięte**. Kroki
+dotykające schematu rekordu mogą być zamykane w tym kontenerze.
