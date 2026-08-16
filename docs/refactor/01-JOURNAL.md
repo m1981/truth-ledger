@@ -948,3 +948,74 @@ wyjątków środowiskowych.** To jest mocniejszy reżim niż ten, w którym zacz
 Ryzyko zapisane w J-002 — *„kroki 2.5 i 2.6 mają tu niepełne pokrycie, muszą
 zostać przewalidowane na maszynie z jsonschema"* — **jest zamknięte**. Kroki
 dotykające schematu rekordu mogą być zamykane w tym kontenerze.
+
+---
+
+## J-025 · KROK 1.2 DOMKNIĘTY — 14/14, aktywnych claimów ADR: 0 · 2026-08-16
+
+Kategoria A wykonana wg decyzji właściciela: opcja 2 dla reguł kodu, opcja 3 dla
+metryki korpusu, opcja 1 odrzucona.
+
+### Reguła 2 — 8 claimów (7 + jeden przypadek szczególny)
+
+Wszystkie okrojone receptury sprawdzone PRZED filowaniem: 7/7 `rc=0`.
+
+```
+tr-75070d09 -> tr-e4f4b934    tr-c52e3e84 -> tr-789b11be
+tr-3ddc6f97 -> tr-f9318142    tr-af2e5758 -> tr-5c44d665
+tr-fc03d886 -> tr-891efd02    tr-552d0fb0 -> tr-634049d9
+tr-e70240c3 -> tr-4c3f748d    tr-3ce7c0c9 -> tr-fd5984c9
+```
+
+**Pięć tekstów wymagało zawężenia, nie tylko receptury.** Zdania zaczynały się
+od *„ADR-013 documents…"*, *„ADR-029 documents…"*, *„ADR-002 and template/.truth/
+README state…"*. Po wycięciu grepa po ADR-ze zostawienie tekstu bez zmian dałoby
+twierdzenie, którego **nic nie sprawdza** — dokładnie puste VERIFIED, które
+ADR-035 odrzuca. Zawężone do tego, co weryfikuje receptura, i nazwane wprost
+w basis każdego z nich.
+
+Trzy teksty zostawione bez zmian (`tr-552d0fb0`, `tr-e70240c3`, `tr-3ce7c0c9`):
+wycięty grep sprawdzał wyłącznie linię `Status:` ADR-a, czego zdanie nie twierdzi.
+
+### Przypadek szczególny: `tr-3ce7c0c9` — kapsuła była pusta
+
+Jego **jedyną** ewidencją było `grep -c ADR-014 <plik ADR>` — receptura, która
+nigdy nie dotknęła kodu, o którym zdanie mówi. Do tego zbiór obserwacji nadal
+wskazywał cienki `template/scripts/truth`, choć logika przeniosła się do
+`truthlib/` przy podziale na pakiet (ADR-044): `grep -c 'accept-cmd'
+template/scripts/truth` = **0**.
+
+Odbudowane przeciwko miejscu, gdzie zachowanie faktycznie żyje
+(`truthlib/cli.py` + 8 arm-ów `FAULT AC` w canary, zgodnych z tekstem
+„canary FAULTS AC1-AC8 gate the behavior"). To nie jest wymyślanie dowodu —
+to naprawa pustej kapsuły P1.
+
+### Bramka nagrobkowa zadziałała — trzy retrakcje odrzucone
+
+```
+tr-c52e3e84, tr-3ddc6f97, tr-fc03d886
+→ cytowane w docs/truth-ledger-operations-guide.md (ADR-036)
+```
+
+Cytowania przepięte na następców **przed** retrakcją, w kolejności, którą ADR-036
+wymusza. Po przepięciu wszystkie trzy przeszły.
+
+### Reguła 3 — `tr-6207afe1`, z jawnym override
+
+Czysta metryka korpusu („53 decision files numbered 001 through 053"). Archiwizacja
+usuwa liczony przedmiot, więc `--cause expired` jest poprawne, bez następcy.
+
+Gate odmówił i tu — pięć cytowań w czterech plikach. Ale one referują ten id jako
+**wzorzec** (*„the tr-6207afe1 ADR-series precedent"*, *„the tr-6207afe1 pattern at
+symbol level"*), nie jako fakt, na którym stoją. Reguła 3 nie daje następcy do
+podstawienia, więc użyty `--orphan-ok` z uzasadnieniem zapisanym w rekordzie
+(liczone przez `override-velocity`).
+
+### Stan
+
+```
+aktywnych claimów ADR: 0  (było 14)
+żywych: 61 (baseline 61)   validate: 4633 record(s) OK
+reproduce: 61 live -- 60 reproduces, 0 unexecutable, 0 no-capsule
+wszystkie 13 nowych kapsuł zweryfikowane niezależnie: MATCH
+```

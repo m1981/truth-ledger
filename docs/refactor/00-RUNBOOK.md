@@ -5,7 +5,7 @@
 > Jedno zadanie naraz. Po każdym: weryfikacja → status → wpis w JOURNAL → commit.
 
 Gałąź robocza: `claude/git-hooks-architecture-zc97y3`
-Commit bazowy: `fa2e85b` · rewizja runbooka: `r7` (2026-08-16, baseline w pełni zielony)
+Commit bazowy: `fa2e85b` · rewizja runbooka: `r8` (2026-08-16, 1.2 domknięty)
 
 ---
 
@@ -116,7 +116,7 @@ to on wprowadza automatyczne wykonanie), nie 2.4. r2 miał tu błąd.
 
 ---
 
-### [~] 1.2 Przekierowanie claimów obserwujących ADR-y — **kategoria B ZROBIONA (5/14)**, kategoria A (9) do decyzji (J-022)
+### [x] 1.2 Przekierowanie claimów obserwujących ADR-y — **ZROBIONE 14/14** (J-022, J-025)
 
 > **KOREKTA WYTYCZNYCH — patrz J-008 i J-009.** Skrypt z wytycznych zwraca **0**
 > (`truth list --json` nie niesie `evidence_paths`) i wycofanie przez
