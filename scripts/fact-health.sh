@@ -34,6 +34,13 @@
 #    session records whose citations narrate what was live during that
 #    session ("successors tr-… and tr-…"). Flagged as an extension, not a
 #    ruling — drop the line to put them back in scope.
+#    docs/refactor/01-JOURNAL.md joins them on the SAME reasoning and is
+#    called out because it is the newest and the least obvious: it is an
+#    append-only record of a refactor, and it cites the ids it RETRACTED --
+#    naming them is the point, exactly as the field notes name theirs. Its
+#    sibling docs/refactor/00-RUNBOOK.md deliberately STAYS in scope: a
+#    runbook is an instruction a reader acts on today, so a dead citation
+#    in one is a real defect.
 #    Only prose that a reader is meant to ACT on today stays in scope.
 #
 # 2. FOREIGN ids are not ours to judge. A deployment (kuchnie) keeps its
@@ -78,6 +85,7 @@ FILES="$(git ls-files 'README.md' 'AGENTS.md' 'docs/*.md' 'docs/**/*.md' \
   | grep -v '^docs/reviews/' \
   | grep -v '^docs/roadmap-v3\.md$' \
   | grep -v '^docs/field-notes' \
+  | grep -v '^docs/refactor/01-JOURNAL\.md$' \
   | sort -u)"
 export CLAIMS_FILE VOCAB_JSON FILES
 

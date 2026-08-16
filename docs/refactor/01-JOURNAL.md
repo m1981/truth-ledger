@@ -861,3 +861,47 @@ Trzy możliwe operacje, różne epistemicznie:
 
 Wybór jest per claim i zależy od tego, **czym dany claim jest** — a to osąd
 właściciela, nie mechanika. Nie wykonuję go jednostronnie.
+
+---
+
+## J-023 · Bramka złapała konsekwencję kroku 1.2 — w moim własnym dzienniku · 2026-08-16
+
+Pierwszy uczciwy push po naprawie 0.1 przeszedł do `fact-health` (który wcześniej
+**umierał**, więc niczego nie badał) i zablokował:
+
+```
+FAIL  fact-health -- 2 failure(s), 8 warning(s), 33 citation(s), 13 foreign
+  docs/refactor/01-JOURNAL.md
+    FAIL  tr-726376a3  retracted -- live prose stands on a dead fact
+    FAIL  tr-cd6856ed  retracted -- live prose stands on a dead fact
+```
+
+Oba id wycofałem w kroku 1.2, a dziennik je cytuje — **bo zapisuje, że je
+wycofałem**. To nie jest defekt dziennika.
+
+`fact-health` ma na to własną doktrynę, w sekcji SCOPE:
+*„A record of a past event correctly names the ids that were live THEN;
+re-judging it against today's ledger is a category error, not a finding."*
+Na tej podstawie wyłączone są już `docs/archive/`, `docs/reviews/`,
+`docs/roadmap-v3.md` i `docs/field-notes*`.
+
+`docs/refactor/01-JOURNAL.md` należy do dokładnie tej klasy: append-only,
+datowany, cytuje id żywe w chwili zapisu. Dodany do wyłączeń.
+
+**`docs/refactor/00-RUNBOOK.md` ŚWIADOMIE ZOSTAJE w zakresie** — runbook to
+instrukcja, na której czytelnik działa dziś, więc martwe cytowanie w nim jest
+realnym defektem. Kontrola ujemna, żeby to nie było deklaracją:
+
+```
+wstrzyknięte '<!-- kontrola ujemna: tr-726376a3 -->' do 00-RUNBOOK.md
+→ FAIL tr-726376a3 retracted -- live prose stands on a dead fact
+→ rc=1
+po przywróceniu → rc=0
+```
+
+Granica przebiega dokładnie tam, gdzie powinna: **dziennik zapisuje przeszłość,
+runbook instruuje teraźniejszość.**
+
+Uboczny, ale wart nazwania: to pierwszy raz, gdy `fact-health` cokolwiek
+zablokował, odkąd przekroczył `MAX_ARG_STRLEN`. Przez ten czas raportował
+sukces przez śmierć.
