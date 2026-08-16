@@ -5,7 +5,7 @@
 > Jedno zadanie naraz. Po każdym: weryfikacja → status → wpis w JOURNAL → commit.
 
 Gałąź robocza: `claude/git-hooks-architecture-zc97y3`
-Commit bazowy: `fa2e85b` · rewizja runbooka: `r4` (2026-08-16, blokada J-018)
+Commit bazowy: `fa2e85b` · rewizja runbooka: `r5` (2026-08-16, po 0.1 i SEC-0)
 
 ---
 
@@ -35,7 +35,7 @@ python3 template/scripts/test-integrations.py 2>&1 | tail -3
 
 | suita | wynik bazowy | uwaga |
 |---|---|---|
-| test-truth-core | `Ran 394`, **1 failure, 3 skipped** | środowiskowe — brak `jsonschema` (J-002) |
+| test-truth-core | `Ran 396`, **1 failure, 3 skipped** | 394→396: dwa ramiona SEC-0 (J-021); failure/skipy = J-002 |
 | test-truth-v04 | `Ran 13`, OK | — |
 | test-integrations | `Ran 28`, **OK** | J-003 rozwiązane przez `fetch --unshallow` (J-016) |
 | truth-canary | **283 caught, 0 missed** | 44,8 s |
@@ -63,7 +63,7 @@ z góry w runbooku** (patrz 2.6).
 
 # FAZA 0 — BLOKADA (wykryta 2026-08-16, J-018)
 
-### [ ] 0.1 Naprawić przekazywanie ledgera do bramek zdrowia — **BLOKUJE KAŻDY PUSH**
+### [x] 0.1 Naprawić przekazywanie ledgera do bramek zdrowia — **ZROBIONE** (J-020)
 
 `truth list --json` = **145 576 B** > `MAX_ARG_STRLEN` = **131 072 B**.
 Dwie bramki są MARTWE (`Argument list too long`):

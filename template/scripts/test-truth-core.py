@@ -558,6 +558,37 @@ class TestEvidenceScreen(unittest.TestCase):
         self.assertIn("read-only", tm.screen_evidence_command(
             "echo pwned > /dev/null && echo more > f.txt", ALLOW))
 
+    def test_digit_sink_after_plain_gt_refused(self):
+        """SEC-1 (ADR-040 'digit redirect targets'): a plain '>' and an fd
+        dup '>&' shared one branch, and the `isdigit()` that admits the '1'
+        of '2>&1' also admitted `cat f >2` -- which /bin/sh executes as a
+        WRITE to a file literally named '2'. Proven in a sandbox before the
+        fix: '>2' and '>22' created files on disk. Bounded (digit-only
+        names, cwd) but a write channel through a screen whose whole
+        contract is read-only, and it matters more once `reproduce` runs
+        from a hook instead of by hand.
+
+        The lexer already separates the two -- '>2' -> ['>', '2'] while
+        '2>&1' -> ['2', '>&', '1'] -- so this pins that the screen does
+        too, in both directions."""
+        for cmd in ("cat f.txt >2", "cat f.txt >22", "cat f.txt >>2"):
+            err = tm.screen_evidence_command(cmd, ALLOW)
+            self.assertIsNotNone(err, f"{cmd!r} must be refused (SEC-1)")
+            self.assertIn("read-only", err)
+        # the other direction: fd duplication must keep working, or the
+        # pin-the-output convention breaks everywhere it is used
+        for cmd in ("wc -l f.txt 2>&1", "cat f.txt >&2",
+                    "grep -q x f.txt >/dev/null 2>&1"):
+            self.assertIsNone(tm.screen_evidence_command(cmd, ALLOW),
+                              f"{cmd!r} is an fd dup and must pass")
+
+    def test_fd_dup_to_non_digit_refused(self):
+        """'>&' duplicates a descriptor, so its target is a digit or '-'.
+        Anything else is a write wearing an fd dup's syntax."""
+        err = tm.screen_evidence_command("cat f.txt >&out.txt", ALLOW)
+        self.assertIsNotNone(err)
+        self.assertIn("fd duplication", err)
+
     def test_subshell_refused(self):
         self.assertIn("unscreenable", tm.screen_evidence_command(
             "(grep x f.txt)", ALLOW))

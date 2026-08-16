@@ -667,3 +667,100 @@ Nic nie zostało ukryte ani „naprawione" przez wyciszenie.
 **Zakres zgody:** jednorazowo, na te dwa commity docs-only. Każdy kolejny push
 w tym refaktorze wymaga albo wykonania kroku 0.1, albo osobnej decyzji
 właściciela. Nie ustanawia to precedensu.
+
+---
+
+## J-020 · KROK 0.1 ZROBIONY — dwie bramki zdrowia żyją · 2026-08-16
+
+Zmiana: JSON pochodzący z ledgera podróżuje **plikiem tymczasowym**; w środowisku
+zostają tylko payloady o stałym rozmiarze (wokabularz).
+
+```
+scripts/fact-health.sh          CLAIMS_JSON -> CLAIMS_FILE  (mktemp + trap)
+template/scripts/spec-health.sh CLAIMS_JSON -> CLAIMS_FILE
+                                ISSUES_JSON -> ISSUES_FILE
+```
+
+Poprawiony też nagłówkowy komentarz `spec-health.sh`, który niósł błędną stałą
+(*„revisit before the ledger approaches ARG_MAX (~1MB on macOS)"*) — to była
+przyczyna, dla której nikt nie zareagował na czas.
+
+### Weryfikacja
+
+```
+bash scripts/fact-health.sh
+→ fact-health: 0 failure(s), 8 warning(s), 29 citation(s), 13 foreign
+→ rc=0
+```
+
+**29 cytowań, nie zero** — sweep pusty byłby sweepem ciemnym, nie sukcesem.
+
+`spec-health` na pustym korpusie zwraca `no spec files found`, co **niczego nie
+dowodzi**. Sprawdzony osobno na korpusie niepustym (kontrola dodatnia
+i ujemna, `template/docs/specs/` — skrypt rootuje się w `template/`, nie
+w meta-repo, co samo w sobie wyszło przy tej próbie):
+
+```
+spec cytujący tr-3a31bfcf → FAIL tr-3a31bfcf retracted -- spec stands on a dead fact
+spec cytujący tr-deadbeef → FAIL tr-deadbeef missing from ledger
+rc z failure = 1 · rc pusty korpus = 0 · fact-health rc = 0
+```
+
+Status `retracted` odczytany z ledgera dowodzi, że ścieżka `CLAIMS_FILE`
+faktycznie ładuje rekordy — a nie tylko nie wywala się.
+
+Pliki tymczasowe sprzątane przez `trap ... EXIT` (sprawdzone: brak zalegających).
+Rozmiar przekazywany w środowisku: **~20 B ścieżki** zamiast 145 576 B danych.
+
+---
+
+## J-021 · KROK SEC-0 ZROBIONY — kanał zapisu SEC-1 zamknięty · 2026-08-16
+
+Przyczyna była w jednej gałęzi `template/truthlib/evidence.py`: plain `>` i fd
+dup `>&` dzieliły warunek, a `tok.isdigit()` — obecny po to, by dopuścić `1`
+w `2>&1` — dopuszczał też `>2`, czyli **zapis do pliku o nazwie `2`**.
+
+Lexer rozróżniał je od zawsze; screener nie:
+
+```
+'cat f >2'      -> ['cat', 'f', '>',  '2']
+'wc -l f 2>&1'  -> ['wc', '-l', 'f', '2', '>&', '1']
+'cat f >&2'     -> ['cat', 'f', '>&', '2']
+```
+
+Poprawka: token kończący się na `&` ustawia `redir = "dup"` (cel: cyfra lub `-`),
+plain `>`/`>>` ustawia `redir = "out"` (cel: wyłącznie `/dev/null`).
+
+### Weryfikacja — obie strony
+
+```
+cat f.txt >2            ODRZUCONA  output redirection to '2' is refused
+cat f.txt >22           ODRZUCONA
+cat f.txt >>2           ODRZUCONA
+cat f.txt > pwned.txt   ODRZUCONA  (bez zmian)
+--- musi nadal działać ---
+wc -l f.txt 2>&1        PRZYJĘTA
+cat f.txt >&2           PRZYJĘTA
+cat f.txt >/dev/null    PRZYJĘTA
+cat < f.txt             PRZYJĘTA
+```
+
+Konwencja przypinania wyjścia (`>/dev/null 2>&1`) nietknięta.
+
+### Ramiona regresyjne
+
+Poprawka bez ramienia jest prozą, więc `TestEvidenceScreen` dostaje dwa:
+`test_digit_sink_after_plain_gt_refused` (trzy formy zapisu odrzucone
+**i** trzy formy fd dup przepuszczone — obie strony, bo arm pinujący tylko
+odmowę przeszedłby też dla screenera, który blokuje wszystko) oraz
+`test_fd_dup_to_non_digit_refused`.
+
+**ZADEKLAROWANA ZMIANA BASELINE:** core **394 → 396**. Wzrost, nie spadek —
+reguła F1 dotyczy ubytków i skipów.
+
+### Stan bramki regresji po obu krokach
+
+```
+core 396 (1 failure, 3 skipped -- J-002)   v04 13 OK
+integrations 28 OK                          canary 283 caught, 0 missed
+```
