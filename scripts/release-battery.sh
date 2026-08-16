@@ -225,6 +225,40 @@ else
   pass "reachability" "$EXAM checks examined, every one reached by a root"
 fi
 
+# --- 10. reproduction sweep (Reproduce-on-Read, step 2.3) ----------------
+# The direct measurement, replacing the proxy. `invalidate-scan` asks a
+# SYNTACTIC question -- did git touch a watched path -- and on this ledger
+# it answered yes 1971 times while the evidence actually changed 70 times
+# (PPV 3.6%). `reproduce` asks the semantic one: does the recorded capsule
+# still produce its recorded output, here, now? Measured cost: ~8ms per
+# capsule, 0.53s for the whole live ledger -- so the proxy was an
+# optimisation for an operation that is free at this scale.
+#
+# It files NOTHING on success. That is the point of on-read verification:
+# a green sweep leaves no record, because there is no stored state to
+# advance.
+#
+# Exit 8 blocks as hard as exit 7. A sweep that examined ZERO claims has
+# not passed (ADR-042 rule 2) -- an empty or unreadable ledger would
+# otherwise sail through the gate reporting success by measuring nothing,
+# which is the F1 failure this battery exists to refuse.
+OUT=$(python3 template/scripts/truth reproduce 2>&1); RC=$?
+SUM=$(printf '%s\n' "$OUT" | grep -E "^reproduce: " | tail -1)
+case "$RC" in
+  0) if [ -z "$SUM" ]; then
+       bad "reproduce" "the sweep printed no summary (rc=0) -- it examined an unknown amount"
+     else
+       pass "reproduce" "$SUM"
+     fi ;;
+  7) bad "reproduce" "a live claim's recorded capsule no longer reproduces:
+$(printf '%s\n' "$OUT" | grep -E 'capsule-stale|unexecutable' | head -4)
+        Judge it -- 'truth verdict <id> diverge' or an agree with
+        --refresh-evidence (ADR-051). Do NOT re-file blind." ;;
+  8) bad "reproduce" "examined 0 live claims (exit 8) -- a sweep that measured nothing is a failure, never a pass (ADR-042 rule 2)" ;;
+  *) bad "reproduce" "unexpected exit $RC -- the verb's contract is 0/7/8:
+$(printf '%s\n' "$OUT" | tail -3)" ;;
+esac
+
 # --- verdict -------------------------------------------------------------
 if [ "$FAIL" = "1" ]; then
   say ""

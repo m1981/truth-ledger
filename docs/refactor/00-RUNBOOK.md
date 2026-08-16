@@ -5,7 +5,7 @@
 > Jedno zadanie naraz. Po każdym: weryfikacja → status → wpis w JOURNAL → commit.
 
 Gałąź robocza: `claude/git-hooks-architecture-zc97y3`
-Commit bazowy: `fa2e85b` · rewizja runbooka: `r12` (2026-08-16, 2.1 zrobiony)
+Commit bazowy: `fa2e85b` · rewizja runbooka: `r13` (2026-08-16, 2.2 i 2.3 zrobione)
 
 ---
 
@@ -237,11 +237,11 @@ Kto pisze i czyta: `anchor_commit`, `stale`, `reaffirm_cleared`, `invalidation`.
 python3 instruments/field-consumers.py
 ```
 
-### [ ] 2.2 Testy charakteryzujące `reproduce`
+### [x] 2.2 Testy charakteryzujące `reproduce` — **JUŻ ISTNIAŁY**, zweryfikowane (J-030)
 Przypiąć obecne zachowanie **przed** zmianą: 4 klasy wyniku
 (`reproduces`/`capsule-stale`/`unexecutable`/`no-capsule`) + kody 7 i 8.
 
-### [ ] 2.3 `reproduce` jako autorytet na pre-push — WYMAGA zamknięcia SEC-1 (J-017)
+### [x] 2.3 `reproduce` jako arm baterii pchnięcia — **ZROBIONE** (J-032)
 
 **SEC-0 (warunek wstępny):** rozróżnić `>&` od `>` w `evidence.py`, gałąź `redir == "out"`; `tok.isdigit()` dopuszczalne wyłącznie po `>&`. Zamyka SEC-1 bez ruszania `2>&1`.
 

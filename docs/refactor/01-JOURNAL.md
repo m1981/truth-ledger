@@ -1258,3 +1258,89 @@ Najpłytsze pole (`reaffirm_cleared`, jeden zapis, zerowy odczyt treści) można
 zamknąć niezależnie; najgłębsze (`anchor_commit`, 7 odczytów w kernelu) trzyma
 fold i musi iść ostatnie. **Nie zmieniam runbooka bez pomiaru z kroku 2.2** —
 odnotowuję jako hipotezę do sprawdzenia testami charakteryzującymi.
+
+---
+
+## J-030 · KROK 2.2 — pokrycie JUŻ ISTNIAŁO; zweryfikowane, nie dopisane · 2026-08-16
+
+Runbook zakładał, że trzeba napisać testy charakteryzujące. **Nie trzeba** —
+istnieją i są zielone, na obu poziomach:
+
+| poziom | co pinuje | ile |
+|---|---|---|
+| `TestReproduceTriage` | 4 klasy wyniku jako czysta funkcja, w kolejności arm-ów | 8 metod |
+| `TestCapsuleStaleShape` | kształty rozbieżności (buried/ahead/uncommitted/unexplained) | 8 metod |
+| `TestReproduceExitCodes` | `REPRODUCE_EXIT_STALE=7`, `EXIT_EMPTY=8`, brak kolizji, `reproduce ∉ WRITE_VERBS` | 2 metody |
+| `test-integrations.py` | **E2E**: `test_exit_code_7_reproduce_stale`, `test_exit_code_8_reproduce_empty` | 2 metody |
+| `truth-canary.sh` | `FAULT RP` — seeded-fault na sweepie | 2 rodziny |
+
+Uruchomione, żeby nie zaliczyć ich z nazwy: **28/28 OK**. Dopisywanie ramion
+byłoby dublowaniem, nie pokryciem.
+
+---
+
+## J-031 · Warunek wstępny 2.3 był CZERWONY — i claim, który go wykrył, zadziałał · 2026-08-16
+
+Pomiar przed wpięciem:
+
+```
+python3 template/scripts/truth reproduce  → rc=7
+tr-010f7e96  capsule-stale  shape=unexplained
+```
+
+**Gdyby arm został wpięty bez tego pomiaru, KAŻDY push byłby zablokowany** od
+pierwszej chwili, na warunku niezwiązanym z pchającym — czyli bramka rodząca się
+czerwona, która uczy `--no-verify`. Dokładnie to, przed czym ostrzega nagłówek
+tej baterii.
+
+Claim `tr-010f7e96` twierdził zgodność wersji na v0.9.33. Pomiar:
+
+```
+CLI:       truth v0.9.38
+explainer: CLI v0.9.33      receptura → rc=1
+```
+
+**To nie był fałszywy alarm — to był sygnał.** Wersje realnie się rozjechały,
+a claim istniał właśnie po to, żeby to wychwycić. Osądzone jako `diverge`
+(ADR-012: mechaniczne-vs-genuine to nie jest decyzja czasownika wsadowego).
+
+**Pętla domknięta, nie obejście.** Właściwą odpowiedzią na wykryty dryf jest jego
+naprawa: `docs/truth-ledger-explained.md` zsynchronizowany 0.9.33 → 0.9.38,
+następca `tr-8d9005d0` przypina ten sam niezmiennik na bieżącej wersji,
+`tr-010f7e96` wycofany `--cause restated --successor`, cytowania przepięte.
+
+**Uboczna lekcja operacyjna:** `git checkout -- .truth/claims.jsonl` skasował
+niezacommitowany werdykt `diverge` przy sprzątaniu po kontroli ujemnej. Ledger
+jest append-only **w historii gita**, nie w drzewie roboczym — werdykt bez
+commitu nie istnieje. Odtworzony.
+
+---
+
+## J-032 · KROK 2.3 — `reproduce` jako arm baterii pchnięcia · 2026-08-16
+
+Wpięte **do `release-battery.sh`, nie do `pre-push`** — hook kończy się
+`exec bash scripts/release-battery.sh`, więc tam żyją wszystkie kontrole treści
+i tam arm dziedziczy format raportowania oraz dyscyplinę „powiedz, co zbadałeś".
+
+Kontrakt kodów wyjścia, zgodnie z korektą J-011:
+
+| exit | decyzja |
+|---|---|
+| 0 | przepuść — **i nic nie zapisuj** (o to chodzi w weryfikacji przy odczycie) |
+| 7 | BLOKUJ, wypisz rozbieżne claimy, wskaż `diverge` albo `--refresh-evidence` |
+| **8** | **BLOKUJ** — sweep, który zbadał 0 claimów, nie jest sukcesem (ADR-042 reguła 2) |
+| inne | BLOKUJ — kontrakt czasownika to 0/7/8, cokolwiek innego jest defektem |
+
+Dodatkowo: `rc=0` bez linii podsumowania też blokuje — arm musi wiedzieć, ile
+zbadał, a nie tylko że nie padł.
+
+**Stan po wpięciu:**
+
+```
+ok  reproduce -- 62 live claim(s) -- 62 reproduces, 0 capsule-stale,
+                 0 unexecutable, 0 no-capsule
+fact-health 0 failure(s) · reproduce rc=0
+```
+
+Warunek SEC-1 z werdyktu GO (J-017) był zamknięty w SEC-0 (J-021) **przed** tym
+krokiem, zgodnie z porządkiem, który ten werdykt narzucał.
