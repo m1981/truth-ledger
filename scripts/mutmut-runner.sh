@@ -16,6 +16,23 @@
 #
 # Do NOT cd here: mutmut mutates source files in place, relative to the cwd it
 # was started in.
+#
+# WHICH SUITE
+#
+# TRUTH_MUTMUT_SUITE names the suite to score against; it defaults to the core
+# suite, so every existing invocation is unchanged. It exists because the
+# runner and the module under mutation must agree: scoring
+# template/truthlib/structural.py against test-truth-core.py would run 442 tests
+# that never import it, and EVERY mutant would read as "survived" -- a 0% score
+# that measures the wiring, not the suite. Set it in the same command that
+# sets --paths-to-mutate, and set it for scripts/mutmut-coverage.sh too, or the
+# per-mutant test selection is drawn from the wrong suite's contexts:
+#
+#   TRUTH_MUTMUT_SUITE=template/scripts/test-structural.py \
+#       bash scripts/mutmut-coverage.sh
+#   TRUTH_MUTMUT_SUITE=template/scripts/test-structural.py \
+#       ./scripts/mutate.sh run --paths-to-mutate template/truthlib/structural.py
 set -euo pipefail
 export PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$HOME/.cache/truth-ledger-pylib"
-exec /opt/homebrew/bin/python3 template/scripts/test-truth-core.py "$@"
+exec /opt/homebrew/bin/python3 \
+    "${TRUTH_MUTMUT_SUITE:-template/scripts/test-truth-core.py}" "$@"

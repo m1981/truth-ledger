@@ -13,12 +13,19 @@
 #
 # Run this again after adding or renaming tests -- a stale .coverage silently
 # under-selects, and an under-selected mutant reads as "survived".
+#
+# TRUTH_MUTMUT_SUITE picks the suite (default: the core suite), and must match
+# the one scripts/mutmut-runner.sh will run -- contexts recorded from one suite
+# select tests that do not exist in another. See mutmut-runner.sh for why.
+# NOTE: .coverage holds ONE suite's contexts at a time, so re-run this for the
+# core suite before scoring a core module again.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$HOME/.cache/truth-ledger-pylib"
 rm -f .coverage
 uv run --python 3.14 --with coverage --no-project \
-    python -m coverage run template/scripts/test-truth-core.py "$@"
+    python -m coverage run \
+    "${TRUTH_MUTMUT_SUITE:-template/scripts/test-truth-core.py}" "$@"
 echo "--- contexts recorded ---"
 uv run --python 3.14 --with coverage --no-project \
     python -c "

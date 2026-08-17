@@ -50,6 +50,7 @@ flowchart TB
         REP["<b>reports</b><br/>16 fn<br/><i>owns: derivation into numbers</i><br/>queue · impact · inverse · baseline · stats<br/>staling · blast · override · separation<br/><i>no refusal, no advice, no I/O</i>"]
         CON["<b>contract</b><br/>2 fn<br/><i>owns: exact surfaces others consume</i><br/>dispatch_text — the G11 verifier envelope<br/>vocab_report — the P2 vocabulary export"]
         ADV["<b>advisory</b><br/>8 fn<br/><i>owns: what prints BESIDE a result</i><br/>CC-1 block · intake advisories · gate banner<br/>dirty-watch facts · ttl suggestion"]
+        SEL["<b>structural</b><br/>13 fn<br/><i>owns: structural policy anchors</i><br/>RFC 6901 / dot-path point lookups<br/>canonical sub-tree hashing · md sections<br/><i>imports nothing from truthlib</i>"]
     end
 
     subgraph EDGE["IMPERATIVE SHELL"]

@@ -182,6 +182,26 @@ else
   bad "v04 suite" "fold invariant regression (or a skipped arm)"
 fi
 
+# --- 5b. structural selectors (truthlib/structural.py) -------------------
+# Its own root, not an arm of the core suite: structural.py is a leaf that
+# imports nothing from truthlib, and its suite returns the favour by importing
+# nothing else -- so it stays runnable, and scoreable by mutmut, on its own.
+# Same F1 rule as every other arm: 0 tests, or any skip, is a failure.
+OUT=$(python3 template/scripts/test-structural.py 2>&1); RC=$?
+N=$(printf '%s' "$OUT" | sed -n 's/^Ran \([0-9]*\) test.*/\1/p')
+SKIPPED=$(printf '%s' "$OUT" | sed -n 's/.*skipped=\([0-9]*\).*/\1/p')
+if [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -q "^OK"; then
+  if [ "${SKIPPED:-0}" -gt 0 ]; then
+    bad "structural suite" "OK but skipped=$SKIPPED (F1 failure rule)"
+  elif [ "${N:-0}" -eq 0 ]; then
+    bad "structural suite" "ran 0 tests -- the arm is dark (F1 failure rule)"
+  else
+    pass "structural suite" "$N tests, 0 skipped -- selectors and canonical hashing"
+  fi
+else
+  bad "structural suite" "$(printf '%s' "$OUT" | grep -E '^(FAIL|ERROR):' | head -3)"
+fi
+
 # --- 6. canary, scoped ---------------------------------------------------
 # 45s: the one arm that cannot ride every push. Its 112 seeded faults pin
 # CLI BEHAVIOUR, so it can only regress when the CLI or the suite itself

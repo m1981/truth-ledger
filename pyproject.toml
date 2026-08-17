@@ -53,11 +53,28 @@ use_coverage = true
 # the first number mostly measures how many error messages are asserted
 # verbatim, which is not what this suite is for.
 #
-# EXCEPTION -- contract.py. dispatch_text() promises a byte-exact envelope, so
-# there a mutated string IS a contract break worth catching. Score that module
-# with the prose mutations ON:
-#   ./scripts/mutate.sh run --paths-to-mutate template/truthlib/contract.py \
-#       --disable-mutation-types ""
+# EXCEPTION -- contract.py, and structural.py. dispatch_text() promises a
+# byte-exact envelope and structural.py promises a byte-exact canonical
+# encoding, so in both a mutated string IS a contract break worth catching.
+#
+# CORRECTION (measured 2026-08-17, mutmut 2.5.1): the recipe that stood here,
+#   ./scripts/mutate.sh run --paths-to-mutate ... --disable-mutation-types ""
+# is a NO-OP. mutmut injects this key as the option's default, and an empty
+# string on the CLI is falsy, so the pyproject value wins and the run is
+# byte-identical to a plain one -- same mutant count, same ids, same
+# survivors. It fails loudly only if you reach for the other flag:
+#   Error: You can't combine --disable-mutation-types and --enable-mutation-types
+# So a strings-ON pass means overriding the KEY, not passing a flag. Measured
+# on structural.py: 135 mutants with prose off, 216 with it on.
+#
+#   sed -i '' 's/^disable_mutation_types = .*/disable_mutation_types = "decorator"/' \
+#       pyproject.toml   # "decorator" == "disable nothing that applies here"
+#   TRUTH_MUTMUT_SUITE=template/scripts/test-structural.py \
+#       ./scripts/mutate.sh run --paths-to-mutate template/truthlib/structural.py
+#   git checkout pyproject.toml
+#
+# contract.py's number, whatever it is, has never actually been measured with
+# prose on -- the documented recipe silently produced the prose-off run.
 disable_mutation_types = "string,fstring"
 # "suspicious" is flagged at test_time_base + baseline*multiplier. mutmut_config
 # rescales baseline per selection (floor 2s), so without a base here a merely

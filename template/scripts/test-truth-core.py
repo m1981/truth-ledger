@@ -5076,10 +5076,17 @@ class TestModulePurity(unittest.TestCase):
     # this is the same carve-out the brief already grants for
     # structure.md's diagram -- the expected side, not the assertion --
     # and V2 is invited to disagree.
+    #
+    # `structural` (Structural Policy Anchors) joins on the same terms: it is
+    # a leaf -- it imports NOTHING from truthlib -- and it is pure by
+    # construction (it receives file bytes as data and never opens, spawns or
+    # reads a clock), so omitting it would have exempted a module that
+    # already satisfies every clause the ast walk checks.
     PURE = ("registry", "kernel", "evidence", "policy", "reports",
-            "contract", "advisory")
+            "contract", "advisory", "structural")
     # the import DAG, pure side: module -> truthlib modules it may import
     DAG = {"registry": set(),
+           "structural": set(),
            "kernel": {"registry"},
            "evidence": {"registry", "kernel"},
            "policy": {"registry", "kernel"},
