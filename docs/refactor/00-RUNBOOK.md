@@ -536,10 +536,10 @@ skanują kod źródłowy, nie ledger.
 | 2.6 — wycofanie `invalidate-scan` i `reaffirm` | **[x] ZROBIONE** (J-035) | `c0ff7f3` |
 | domknięcie po 2.6 — kolejka werdyktów | **[x] ZROBIONE** (J-036) | `de3c0a7`, `c43bfe7` |
 | — oracle `gates.py` przed Fazą 3 | **[x] ZROBIONE** (dossier F-18/F-20) | `cc3aef0` |
-| **FAZA 3 — polityki obserwacji** | **[~] W TOKU** | |
+| **FAZA 3 — polityki obserwacji** | **[x] ZAMKNIĘTA** | |
 | 3.1 — `.truth/watch-policies` (format liniowy) + walidator | **[x] ZROBIONE** (J-037) | |
-| 3.2 — bramka `max_paths` (twarda odmowa) | [ ] | — |
-| 3.3 — migracja pozostałych claimów na polityki | [ ] | — |
+| 3.2 — bramka `max_paths` + `churn_budget` (twarda odmowa) | **[x]** (J-038, J-039) | `79750ed`, `0dbfc87` |
+| 3.3 — migracja celowana pomiarem (2. tura odrzucona) | **[x]** (J-040) | `f4039b3` |
 | **FAZA 4 — `truth health`** | **[x] ZAMKNIĘTA** | `0131a92`, `7f7ffbd` |
 | 4.1 — model odczytu, jedna projekcja nad `fold()` | **[x]** (J-041) | `0131a92` |
 | 4.2 — werb `truth health [--json]` | **[x]** (J-041) | `0131a92` |
