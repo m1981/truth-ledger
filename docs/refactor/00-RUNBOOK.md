@@ -540,7 +540,7 @@ skanują kod źródłowy, nie ledger.
 | 3.1 — `.truth/watch-policies` (format liniowy) + walidator | **[x] ZROBIONE** (J-037) | |
 | 3.2 — bramka `max_paths` (twarda odmowa) | [ ] | — |
 | 3.3 — migracja pozostałych claimów na polityki | [ ] | — |
-| **FAZA 4 — `truth health`** | **[ ] DO STARTU** | |
-| 4.1 — model odczytu, jedna projekcja nad `fold()` | [ ] | — |
-| 4.2 — werb `truth health [--json]` | [ ] | — |
-| 4.3 — zwinięcie 5 instrumentów + odwrócenie ADR-046 | [ ] | — |
+| **FAZA 4 — `truth health`** | **[x] ZAMKNIĘTA** | `0131a92`, `7f7ffbd` |
+| 4.1 — model odczytu, jedna projekcja nad `fold()` | **[x]** (J-041) | `0131a92` |
+| 4.2 — werb `truth health [--json]` | **[x]** (J-041) | `0131a92` |
+| 4.3 — inwariant w ARCHITECTURE + odwrócenie ADR-046 | **[x]** (J-042) | `7f7ffbd` |
