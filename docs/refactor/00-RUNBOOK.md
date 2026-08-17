@@ -5,7 +5,7 @@
 > Jedno zadanie naraz. Po każdym: weryfikacja → status → wpis w JOURNAL → commit.
 
 Gałąź robocza: `claude/git-hooks-architecture-zc97y3`
-Commit bazowy: `fa2e85b` · rewizja runbooka: `r15` (2026-08-16, 2.5 zatrzymany na zakresie)
+Commit bazowy: `fa2e85b` · rewizja runbooka: `r16` (2026-08-17, 2.5 i 2.6 wykonane)
 
 ---
 
@@ -260,13 +260,50 @@ przechodziłby przez bramkę po cichu.
 
 ### [x] 2.4 Wygaszenie `invalidate-scan` — **ZROBIONE**, dwa hooki nie jeden (J-033)
 
-### [~] 2.5 Usunięcie stanu `stale` z folda — **ZATRZYMANY**: rodzina half-life jest downstream (J-034)
-Stan wyliczany z logu: `unverified` → `live` → `diverged`/`retracted`.
-Dotyka `kernel.fold`, `registry`, oraz `spec-health.sh`/`fact-health.sh`
-(pobierają `citation_bad` z `truth vocab --json` — zmiana wokabularza propaguje
-się do nich automatycznie, ale wymaga sprawdzenia).
+### [x] 2.5 Zwężenie stanu `stale` w foldzie — **ZROBIONE** (J-035)
+Zrealizowane jako **reguła podwójnego invalidation**, nie jako pełne usunięcie
+`stale`: unieważnienia ścieżkowe są inertne, unieważnienia zegarowe TTL
+(ADR-019) nadal zestalają. Powód, dla którego `stale` nie znika w całości, jest
+w J-034 USTALENIE 1: TTL to fakt zegarowy, którego `reproduce` nie zastąpi —
+claim z wygasającym dziś TTL odtwarza się dziś idealnie.
 
-### [ ] 2.6 Wycofanie komend `invalidate-scan` i `reaffirm`
+Żywa ścieżka folda: `unverified` → `live` → `diverged`/`retracted`, ze `stale`
+zawężonym do ramienia zegarowego. Dyskryminator: `kernel.ttl_invalidation`,
+wołany przez fold, replay w `reports` i `staling_report` — jedna implementacja.
+
+Metryka półokresu przekierowana na `live -> diverge` (decyzja operatora,
+opcja 2 z J-034). Pomiar: 1963 obserwacje → 58, mediana P1 0,04 d → 0,81 d.
+
+**Pomiar, który uzasadnia krok:** na 1997 rekordów `invalidation` w tym ledgerze
+**zero** niesie sygnał TTL. Cała masa to proxy ścieżkowe.
+
+### [x] 2.6 Wycofanie komend `invalidate-scan` i `reaffirm` — **ZROBIONE** (J-035)
+
+**KOREKTA WYTYCZNYCH, wykryta przed wykonaniem.** `cmd_invalidate_scan` było
+jedynym wywołaniem `decide_invalidation`, a `_ttl_expired` jedynym producentem
+rekordów TTL. Dosłowne wycofanie werbu zostawiłoby ADR-019 z czytnikiem i bez
+pisarza — czyli cofnęłoby to, co 2.5 właśnie postanowiło zachować. Decyzja
+operatora: **zwęzić werb, nie kasować**.
+
+* `INVALIDATORS = (_ttl_expired,)` — `_anchor_unreachable` i
+  `_evidence_paths_touched` usunięte.
+* `truth invalidate-scan` → **`truth ttl-scan`** („ttl-scan: N claim(s) expired").
+* `truth reaffirm` — **usunięty w całości**. Po 2.5 jego jedynym możliwym
+  wejściem był claim TTL-stale, który triage odrzucał z kontraktu.
+* Ścieżka odczytu nietknięta: `REAFFIRM_BASIS`, `latest_invalidation_reason`,
+  `ttl_staleness`, pole `reaffirm_cleared` (1283 rekordy) — `staling_report`
+  nadal je klasyfikuje.
+* Bonus wykryty po drodze (J-035 USTALENIE 2): wiersz INV-C w `doctor` grepował
+  za `invalidate-scan` i **trafiał w komentarz o wycofaniu** w wygaszonym hooku
+  — przechodził nad hookiem, który nic nie robi. Przecelowany na `pre-push` +
+  `reproduce`; `install-hooks.sh` pisze teraz ten hook (u konsumenta nie istniał).
+
+**DELTA CANARY — ZERO, wbrew prognozie niżej:** 283 → 283, żadne ramię nie
+zostało skasowane. Zgodnie z regułą J-012 każde ramię o wciąż istniejącym
+przedmiocie zostało **odwrócone albo przecelowane**, nie usunięte. Wyliczenie
+per rodzina: J-035, sekcja „Delta ramion canary".
+
+<details><summary>Oryginalne wytyczne kroku (zachowane dla porównania)</summary>
 
 > **KOREKTA WYTYCZNYCH — patrz J-012.** „Usuń kod komend" musi rozróżnić
 > **ścieżkę zapisu** od **ścieżki odczytu**.
@@ -285,6 +322,8 @@ się do nich automatycznie, ale wymaga sprawdzenia).
 jest **oczekiwany**; wymagane jest wyliczenie w JOURNAL, które ramię zniknęło
 i dlaczego jego przedmiot przestał istnieć. Ramię, którego przedmiot **nadal
 istnieje**, musi zostać przepisane, nie skasowane.
+
+</details>
 
 ---
 

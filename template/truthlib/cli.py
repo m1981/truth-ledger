@@ -414,7 +414,25 @@ def cmd_verdict(a):
     rec = append_record("verdict", payload)
     print(json.dumps(rec) if a.json else f"{a.claim_id} -> {verdict}")
 
-def cmd_invalidate_scan(a):
+def cmd_ttl_scan(a):
+    """ADR-019/G10: materialize TTL expiry, and nothing else.
+
+    SUCCESSOR TO `invalidate-scan` (refactor step 2.6). The old
+    verb read three signals -- TTL, anchor reachability, evidence-path
+    diffs -- and the last two are exactly the proxy this refactor
+    retires: 1997 records at a 3.6% positive predictive value, replaced
+    by `truth reproduce`, which asks the semantic question (does the
+    recorded capsule still produce its recorded output?) at ~8ms per
+    capsule. Those two strategies are gone from INVALIDATORS, so this
+    verb is what remained: the CLOCK.
+
+    It has to remain, and could not be folded into `reproduce`. TTL
+    expiry is the one thing reproduction provably cannot detect -- a
+    claim whose TTL runs out today reproduces perfectly today -- and
+    this is still the ONLY clock reader in the system: the fold stays
+    pure and confluent by demoting to stale off the emitted record
+    rather than evaluating a TTL itself. Retiring it would have left
+    ADR-019 with a reader and no writer."""
     claims, _ = fold(load_events())
     head = head_commit() or "0000000"
     now = now_dt()
@@ -422,17 +440,13 @@ def cmd_invalidate_scan(a):
     for cid, entry in claims.items():
         if entry["status"] not in ACTIVE_STATUSES:
             continue
-        p = entry["claim"]["payload"]
-        facts = {"head": head}
-        anchor = entry.get("anchor") or p.get("anchor_commit")  # effective
-        paths = p.get("evidence_paths", [])
-        if anchor and paths and anchor != head:
-            reachable = commit_reachable(anchor)
-            facts["anchor_reachable"] = reachable
-            if reachable:
-                changed, err = changed_files_since(anchor)
-                facts["changed_files"], facts["diff_error"] = changed, err
-        decision = decide_invalidation(entry, facts, now)
+        # `facts` is vestigial for the clock arm (_ttl_expired reads only
+        # the claim's own ts and ttl_days) and is kept as the seam the
+        # strategy signature is built on. The per-claim git probes the old
+        # verb ran to fill it -- commit_reachable plus a diff against the
+        # anchor, once per active claim -- are gone with the strategies
+        # that consumed them, which is most of this verb's former cost.
+        decision = decide_invalidation(entry, {"head": head}, now)
         if decision:
             append_record("invalidation",
                           {"claim": cid, "commit": head, **decision["payload"]})
@@ -440,124 +454,7 @@ def cmd_invalidate_scan(a):
     if not a.quiet:
         for cid, why in hits:
             print(f"stale: {cid} ({why})")
-        print(f"invalidate-scan: {len(hits)} claim(s) marked stale")
-
-def cmd_reaffirm(a):
-    """R3 / ADR-030: batch re-confirmation of stale claims whose evidence
-    COMMAND OUTPUT is unchanged (only that -- a watched-but-unread path
-    may have changed; the filed agree records what the anchor advance
-    cleared, see ADR-030). The shell only walks, gathers, executes, and
-    appends;
-    every decision is reaffirm_triage's. Execution goes through the SAME
-    screened path `verdict --recheck` uses -- screen_evidence_command
-    against the CURRENT allowlist (the screen gates execution, ADR-029),
-    then run_evidence + recheck_verdict; a second executor is forbidden
-    for the same reason a second matcher is (ADR-005's drift lesson)."""
-    events = load_events()
-    claims, _ = fold(events)
-    # ADR-010, reused verbatim from `verdict agree`: the comparison is
-    # claim-session == current session; TRUTH_SELF_VERDICT=1 (the F4-class
-    # self-attested override) disables it by making the comparison
-    # unmatchable, exactly as loud and deliberate as on a manual agree.
-    cur = (None if os.environ.get("TRUTH_SELF_VERDICT") == "1"
-           else session())
-    allow, deny = load_allowlist(), load_denylist()
-    rows, counts = [], {arm: 0 for arm in REAFFIRM_ARMS}
-    self_agreed = 0  # F4: agrees filed on this session's own claims
-    for cid, entry in sorted(claims.items()):
-        if entry["status"] != "stale":
-            continue
-        reason = latest_invalidation_reason(events, cid)
-        ttl_staled = ttl_staleness(events, cid)  # red-team F3: structured
-        was_agreed = previously_agreed(events, cid)
-        d = reaffirm_triage(entry, reason, cur, was_agreed,
-                            ttl_staled=ttl_staled)
-        if d["arm"] == "execute":
-            ev = entry["claim"]["payload"]["evidence"]
-            # Rescreen against the CURRENT allowlist -- committed policy
-            # NOW, not at filing time (the ADR-009 intake-AND-recheck
-            # posture); a refusal means the command never runs here.
-            screen_err = screen_evidence_command(ev["command"], allow,
-                                                 denylist=deny)
-            if screen_err:
-                d = reaffirm_triage(entry, reason, cur, was_agreed,
-                                    screen_err=screen_err,
-                                    ttl_staled=ttl_staled)
-            else:
-                digest, rc = run_evidence(ev["command"])
-                # ADR-051: the EFFECTIVE capsule, exactly as `--recheck`
-                # compares -- a refreshed claim must return to the
-                # hash-match arm, or the refresh bought nothing.
-                d = reaffirm_triage(
-                    entry, reason, cur, was_agreed,
-                    recheck=recheck_verdict(
-                        effective_evidence(
-                            ev, latest_evidence_refresh(events, cid)),
-                        digest, rc),
-                    ttl_staled=ttl_staled)
-        action, filed = d["action"], None
-        if d["arm"] == "match":
-            if cur is None and entry["claim"].get("session") == session():
-                self_agreed += 1  # F4: the override let this through
-            if a.dry_run:
-                action = "hash-match -- would file agree (dry-run: " \
-                         "nothing filed)"
-            else:
-                payload = {"claim": cid, "verdict": "agree",
-                           "basis": REAFFIRM_BASIS}
-                cp = entry["claim"]["payload"]
-                if cp.get("evidence_paths"):
-                    # F2 semantics, same rule as cmd_verdict: the agree
-                    # carries HEAD so the EFFECTIVE anchor advances and
-                    # the next scan diffs from here, not the old anchor.
-                    payload["anchor_commit"] = head_commit()
-                    # ...which also buries whatever watched-path change
-                    # staled the claim outside every future scan window
-                    # (the command's OUTPUT matched; the watched universe
-                    # may be wider than what it reads). Red-team F2:
-                    # record what the advance auto-cleared so the burial
-                    # is auditable -- the prior EFFECTIVE anchor (the
-                    # scan's diff base) and the watched files changed in
-                    # that range, via the scan's own helpers (a second
-                    # differ/matcher is forbidden, the F1/F5 lesson). If
-                    # the diff fails, the prior anchor alone still lands.
-                    prior = entry.get("anchor") or cp.get("anchor_commit")
-                    if prior:
-                        cleared = {"prior_anchor": prior}
-                        changed, _err = changed_files_since(prior)
-                        if changed is not None:
-                            cleared["touched"] = [
-                                f for f in changed
-                                if match_paths(f, cp.get("evidence_paths",
-                                                         []))]
-                        payload["reaffirm_cleared"] = cleared
-                filed = append_record("verdict", payload)["id"]
-                action = f"filed agree ({filed}): {REAFFIRM_BASIS}"
-        counts[d["arm"]] += 1
-        rows.append({"id": cid, "arm": d["arm"], "action": action,
-                     "filed": filed})
-    if cur is None:
-        # F4 (red-team): the manual-agree override is per-claim and loud;
-        # here one env var amplifies across the whole sweep. Same
-        # loudness, batch edition -- count what it actually let through.
-        print("truth: WARNING: TRUTH_SELF_VERDICT=1 override active -- "
-              f"reaffirm {'would auto-agree' if a.dry_run else 'auto-agreed'} "
-              f"{self_agreed} claim(s) THIS SESSION authored (batch "
-              "self-verification: the G11/ADR-010 independence seam is off "
-              "for this sweep)", file=sys.stderr)
-    summary = (f"reaffirm: {len(rows)} stale claim(s) -- "
-               f"{counts['match']} reaffirmed, {counts['mismatch']} "
-               f"diverged (dispatch), {counts['ttl']} ttl (re-file), "
-               f"{counts['manual']} manual, {counts['same_session']} "
-               "same-session"
-               + (" [dry-run: nothing filed]" if a.dry_run else ""))
-    if a.json:
-        print(json.dumps({"dry_run": a.dry_run, "claims": rows,
-                          "counts": counts}, indent=2))
-        return
-    for r in rows:
-        print(f"{r['id']}  {r['arm']:<12} {r['action']}")
-    print(summary)
+        print(f"ttl-scan: {len(hits)} claim(s) expired")
 
 def cmd_premise(a):
     # Input hygiene, mirror parity (same class as the citations check,
@@ -1027,11 +924,21 @@ def cmd_impact(a):
         print(json.dumps(rows, indent=2))
     else:
         for r in rows:
-            line = (f"editing {', '.join(r['touched'])} -> next commit "
-                    f"STALES {r['claim']} ({r['tier']}, {r['status']}): "
+            # Refactor step 2.5 changed this line's VERB, because it had
+            # become a false prediction. It read "next commit STALES
+            # <claim>", and that was true while a path invalidation demoted
+            # the claim -- a proxy that was right about 1 time in 8. Nothing
+            # stales on a path touch now, so the honest report is what the
+            # tool actually knows: this claim WATCHES what you are editing.
+            # Whether the fact moved is decided downstream, by `truth
+            # reproduce` at the push boundary or by a judge -- and saying so
+            # is the point, since the old wording taught readers to treat a
+            # 3.6%-precision guess as a verdict.
+            line = (f"editing {', '.join(r['touched'])} -> WATCHED BY "
+                    f"{r['claim']} ({r['tier']}, {r['status']}): "
                     f"{r['text']}")
             if r["holds"]:
-                line += (" -- if that premise dies, ready HOLDs "
+                line += (" -- if that fact moved, ready HOLDs "
                          + ", ".join(r["holds"]))
             print(line)
     sys.exit(3 if rows else 0)
@@ -1452,9 +1359,18 @@ def cmd_doctor(a):
     # delegation, directory-named-hook hardening -- one detection, shared.
     hooks_dir, hp_cfg = git_hooks_dir(root)
 
+    # Refactor step 2.6: the second row USED to grep post-merge and
+    # post-commit for `invalidate-scan`. That verb is retired, and the row had already
+    # gone dark one step earlier: step 2.4 emptied both hooks to `exit 0`
+    # under a comment EXPLAINING the removal -- and the comment contains the
+    # word `invalidate-scan`, so this one-hop grep kept reporting "post-merge
+    # hook enforces INV-C" over a hook that enforces nothing. A check that
+    # passes on its own retirement notice is the dark gate this repo exists
+    # to refuse. Re-aimed at the successor guarantee: `truth reproduce` at
+    # the push boundary, which is what install-hooks.sh now writes.
     for names, needle, purpose in ((("pre-commit",), "check-truth", "INV-A/INV-B"),
-                                   (("post-merge", "post-commit"),
-                                    "invalidate-scan", "INV-C")):
+                                   (("pre-push",), "reproduce",
+                                    "reproduce-on-read (INV-C successor)")):
         hit = find_gate_hook(hooks_dir, names, needle)
         if hit:
             ok(f"{names[0]} hook enforces {purpose}",
@@ -1707,23 +1623,20 @@ VERB_TABLE = [
         JSON_FLAG,
     ], cmd_citations),
 
-    ("invalidate-scan",
-     "mark claims stale: paths changed, TTL expired, or anchor lost", [
+    # Refactor step 2.6: `invalidate-scan` was NARROWED to `ttl-scan`
+    # and `reaffirm` was RETIRED outright. Both were write paths for the
+    # staling proxy; `truth reproduce` is the read-time replacement, and
+    # `verdict --recheck` remains the per-claim re-confirmation. The READ
+    # side of both is untouched -- the fold still parses all 1997
+    # `invalidation` records and reports still classify the 1283
+    # `reaffirm_cleared` ones (ADR-046 legacy-admitted, closed to new
+    # records).
+    ("ttl-scan",
+     "mark claims stale whose ttl_days has elapsed (ADR-019); the only "
+     "clock reader in the system. Successor to invalidate-scan, whose "
+     "path and anchor arms were retired in favour of `truth reproduce`", [
         _flag("--quiet", action="store_true"),
-    ], cmd_invalidate_scan),
-
-    ("reaffirm", "batch re-confirm stale claims "
-                 "whose evidence is unchanged (ADR-030): re-run "
-                 "each claim's evidence through the screened "
-                 "recheck path; hash-match auto-files agree "
-                 "(anchor advances), mismatch is listed for "
-                 "dispatch and files NOTHING; TTL-staled, "
-                 "unscreened, never-agreed, and same-session "
-                 "claims are skipped with the reason", [
-        _flag("--dry-run", dest="dry_run", action="store_true",
-              help="triage and report every arm; file nothing"),
-        JSON_FLAG,
-    ], cmd_reaffirm),
+    ], cmd_ttl_scan),
 
     ("premise", "link a tracker issue (external or wk-) "
                 "to a claim it depends on; --supersedes redirects a "

@@ -1,10 +1,28 @@
 # .github/workflows/truth-scan.yml
 #
-# The heartbeat: after every push to main, run invalidate-scan and commit
-# any resulting invalidation records back with a bot identity. This is
-# what makes knowledge decay MECHANICAL with zero humans in the loop:
-# teammate merges -> scan fires -> stale facts demoted -> demotions are
-# themselves ledger history, attributable to TRUTH_ACTOR=ci-scanner.
+# The heartbeat, in TWO parts since the Reproduce-on-Read refactor
+# (steps 2.4-2.6). It used to be one part: run `invalidate-scan` after every
+# push and commit the resulting invalidation records back. That scan asked a
+# SYNTACTIC question -- did this push touch a path some claim watches -- and
+# on the template's own ledger it answered yes 1997 times against 71 judged
+# divergences. Positive predictive value 3.6%, and every false alarm was a
+# committed record a human then had to read. The proxy is retired.
+#
+#   1. REPRODUCE (blocking, writes nothing). Re-runs every LIVE claim's
+#      recorded evidence capsule here and now and asks the SEMANTIC
+#      question: does it still produce what it produced? Measured cost
+#      ~8ms per capsule. It fails the job on exit 7 (a capsule no longer
+#      reproduces -- a human must judge it, and ADR-012 says a machine
+#      must not decide mechanical-vs-genuine) and on exit 8 (the sweep
+#      examined ZERO claims, which is a failure and never a pass,
+#      ADR-042 rule 2). A green sweep leaves NO record, deliberately:
+#      there is no stored state left to advance.
+#
+#   2. TTL-SCAN (writes, and still commits back). The one thing
+#      reproduction provably cannot detect: a claim whose ttl_days has
+#      elapsed reproduces perfectly on the day it expires. This remains
+#      the only clock reader in the system (ADR-019), so its records are
+#      still worth committing with a bot identity.
 #
 # Loop safety: the commit-back uses [skip ci] AND the job guards against
 # running on the bot's own commits, so scanner commits never re-trigger
@@ -12,7 +30,7 @@
 #
 # Concurrency: serialized per-branch so two rapid merges can't race on
 # the append (the ledger is append-only; a lost append is a lost
-# demotion, so we queue instead).
+# expiry, so we queue instead).
 
 name: truth-scan
 
@@ -34,9 +52,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # anchor reachability checks need real history
+          fetch-depth: 0   # full history: capsules may read it
 
-      - name: Run invalidation scan
+      - name: Reproduce every live capsule (blocking, files nothing)
+        run: python3 scripts/truth reproduce
+
+      - name: Expire elapsed TTLs (ADR-019, the only clock reader)
         id: scan
         env:
           TRUTH_ACTOR: ci-scanner
@@ -44,23 +65,23 @@ jobs:
         run: |
           set -eu
           before=$(wc -l < .truth/claims.jsonl)
-          python3 scripts/truth invalidate-scan
+          python3 scripts/truth ttl-scan
           after=$(wc -l < .truth/claims.jsonl)
           echo "new_records=$(( after - before ))" >> "$GITHUB_OUTPUT"
 
-      - name: Commit demotions back (bot identity, attributable)
+      - name: Commit expiries back (bot identity, attributable)
         if: steps.scan.outputs.new_records != '0'
         run: |
           git config user.name  "truth-scanner[bot]"
           git config user.email "truth-scanner[bot]@users.noreply.github.com"
           git add .truth/claims.jsonl
-          git commit -m "truth: ${{ steps.scan.outputs.new_records }} invalidation(s) from post-merge scan [truth-scan] [skip ci]"
+          git commit -m "truth: ${{ steps.scan.outputs.new_records }} ttl expiry(ies) [truth-scan] [skip ci]"
           git push
 
-      - name: Surface what died (visibility, not silence)
+      - name: Surface what expired (visibility, not silence)
         if: steps.scan.outputs.new_records != '0'
         run: |
-          echo "## Facts demoted by this merge" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Facts expired by the clock" >> "$GITHUB_STEP_SUMMARY"
           tail -n "${{ steps.scan.outputs.new_records }}" .truth/claims.jsonl \
-            | python3 -c "import json,sys; [print('- `'+r['payload']['claim']+'` — '+r['payload'].get('reason','')) for r in map(json.loads, sys.stdin)]" \
+            | python3 -c "import json,sys; [print('- `'+r['payload']['claim']+'` \u2014 '+r['payload'].get('reason','')) for r in map(json.loads, sys.stdin)]" \
             >> "$GITHUB_STEP_SUMMARY"

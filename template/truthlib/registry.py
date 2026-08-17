@@ -128,9 +128,11 @@ ISSUE_STATUSES = ("open", "claimed", "closed", "cancelled")
 # stats, impact, dispatch, validate, doctor, issues, baseline, vocab) stay
 # silent; `validate --stdin` especially MUST stay exempt -- it runs
 # inside the commit gate itself.
-WRITE_VERBS = frozenset(("claim", "verdict", "invalidate-scan", "premise",
-                         "contradicts", "issue", "start", "done",
-                         "reaffirm"))  # R3: reaffirm appends agree verdicts
+# Refactor step 2.6: `invalidate-scan` narrowed to `ttl-scan` (it still
+# appends invalidation records, so it stays a write verb) and `reaffirm`
+# was retired outright, taking its entry with it.
+WRITE_VERBS = frozenset(("claim", "verdict", "ttl-scan", "premise",
+                         "contradicts", "issue", "start", "done"))
 DISCOVERY_FILES = ("AGENTS.md", "CLAUDE.md", ".cursorrules",
                    ".github/copilot-instructions.md")
 # ADR-025: CI config files/dirs doctor greps for the commit-gate script
@@ -247,7 +249,7 @@ ACCEPT_KINDS = ("verification", "validation")  # 12207's two V's
 # loads and folds inside the ledger lock, so the same latency prices
 # the critical section a concurrent writer waits behind. The linear
 # scans that remain (append's tail read is tail-seek since v0.9.29;
-# reaffirm/invalidate-scan walk every claim by design) are
+# ttl-scan and reproduce walk every claim by design) are
 # watched-by-design residuals, not sensor-covered ones: no separate
 # alarm exists for them, this constant's trip is their proxy.
 FOLD_LATENCY_WARN_MS = 200

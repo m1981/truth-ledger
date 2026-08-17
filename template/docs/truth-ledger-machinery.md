@@ -334,7 +334,7 @@ into syntax ("the CLI refuses").
 flowchart TB
     subgraph continuous ["Every commit / merge"]
         H1["pre-commit: check-truth.sh<br/><i>schema + fold sanity</i>"]
-        H2["post-merge: invalidate-scan<br/><i>stale claims whose paths changed</i>"]
+        H2["pre-push: reproduce<br/><i>blocks when a live capsule stopped producing</i>"]
     end
 
     subgraph battery ["On demand + weekly CI"]

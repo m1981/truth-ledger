@@ -102,6 +102,54 @@ def make_record(kind, payload, actor_name, session_name, ts, prefix="tr-"):
             "actor": actor_name, "session": session_name, "ts": ts,
             "payload": payload}
 
+# ------------------------------------------- the invalidation discriminator
+
+def is_ttl_reason(reason):
+    """ADR-019/030: does an invalidation reason mean TTL expiry? Matches
+    what _ttl_expired writes ('ttl expired (N days)') by prefix, so the
+    check and the writer cannot drift on the parenthetical. FALLBACK
+    ONLY since the scan started stamping reason_code (v0.9.12 red-team
+    F3): the structured code is preferred and this prefix is consulted
+    just for records that predate the stamp.
+
+    Lives in kernel, not evidence, since refactor step 2.5: fold() is
+    now its first caller and kernel sits BELOW evidence in the DAG
+    ADR-044 fixed, so the
+    dependency could only run this way. evidence re-exports it through
+    its star-import, so every existing caller keeps its spelling and
+    there is still exactly ONE implementation (the F1/F5 lesson)."""
+    return bool(reason) and reason.startswith("ttl expired")
+
+def ttl_invalidation(payload):
+    """THE DOUBLE-INVALIDATION RULE (refactor step 2.5). Records of kind
+    `invalidation` carry TWO unrelated meanings that shared one kind for
+    historical reasons, and only one of them survives the
+    Reproduce-on-Read refactor:
+
+      * PATH CHANGE -- "a watched path was touched", the proxy this
+        refactor retires. Measured on this ledger: 1997 records, a 3.6%
+        positive predictive value for evidence actually having moved.
+        `truth reproduce` answers the same question DIRECTLY at 8ms per
+        capsule, so the proxy is now inert for status: a path
+        invalidation leaves the claim exactly as its verdicts left it.
+      * TTL EXPIRY (ADR-019/G10) -- a CLOCK FACT, and the one thing
+        reproduce provably cannot replace: a claim whose TTL runs out
+        today still reproduces perfectly today. Nothing else in the
+        system observes it, so this arm KEEPS staling.
+
+    Returns True for the second. Killing both because they share a kind
+    would have quietly removed a working mechanism -- four suite arms
+    (test_ttl_staled_claim_*, test_backdated_scope_ok_expires_*,
+    test_verbatim_repeat_across_expiry) are the pins that caught it.
+
+    Pure, per-record, and the SINGLE place the two meanings are told
+    apart: fold() (status), reports.half_life_observations (the replay's
+    parity with fold) and reports.staling_report all call this, so the
+    fold and its readers cannot drift on the distinction the way
+    reports.py had its own `new = "stale" if kind == "invalidation"`."""
+    p = payload or {}
+    return p.get("reason_code") == "ttl" or is_ttl_reason(p.get("reason"))
+
 # ----------------------------------------------------------------- fold
 
 def fold(events):
@@ -119,6 +167,14 @@ def fold(events):
         advances the claim's anchor, so re-verified claims stay live
         across subsequent invalidate-scans instead of re-staling forever.
     `retracted` remains terminal (G12).
+
+    The refactor adds ONE algebra change (step 2.5): the
+    DOUBLE-INVALIDATION RULE. `stale` is no longer reachable from a path
+    invalidation -- only from a TTL expiry (kernel.ttl_invalidation). The
+    live path through this fold is therefore
+    `unverified -> live -> diverged/retracted`, with `stale` narrowed to
+    the clock arm, and every reader of a stale claim is reading an
+    ADR-019 expiry rather than a 3.6%-precision path proxy.
     """
     ordered = sorted(events, key=fold_key)  # ADR-016: total, content-derived
     claims, premises, edges = {}, {}, []
@@ -156,8 +212,14 @@ def fold(events):
                                             if p["verdict"] == "diverge"
                                             else None)
         elif kind == "invalidation":
+            # Step 2.5: the DOUBLE-INVALIDATION RULE. Only a TTL
+            # expiry -- a clock fact nothing else observes -- still stales.
+            # A path invalidation is INERT here: it neither sets status nor
+            # advances status_ts, so the claim reads exactly as its verdicts
+            # left it and `truth reproduce` answers the drift question
+            # directly at read time. See kernel.ttl_invalidation.
             c = p.get("claim")
-            if c in claims:
+            if c in claims and ttl_invalidation(p):
                 set_status(c, "stale", ev.get("ts"))
         elif kind == "premise":
             premises.setdefault(p["issue"], []).append(p["claim"])

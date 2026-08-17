@@ -1488,3 +1488,243 @@ który usuwamy. Trzy opcje:
 
 Rekomendacja: **(2)**, bo zachowuje cel raportu przy nowym, uczciwym sygnale.
 Ale to zmiana znaczenia publikowanej metryki, więc nie moja decyzja.
+
+---
+
+## J-035 · KROK 2.5 + 2.6 — algebra zwężona, proxy wygaszone, metryka przeceluowana · 2026-08-17
+
+Decyzja operatora na J-034: **opcja 2** (półokres przekierowany na `live -> diverge`).
+Dodatkowa decyzja w trakcie kroku, podjęta po pomiarze niżej: **opcja 1** dla
+writera TTL (`invalidate-scan` → `ttl-scan`).
+
+### Reguła podwójnego invalidation (2.5a)
+
+`kernel.ttl_invalidation(payload)` — jeden dyskryminator, jedno miejsce.
+Fold, replay w `reports` i `staling_report` wołają ten sam predykat, więc nie
+mogą się rozjechać tak, jak rozjechał się `new = "stale" if kind == "invalidation"`
+w J-034.
+
+| znaczenie rekordu | los | uzasadnienie |
+|---|---|---|
+| zmiana ścieżki | **inertny** — nie rusza ani statusu, ani `status_ts` | proxy o PPV 3,6%; `reproduce` odpowiada wprost, 8 ms/kapsuła |
+| wygaśnięcie TTL | **nadal zestala** | fakt zegarowy; claim z wygasającym dziś TTL odtwarza się dziś idealnie |
+
+### Pomiar na tym ledgerze — 1997 rekordów, z czego TTL: ZERO
+
+```
+grep -c '"kind": "invalidation"'                    1997
+  z reason_code "ttl"                                  0
+  z prefiksem "ttl expired"                            0
+  wszystkie z reason "evidence ..."                 1997
+```
+
+Mechanizm TTL istnieje, ma testy i ramię canary, i **nie odpalił się tu ani razu**.
+Cała masa 1997 rekordów to wyłącznie proxy ścieżkowe.
+
+### Status przed → po
+
+```
+PRZED  retracted 117 · live 62 · unverified 28 · stale 7 · diverged 30
+PO     retracted 117 · live 68 · unverified 29 · stale 0 · diverged 30
+```
+
+Siedem zestalonych wróciło do tego, co mówią ich werdykty (6 → live, 1 → unverified).
+
+### USTALENIE 1 — `stale` był KRYJÓWKĄ, nie tylko szumem
+
+To jest znalezisko, którego nie było w hipotezie. `truth reproduce` bada
+**wyłącznie claimy live**. Cztery z siedmiu claimów zaparkowanych w `stale`
+mają kapsuły, których **nie da się już odtworzyć** — i przez cały ten czas
+były niewidzialne dla pomiaru bezpośredniego:
+
+```
+tr-39eb58bc  asbuilt-architecture.md nie sięga bieżącej wersji CLI (dochodzi do v0.9.33, CLI jest v0.9.38)
+tr-791fafbc  receptura zawiera literał "v0.9.32"; nagłówek explainera i CLI zgadzają się na v0.9.38
+tr-96d14c58  sha256sum check-truth.sh -- plik zmieniony w 215d114 (v0.9.38)
+tr-b350781e  sha256sum release-battery.sh -- plik zmieniony m.in. w 961d696
+```
+
+Bramka `reproduce` w baterii zablokowała push w chwili, w której te claimy
+wróciły do live. **To nie jest regresja tej zmiany — to pierwszy raz, kiedy ta
+populacja jest w ogóle widzialna.** Proxy nie było więc tylko nieprecyzyjne;
+działało jak schowek, który wyjmował claim spod jedynego pomiaru zdolnego go
+zweryfikować.
+
+Werdykty na te cztery są **do decyzji operatora** (ADR-012: mechaniczne vs
+genuine to sąd, nigdy nie robota werbu wsadowego). Wstępna klasyfikacja z
+dowodem w raporcie sesji.
+
+### Metryka półokresu — przecelowana (2.5b)
+
+Mierzone przejście: `live -> diverged`, czyli ile claim żył, zanim **sędzia**
+stwierdził, że dowód się ruszył. Wykluczenie TTL, o które prosił FS-1/ADR-032,
+jest teraz **strukturalne**, nie specjalnym przypadkiem: TTL produkuje `stale`,
+nigdy `diverged`, więc nie dosięga gałęzi obserwacji. Retrakcja celowo NIE jest
+obserwacją — `retracted` mówi, że claimu nie należało złożyć; `diverged` mówi,
+że był prawdziwy i przestał.
+
+```
+PRZED  P0 0.02d (n=77) · P1 0.04d (n=1441) · P2 0.06d (n=445)     razem n=1963
+PO                       P1 0.81d (n=21)   · P2 0.66d (n=37)      razem n=58
+```
+
+Spadek 34×, mniej więcej rząd wielkości przewidziany w J-034. P0 znika
+całkowicie — nie ma ani jednej osądzonej rozbieżności na P0, więc `ttl_suggestion`
+dla P0 zwraca `None` zamiast liczby zbudowanej z szumu. Poprzednie 0,02 d to
+było „ktoś dotknął obserwowanego pliku w ciągu pół godziny", sprzedawane jako
+półokres życia faktu.
+
+### Zwężenie kaskady i writer TTL (2.6a)
+
+Konflikt wykryty przed wykonaniem: `cmd_invalidate_scan` był **jedynym**
+wywołaniem `decide_invalidation`, a `_ttl_expired` **jedynym** producentem
+rekordów TTL. Dosłowne wycofanie werbu zostawiłoby ADR-019 z czytnikiem i bez
+pisarza. Rozstrzygnięcie operatora: zwęzić, nie skasować.
+
+```
+INVALIDATORS = (_ttl_expired,)          # było: + _anchor_unreachable, _evidence_paths_touched
+truth invalidate-scan  →  truth ttl-scan        "ttl-scan: N claim(s) expired"
+```
+
+Efekt uboczny wart odnotowania: `ttl-scan` nie odpala już `commit_reachable`
+ani diffa względem kotwicy **per claim aktywny** — te sondy git odeszły razem
+ze strategiami, które je konsumowały, i to była większość kosztu werbu.
+
+### `reaffirm` wycofany — martwa maszyneria, nie odebrana zdolność (2.6a)
+
+Po 2.5 jedyną drogą do `stale` jest TTL, który był **pierwszym ramieniem**
+`reaffirm_triage` i bezwarunkową odmową („re-file required; ADR-019: TTL never
+resets by re-verification"). Każde wejście, jakie werb mógł jeszcze dostać,
+było wejściem, które odrzucał z kontraktu. Usunięte: `cmd_reaffirm` (117 linii),
+`reaffirm_triage`, `previously_agreed`, `REAFFIRM_ARMS`, 24 ramiona testowe.
+**Zostawione (J-012, ścieżka odczytu):** `REAFFIRM_BASIS`,
+`latest_invalidation_reason`, `ttl_staleness`, pole `reaffirm_cleared` —
+`staling_report` nadal klasyfikuje 1283 historyczne rekordy.
+
+### USTALENIE 2 — ciemna bramka w doktorze, odziedziczona po 2.4
+
+`doctor` grepował `post-merge`/`post-commit` za słowem `invalidate-scan`.
+Krok 2.4 wygasił oba hooki do `exit 0` — **pod komentarzem wyjaśniającym
+usunięcie, który zawiera słowo `invalidate-scan`**. Jednohopowy grep trafiał
+w notatkę o wycofaniu i przez cały czas raportował:
+
+```
+OK    post-merge hook enforces INV-C          ← nad hookiem, który nie robi nic
+```
+
+Bramka, która przechodzi na własnym akcie zgonu. Przecelowana na następcę:
+`pre-push` + `reproduce`. Przy okazji wyszło, że u **konsumenta** ta obietnica
+nie miała mechanizmu — `install-hooks.sh` nie pisał żadnego hooka pre-push, więc
+zdanie „reproduce runs at pre-push" było prawdziwe tylko w tym repo. Installer
+pisze go teraz.
+
+### Delta ramion canary — ZERO, wbrew prognozie runbooka
+
+Runbook deklarował: „**spadek** liczby ramion canary w tym kroku jest oczekiwany"
+(15 rodzin FAULT dotykających wygaszanych werbów). Wynik: **283 → 283, zero
+skasowanych ramion.** Powód: zgodnie z regułą J-012 („ramię, którego przedmiot
+nadal istnieje, musi zostać przepisane, nie skasowane") każde ramię dostało
+odwróconą albo przecelowaną tezę zamiast usunięcia:
+
+| rodzina | co się stało | nowa teza |
+|---|---|---|
+| FAULT B (INV-C) | **odwrócone** | dotknięcie obserwowanej ścieżki NIE zestala |
+| FAULT D (G10) | zachowane, werb przemianowany | TTL nadal zestala, przez `ttl-scan` |
+| FAULT E (G14) | **odwrócone** + dodane | skasowana kotwica nie zestala, a kapsuła nadal się odtwarza |
+| FAULT T (ADR-023) | połowa zachowana, połowa odwrócona | wyjątek przy intake zostaje; „odpala po zapełnieniu" odwrócone |
+| FAULT L | przecelowane | re-weryfikacja = live **i** kapsuła się odtwarza |
+| FAULT RA (ADR-030) | przecelowane na `reproduce` | zmieniona kapsuła → exit 7, **nic** nie zapisane w żadną stronę |
+| FAULT SD-decay | zwężone | wygasły override jest stale **i** niesie `reason_code: ttl` |
+| FAULT EF3 | przecelowane | odświeżony claim znów się odtwarza |
+| FAULT DG (ADR-025) | igła zmieniona | `pre-push` + `reproduce` zamiast `post-merge` + `invalidate-scan` |
+| FAULT J / R3 / S2 | fixture wymieniony | martwa przesłanka z werdyktu `diverge`, nie z dotknięcia ścieżki |
+
+`reproduce` okazał się przy tym **ostrzejszy** niż `reaffirm`, którego zastąpił:
+tamten auto-składał `agree` na trafieniu hasha, ten nie zapisuje nic w żadnym
+kierunku.
+
+### USTALENIE 3 — żywy claim zaostrza bramkę bliskich duplikatów
+
+Nieprzewidziany efekt kaskadowy, złapany przez canary: `ACTIVE_STATUSES` to
+`{live, unverified}`, a bramka ADR-018 porównuje tylko z aktywnymi. Claimy,
+które wcześniej wypadały ze zbioru przez zestalenie, **zostają w nim teraz na
+stałe**, więc odmowy bliskich duplikatów będą częstsze. W canary objawiło się
+to odmową złożenia „intact.txt says hello" przy żywym „watched.txt says hello"
+(Jaccard 0,5) — i przewróciło FAULT O oraz FAULT P, które z nim nie miały nic
+wspólnego. Do obserwacji u konsumentów.
+
+### Weryfikacja
+
+```
+core          372 testy, 0 skipów, OK
+v04            13 testów, OK
+integrations   28 testów, 0 skipów, OK
+canary        283 caught, 0 missed
+field-consumers  30 kluczy / 4660 rekordów -- 0 failures
+reachability  10/10
+reproduce     BLOKUJE (exit 7) na 4 claimach z USTALENIA 1 -- kolejka werdyktów, nie defekt kodu
+```
+
+### USTALENIE 4 — `impact`/whisper przewidywały skutek, który zniknął
+
+Werb `impact` (i sterowany nim hook whisper) drukował:
+
+```
+editing X -> next commit STALES tr-xxxxxxxx (P1, live): <tekst>
+```
+
+Po 2.5 to zdanie jest **fałszywe**: dotknięcie obserwowanej ścieżki nie zestala
+niczego. Zostało zamienione na to, co narzędzie faktycznie wie:
+
+```
+editing X -> WATCHED BY tr-xxxxxxxx (P1, live): <tekst>
+```
+
+Wiersze są te same, znaczenie węższe i uczciwsze: te claimy **czytają** ścieżkę,
+którą edytujesz; czy fakt się ruszył, rozstrzyga `reproduce` na granicy pusha
+albo sędzia. Stare brzmienie uczyło czytelnika traktować zgadywankę o precyzji
+3,6% jak werdykt. Canary FAULT W1 dostał ramię, które **jawnie łapie powrót**
+starego brzmienia (`miss "impact still predicts STALES"`), a nie tylko sprawdza
+nowe.
+
+Przy okazji: `queue_rows` opisywał claim `stale` jako „evidence invalidated" —
+formuła odziedziczona po proxy. `stale` ma teraz dokładnie jedną przyczynę,
+więc powód nazywa ją wprost: `ttl expired -- re-file required (ADR-019)`.
+
+### Weryfikacja mutacyjna kernel.py (wymóg 2.5d)
+
+```
+380 mutantów: 341 zabitych + 6 timeoutów (nieskończone pętle = wykryte) = 347
+33 ocalałych  ->  91,3%   (linia bazowa z pyproject.toml: 91,4%, 342/374)
+```
+
+Żaden ocalały nie leży w nowym kodzie. Pięć celowanych mutacji na
+dyskryminatorze sprawdzonych ręcznie — **wszystkie zabite**:
+
+```
+is_ttl_reason:    and -> or                 killed
+ttl_invalidation: or -> and                 killed
+ttl_invalidation: == -> !=                  killed
+fold branch:      and -> or                 killed
+fold branch:      negacja dyskryminatora    killed
+```
+
+Ocalałe to warunki brzegowe w `validate_events` (`ttl_days < 1`,
+`blast_forecast < 0`) i strażnik cyklu w `fold_supersedes` — populacja sprzed
+tej zmiany.
+
+### DZIAŁANIA WYDAWNICZE — DO WYKONANIA, nie zrobione tutaj
+
+1. **Kolejka werdyktów: 4 claimy** (USTALENIE 1). ADR-012 mówi, że
+   mechaniczne-vs-genuine to sąd, nigdy robota werbu wsadowego, a ADR-010 chce
+   niezależnej sesji. Klasyfikacja z dowodem jest w raporcie sesji; bateria
+   pozostaje BLOCKED do rozstrzygnięcia.
+2. **Bump wersji CLI + tag.** Usunięty werb (`reaffirm`) i przemianowany
+   (`invalidate-scan` → `ttl-scan`) to zmiana łamiąca dla konsumentów.
+   Komentarze w kodzie celowo **nie** twierdzą „v0.10.0" — mówią „refactor
+   step 2.5/2.6" — bo CLI nadal stwierdza v0.9.38 i żadne wydanie nie zaszło.
+   Wydanie wymaga: linii 2 w `template/scripts/truth`, 7 przypiętych
+   powierzchni ADR-026, wpisu w `template/CHANGELOG.md` i taga.
+3. **ADR-030** (reaffirm) i **ADR-005** (whisper) opisują zachowania, które ten
+   krok zmienił; ADR-019 zyskał nowego pisarza pod nową nazwą. Do przejrzenia
+   przy wydaniu.

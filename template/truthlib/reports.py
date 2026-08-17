@@ -82,11 +82,38 @@ def blast_report(events, folded=None, history=None):
 
 def half_life_observations(events):
     """FS-1: elapsed live-time for every claim that was live and later
-    went stale -- the raw material for tier-calibrated TTL suggestions
+    DIVERGED -- the raw material for tier-calibrated TTL suggestions
     (paper section 6.2, made a number). This replays the same (ts, id)
     order and the same status rules as fold(); fold stays authoritative
     for status, and test-truth-core cross-checks the two never disagree
-    on final state. Returns a list of (tier, days_live) tuples."""
+    on final state. Returns a list of (tier, days_live) tuples.
+
+    THE MEASURED TRANSITION CHANGED IN THE REFACTOR (step 2.5,
+    operator decision on J-034 option 2), and the number it publishes
+    changed meaning with it. It used to be `live -> stale`: how long a
+    claim lasted before a WATCHED PATH WAS TOUCHED. Step 2.5 makes a
+    path invalidation inert, so that transition no longer exists -- but
+    the honest reason to move is what the old number was:
+
+        half-life P0: median 0.02d (n=77)     <- ~30 minutes
+        half-life P1: median 0.04d (n=1441)
+        half-life P2: median 0.06d (n=445)
+
+    A TTL calibrated on 1963 observations of "somebody edited a watched
+    file within the hour" is calibrated on the proxy's firing rate, not
+    on how long a fact stays true. The replacement is `live -> diverged`:
+    elapsed live-time until a JUDGE recorded that the evidence actually
+    moved. Semantic where the old one was syntactic, and per J-034
+    roughly an order of magnitude scarcer (71 diverge verdicts against
+    1997 invalidations) -- which is the point: HALF_LIFE_MIN_OBS still
+    guards the suggestion, so a tier without enough judged divergence
+    now suggests NOTHING rather than suggesting a number built from
+    noise.
+
+    A retraction is deliberately NOT an observation. `retracted` says
+    the claim should never have been filed; `diverged` says it was true
+    and stopped being true, which is the only transition a time-to-live
+    can be calibrated on."""
     ordered = sorted(events, key=fold_key)  # ADR-016: total, content-derived
     state = {}   # cid -> {"tier", "status", "since": datetime|None}
     obs = []
@@ -101,30 +128,35 @@ def half_life_observations(events):
             e = state.get(cid)
             if not e or e["status"] == "retracted":
                 continue
-            new = ("stale" if kind == "invalidation"
-                   # R13: registry .get -- an unknown verdict still skips
-                   # silently here, exactly as the local map did.
-                   else VERDICT_STATUS.get(p.get("verdict")))
+            if kind == "invalidation":
+                # PARITY WITH fold(), through the SAME discriminator it
+                # calls (kernel.ttl_invalidation). This replay used to
+                # carry its own rule -- `new = "stale" if kind ==
+                # "invalidation"` -- and step 2.5 proved why that is the
+                # dangerous shape: the moment fold's algebra changed, the
+                # replay went on describing a ledger nobody has. It was
+                # test_half_life_replay_matches_fold that caught it, which
+                # is exactly the arm's job; the fix is to delete the second
+                # opinion rather than re-sync it.
+                if not ttl_invalidation(p):
+                    continue  # path invalidation: inert in fold, inert here
+                new = "stale"
+            else:
+                # R13: registry .get -- an unknown verdict still skips
+                # silently here, exactly as the local map did.
+                new = VERDICT_STATUS.get(p.get("verdict"))
             if not new:
                 continue
             ts = parse_ts(ev.get("ts") or "")
-            # FS-1/ADR-032: a TTL expiry is administratively caused (the
-            # ttl_days value itself, defaulted to 30 by ADR-032), not
-            # observed drift, so it must NOT feed the half-life medians --
-            # otherwise defaulted overrides industrialize observations that
-            # cluster at the default and ttl_suggestion becomes circular
-            # (suggests ~= the default that caused the data). Cut here, at
-            # the single source of the tier streams both stats_report's
-            # medians and ttl_suggestion read, so the exclusion covers both.
-            # Prefer the v0.9.12+ structured `reason_code == "ttl"` stamp;
-            # fall back to is_ttl_reason's prefix (the SAME two-arm rule as
-            # ttl_staleness, reused not re-implemented) for pre-stamp
-            # records. The claim still transitions to stale -- fold stays
-            # authoritative on status, only the observation is withheld;
-            # TTL expiries are counted in override_report's decay_expiries.
-            is_ttl = kind == "invalidation" and (
-                p.get("reason_code") == "ttl" or is_ttl_reason(p.get("reason")))
-            if e["status"] == "live" and new == "stale" and not is_ttl \
+            # THE OBSERVATION: live -> diverged, a judge's finding that the
+            # evidence moved. FS-1/ADR-032's exclusion of TTL expiries from
+            # the medians is now STRUCTURAL rather than a special case: a
+            # TTL expiry produces `stale`, never `diverged`, so it cannot
+            # reach this branch at all and the circularity it guarded
+            # against (suggesting ~= the ttl_days default that caused the
+            # data) cannot re-form. TTL expiries are still counted, in
+            # override_report's decay_expiries.
+            if e["status"] == "live" and new == "diverged" \
                     and e["since"] and ts \
                     and (ts.tzinfo is None) == (e["since"].tzinfo is None):
                 obs.append((e["tier"],
@@ -380,7 +412,11 @@ def queue_rows(claims, now):
                       + ", ".join(e.get("disputed_with", []))
                       + " -- retract, supersede, or re-file one side")
         elif status == "stale" and tier in ("P0", "P1"):
-            reason = "evidence invalidated"
+            # Since step 2.5 `stale` has exactly ONE cause -- TTL expiry
+            # (ADR-019) -- so the reason can name it instead of the vague
+            # "evidence invalidated" it inherited from the path proxy. The
+            # exit is a re-file: re-verification never resets a TTL.
+            reason = "ttl expired -- re-file required (ADR-019)"
         elif status == "cannot_verify" and tier == "P0":
             reason = "P0 claim unverifiable: fix evidence or retract"
         if reason:
@@ -392,9 +428,15 @@ def queue_rows(claims, now):
 def impact_report(query_paths, claims, issues, premises):
     """ADR-005: the whisper's mechanics. For each queried path, the
     live/unverified claims whose evidence_paths watch it, and the work
-    premised on those claims. Pure PREDICTION of what the machinery will
-    do (invalidate-scan STALES, ready HOLDs) -- files nothing, judges
-    nothing. Reuses match_paths: a second matcher implementation is
+    premised on those claims. Files nothing, judges nothing.
+
+    It reports ATTENTION, not consequence, since refactor step 2.5. It
+    used to be a prediction -- "invalidate-scan STALES this, ready HOLDs
+    that" -- and the first half stopped being true when a path
+    invalidation became inert. The rows are unchanged; what they mean is
+    narrower and more honest: these claims read the path you are about to
+    edit, so if your edit moves the FACT, `truth reproduce` will say so at
+    the push boundary and the premised work is what is downstream of it. Reuses match_paths: a second matcher implementation is
     forbidden (two copies of the matching contract will drift, the F1/F5
     lesson). wk- holds are listed only while open/claimed; non-wk ids
     (external tracker premises) are listed unconditionally, since their

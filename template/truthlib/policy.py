@@ -394,9 +394,9 @@ def override_decay(scope_basis, ttl_days, flag="--scope-ok"):
 #   {"payload": <fields merged into the invalidation record>,
 #    "label":   <short reason for scan output>}
 # `facts` is gathered by the shell per claim; missing keys mean the fact
-# was not gathered, and path/anchor strategies then abstain.
-# Order matters and is part of the contract: TTL first, then anchor
-# reachability, then path diffs (matches v0.2 semantics).
+# was not gathered, and a strategy needing them abstains.
+# the Reproduce-on-Read refactor (step 2.6) narrowed this to the CLOCK arm alone -- see the note
+# where the two path/anchor strategies used to live.
 
 def _ttl_expired(entry, facts, now):
     """ADR-019: TTL counts from the claim's own ts (not the anchor, not
@@ -418,26 +418,16 @@ def _ttl_expired(entry, facts, now):
                 "label": "ttl expired"}
     return None
 
-def _anchor_unreachable(entry, facts, now):
-    if facts.get("anchor_reachable") is False:
-        return {"payload": {"reason": "anchor unreachable (history rewritten)"},
-                "label": "anchor unreachable"}
-    return None
-
-def _evidence_paths_touched(entry, facts, now):
-    err = facts.get("diff_error")
-    if err:
-        return {"payload": {"reason": f"diff against anchor failed: {err[:120]}"},
-                "label": "diff failed"}
-    changed = facts.get("changed_files")
-    if changed is None:
-        return None
-    paths = entry["claim"]["payload"].get("evidence_paths", [])
-    touched = [f for f in changed if match_paths(f, paths)]
-    if touched:
-        return {"payload": {"touched": touched, "reason": "evidence paths changed"},
-                "label": "paths changed"}
-    return None
+# _anchor_unreachable and _evidence_paths_touched were RETIRED in the Reproduce-on-Read refactor
+# (refactor step 2.6). Both answered the SYNTACTIC question -- did git
+# touch something -- that `truth reproduce` now answers directly and
+# semantically at read time (~8ms per capsule, 0.53s for the whole live
+# ledger). On this ledger they wrote 1997 records at a 3.6% positive
+# predictive value; keeping a writer at that precision, for a status the
+# fold no longer derives from it (the double-invalidation rule), would be
+# storing noise nobody reads. The 1997 records they already wrote stay in
+# the ledger and stay readable forever -- retiring a WRITER is not
+# breaking a READER (J-012).
 
 # --- F3.1: a conscious empty is not the same as an untouched default -----
 
@@ -498,7 +488,11 @@ def generated_blind_spot(globs, tracked, probes=GENERATED_DIR_PROBES):
     return sorted(f for f in tracked
                   if match_paths(f, probes) and not match_paths(f, globs))
 
-INVALIDATORS = (_ttl_expired, _anchor_unreachable, _evidence_paths_touched)
+# ONE strategy since refactor step 2.6. The cascade's order used to be part of the
+# contract (TTL, then anchor, then paths); with the other two retired
+# there is nothing left to order, and the tuple stays a tuple so a future
+# clock-shaped invalidator has an obvious seat rather than a rewrite.
+INVALIDATORS = (_ttl_expired,)
 
 def decide_invalidation(entry, facts, now):
     if entry["status"] not in ACTIVE_STATUSES:

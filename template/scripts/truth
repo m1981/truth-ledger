@@ -54,8 +54,9 @@ from truthlib.cli import *
 from truthlib.kernel import _glob_rx, _ISSUE_EVENT_STATUS
 from truthlib.evidence import _evidence_toks, _SCREEN_SEPARATORS, \
     _SCREEN_PUNCT
-from truthlib.policy import _ttl_expired, _anchor_unreachable, \
-    _evidence_paths_touched
+# _anchor_unreachable and _evidence_paths_touched went with the strategies
+# themselves in refactor step 2.6; _ttl_expired is the whole cascade now.
+from truthlib.policy import _ttl_expired
 from truthlib.advisory import _escape_ctrl
 from truthlib.gates import _gate_text_nonempty, _gate_duplicate, \
     _gate_quantifier_scope, _gate_scope_decay, _gate_inv_m, \

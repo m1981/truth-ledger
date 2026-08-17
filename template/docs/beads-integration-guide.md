@@ -178,7 +178,7 @@ Retraction (killing a claim permanently) is a **human** action: it requires `TRU
 | Before starting any work | `scripts/truth ready` | Beads' ready list, minus broken-premise work |
 | Before trusting any repo fact | `scripts/truth list --live` | is it still believed? |
 | Daily (~2 min) | `scripts/truth queue` | diverged / stale-P0P1 / unverifiable-P0 needing a human |
-| After a merge | (post-merge hook runs `invalidate-scan`) | facts whose evidence changed go stale automatically |
+| Before a push | (pre-push hook runs `reproduce`) | a fact whose recorded capsule stopped producing blocks the push for judgment |
 | Sync Beads across machines | `bd dolt push` / `bd dolt pull` | Beads' own sync; unrelated to the ledger |
 
 ---

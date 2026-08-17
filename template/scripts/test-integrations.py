@@ -338,8 +338,6 @@ class TestCLIContractsAndRefusals(unittest.TestCase):
         # Mutate file and invalidate
         self.sb.write_file("f.txt", "x\nx\nx\n")
         self.sb.git_commit("third line")
-        res = self.sb.run_truth("invalidate-scan")
-        self.assertIn(cid, res.stdout)
 
         # Agree without --refresh-evidence is REFUSED
         res = self.sb.run_truth("verdict", cid, "agree", "--basis", "file is still healthy", env={"TRUTH_SESSION": "s-v2"})
@@ -357,12 +355,18 @@ class TestCLIContractsAndRefusals(unittest.TestCase):
         res = self.sb.run_truth("validate")
         self.assertEqual(res.returncode, 0, res.stderr)
 
-        # Reaffirm works on non-content touch
+        # Step 2.6: the `reaffirm` tail is gone with the verb. What it
+        # proved -- an unchanged capsule needs no new judgment -- is now
+        # `truth reproduce`'s job, and it files NOTHING when it holds.
         self.sb.write_file("f.txt", "x\nx\nx\n# comment\n")
         self.sb.git_commit("add comment")
-        self.sb.run_truth("invalidate-scan")
-        res = self.sb.run_truth("reaffirm", env={"TRUTH_SESSION": "s-reaffirm"})
-        self.assertIn("1 reaffirmed", res.stdout)
+        ledger = os.path.join(self.sb.root, ".truth", "claims.jsonl")
+        before = open(ledger, encoding="utf-8").read().count("\n")
+        res = self.sb.run_truth("reproduce")
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertIn("reproduces", res.stdout)
+        self.assertEqual(open(ledger, encoding="utf-8").read().count("\n"), before,
+                         "reproduce must file nothing on a green sweep")
 
 
 class TestClaudeWhisperHook(unittest.TestCase):
@@ -495,7 +499,6 @@ class TestClaudeSessionDigest(unittest.TestCase):
         self.sb.run_truth("verdict", cid2, "agree", "--basis", "verified", env={"TRUTH_SESSION": "s-verifier"})
         self.sb.write_file("stale.txt", "changed\n")
         self.sb.git_commit("modify stale.txt")
-        self.sb.run_truth("invalidate-scan")
 
         res = self._run_digest()
         self.assertEqual(res.returncode, 0)
@@ -557,7 +560,12 @@ class TestTierCInstruments(unittest.TestCase):
             res = sb.run_truth("claim", "no occurrences remain anywhere in the codebase", "--class", "VERIFIED",
                                "--evidence-cmd", cmd, "--paths", "f.txt", "--tier", "P1", "--scope-ok", sb_text, env=env1)
             cid1 = res.stdout.strip()
-            sb.run_truth("invalidate-scan", env={"TRUTH_ACTOR": "gate", "TRUTH_SESSION": "s-ov"})
+            # Step 2.5: a path invalidation no longer kills anything, and
+            # ADR-033's repeat detector keys on the earlier claim being DEAD.
+            # A judge's diverge is the ungated route to that (ADR-010: the
+            # verdict must not come from the claim's own session).
+            sb.run_truth("verdict", cid1, "diverge", "--basis", "the count moved",
+                         env={"TRUTH_ACTOR": "gate", "TRUTH_SESSION": "s-judge"})
             res = sb.run_truth("claim", "no occurrences remain anywhere in the codebase", "--class", "VERIFIED",
                                "--evidence-cmd", cmd, "--paths", "f.txt", "--tier", "P1", "--scope-ok", sb_text,
                                env={"TRUTH_ACTOR": "gate", "TRUTH_SESSION": "s-ov"})
@@ -704,13 +712,17 @@ class TestMarkdownAndSpecHealth(unittest.TestCase):
         # 2. Stale claim
         self.sb.write_file("stale.txt", "original\n")
         self.sb.git_commit("add stale.txt")
+        # Step 2.5/2.6: `stale` is reachable ONLY through TTL expiry now,
+        # so the fixture backdates the claim and runs the clock verb. This
+        # doubles as the integration-level pin that ADR-019 kept its writer.
         res = self.sb.run_truth("claim", "stale.txt says original", "--class", "VERIFIED",
-                                "--evidence-cmd", "cat stale.txt", "--paths", "stale.txt", "--tier", "P1")
+                                "--evidence-cmd", "cat stale.txt", "--paths", "stale.txt", "--tier", "P1",
+                                "--ttl-days", "1", env={"TRUTH_NOW": "2026-06-01T00:00:00+00:00"})
         cid_stale = res.stdout.strip()
         self.sb.run_truth("verdict", cid_stale, "agree", "--basis", "verified", env={"TRUTH_SESSION": "s-v1"})
         self.sb.write_file("stale.txt", "modified\n")
         self.sb.git_commit("modify stale")
-        self.sb.run_truth("invalidate-scan")
+        self.sb.run_truth("ttl-scan")
 
         # 3. Disputed claims (distinct sentences to avoid near-duplicate refusal)
         res = self.sb.run_truth("claim", "fixture engine reads configuration from local disk", "--class", "UNVERIFIED", "--tier", "P1")

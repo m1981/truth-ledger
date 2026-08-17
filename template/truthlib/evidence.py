@@ -1,10 +1,14 @@
 """truthlib.evidence -- the evidence discipline (C2): command screens,
-recipe lints, determinism, recheck, and the reaffirm triage.
+recipe lints, determinism, and recheck.
 
 Pure: the shell gathers (allowlists, run output, sessions) and this
 module decides.  One screen implementation (ADR-009/014), one screen-side
-tokenizer (_evidence_toks), the ADR-035 exit gate, and the R3/ADR-030
-triage that owns every reaffirm decision.
+tokenizer (_evidence_toks), and the ADR-035 exit gate.
+
+The Reproduce-on-Read refactor (step 2.6) removed the R3/ADR-030 reaffirm
+triage that used to be the fourth item here; what remains of it is read-side
+(REAFFIRM_BASIS, latest_invalidation_reason, ttl_staleness), because the
+ledger's historical records still have to be interpretable.
 """
 import re
 import shlex
@@ -354,10 +358,14 @@ def recheck_verdict(evidence, digest, returncode):
 NO_EVIDENCE_VERDICT = ("cannot_verify",
                        "recheck requested but claim carries no evidence command")
 
-# ------------------------------------------ reaffirm triage (R3, ADR-030)
+# ------------------------------- invalidation readers (R3, ADR-030 legacy)
 
+# READ-SIDE ONLY since refactor step 2.6. The `truth reaffirm`
+# verb is retired; this constant survives it because reports.staling_report
+# identifies historical machine-cleared stalings by exactly this basis
+# string, and the ledger holds 1283 of them. REAFFIRM_ARMS went with the
+# triage that produced them -- nothing reads an arm name off a record.
 REAFFIRM_BASIS = "reaffirm: hash-match, no judgment re-run"
-REAFFIRM_ARMS = ("ttl", "manual", "same_session", "match", "mismatch")
 
 def latest_invalidation_reason(events, cid):
     """The reason of the claim's LATEST invalidation record, latest by
@@ -378,14 +386,12 @@ def latest_invalidation_reason(events, cid):
             best_key, reason = k, p.get("reason")
     return reason
 
-def is_ttl_reason(reason):
-    """ADR-019/030: does an invalidation reason mean TTL expiry? Matches
-    what _ttl_expired writes ('ttl expired (N days)') by prefix, so the
-    check and the writer cannot drift on the parenthetical. FALLBACK
-    ONLY since the scan started stamping reason_code (v0.9.12 red-team
-    F3): ttl_staleness prefers the structured code and consults this
-    prefix just for records that predate the stamp."""
-    return bool(reason) and reason.startswith("ttl expired")
+# is_ttl_reason MOVED to truthlib.kernel (refactor step 2.5) and
+# arrives here through `from truthlib.kernel import *`, so every caller
+# below keeps its spelling. It had to move: fold() is now a caller, and
+# kernel sits below evidence in the ADR-044 DAG. Its per-record twin,
+# kernel.ttl_invalidation, is the single discriminator the fold and its
+# readers share.
 
 def ttl_staleness(events, cid):
     """Red-team F3 hardening: is the claim TTL-staled, for triage arm 1?
@@ -607,83 +613,22 @@ def capsule_stale_shape(entry, touched_ahead, touched_buried,
             "watched_touched": ahead, "watched_buried": buried,
             "watched_dirty": dirty}
 
-def previously_agreed(events, cid):
-    """ADR-030: has ANY agree verdict ever been filed for the claim?
-    Reaffirm re-confirms a verification that already happened; a stale
-    claim nobody ever agreed with has no verification to re-confirm --
-    auto-filing its FIRST agree would be a first verification without
-    judgment, exactly what `verdict --recheck` refuses to do."""
-    return any(ev.get("kind") == "verdict"
-               and (ev.get("payload") or {}).get("claim") == cid
-               and ev["payload"].get("verdict") == "agree"
-               for _, ev in events)
-
-def reaffirm_triage(entry, invalidation_reason, current_session, was_agreed,
-                    screen_err=None, recheck=None, ttl_staled=None):
-    """R3 / ADR-030: the ONE decision per stale claim -- which arm, and
-    what reaffirm does about it. Pure: the shell gathers the facts
-    (latest invalidation reason, sessions, current-allowlist screen
-    result, recheck outcome, and since the red-team F3 hardening the
-    structured `ttl_staled` fact from ttl_staleness -- when the shell
-    passes it, it overrides the free-text prefix fallback on
-    invalidation_reason) and applies the effects; nothing here reads
-    a clock, the env, or a file. Returns {"arm", "action"}; arm is one
-    of REAFFIRM_ARMS, or the "execute" sentinel telling the shell to run
-    the screened recheck and call again with its result. Arm order is
-    the R3 contract (TTL, then unexecutable, then session, then the
-    recheck outcome), so e.g. a TTL-staled unscreened claim reports the
-    TTL re-file path, its more fundamental disability.
-
-    Only a hash-match ever files, and only as `agree` (the one verdict a
-    matching hash mechanically supports, given a prior agree to
-    re-confirm). A MISMATCH files NOTHING -- not diverge either: whether
-    a changed hash is mechanical (recipe drift) or genuine (reality
-    moved) is ADR-012's judgment call, and a batch verb has no judge; it
-    reports the claim for the dispatch path instead."""
-    p = entry["claim"]["payload"]
-    ev = p.get("evidence") or {}
-    if (ttl_staled if ttl_staled is not None
-            else is_ttl_reason(invalidation_reason)):
-        return {"arm": "ttl",
-                "action": "skipped -- re-file required (ADR-019: TTL "
-                          "never resets by re-verification)"}
-    if ev.get("screened") is False:
-        # The recheck refusal discipline (ADR-009/029): screened=false is
-        # the author's own admission, final; the command NEVER executes.
-        return {"arm": "manual",
-                "action": "skipped -- filed with --evidence-unsafe-ok "
-                          "(evidence.screened=false): manual verification "
-                          "only (ADR-009)"}
-    if entry["claim"].get("session") == current_session:
-        return {"arm": "same_session",
-                "action": "skipped -- authored by this session; reaffirm "
-                          "must not self-agree (ADR-010): dispatch to a "
-                          "fresh session"}
-    if not ev.get("command"):
-        return {"arm": "manual",
-                "action": "skipped -- no evidence command recorded: "
-                          "manual verification only"}
-    if not was_agreed:
-        return {"arm": "manual",
-                "action": "skipped -- never agreed by any verifier: first "
-                          "verification is a judgment, not a "
-                          "re-confirmation; dispatch it (ADR-030)"}
-    if screen_err:
-        return {"arm": "manual",
-                "action": "skipped -- recheck will not execute this "
-                          f"evidence command ({screen_err}): manual "
-                          "verification only"}
-    if recheck is None:
-        return {"arm": "execute", "action": "run the screened recheck"}
-    verdict = recheck[0]
-    if verdict == "agree":
-        return {"arm": "match", "action": "hash-match -- " + REAFFIRM_BASIS}
-    if verdict == "cannot_verify":  # recheck_verdict's exit-127 rule
-        return {"arm": "manual",
-                "action": "skipped -- evidence command not found at "
-                          "recheck (exit 127): environment, not reality; "
-                          "manual verification only"}
-    return {"arm": "mismatch",
-            "action": "diverged evidence -- dispatch for judgment "
-                      "(nothing filed: mechanical-vs-genuine is ADR-012's "
-                      "call, never a batch verb's)"}
+# previously_agreed and reaffirm_triage were REMOVED in refactor step 2.6
+# together with the `truth reaffirm` verb they served. Their
+# subject no longer exists: reaffirm operated on stale claims, and after
+# the step-2.5 double-invalidation rule the ONLY way to be stale is TTL
+# expiry -- which was already reaffirm_triage's FIRST arm and always a
+# refusal ("re-file required; ADR-019: TTL never resets by
+# re-verification"). Every remaining input to the verb was one it declined
+# by contract, so this was dead machinery, not a capability withdrawn.
+#
+# What replaced each arm: `truth reproduce` for the batch question (does
+# the recorded capsule still produce its recorded output, for every live
+# claim), and `verdict --recheck` for the per-claim one. Both go through
+# the SAME screened executor this module still owns -- a second executor
+# was forbidden then and is forbidden now (ADR-005's drift lesson).
+#
+# The READ side is untouched, deliberately (J-012): REAFFIRM_BASIS stays
+# above, because reports.staling_report classifies the historical
+# `reaffirm:`-basis and `reaffirm_cleared` records by it. Retiring a
+# writer is not breaking a reader.

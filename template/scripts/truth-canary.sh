@@ -59,8 +59,12 @@ else
 fi
 echo ".truth/claims.jsonl merge=union" >> .gitattributes
 printf '#!/usr/bin/env bash\nexec bash scripts/check-truth.sh\n' > .git/hooks/pre-commit
-printf '#!/usr/bin/env bash\npython3 scripts/truth invalidate-scan --quiet\n' > .git/hooks/post-merge
-chmod +x .git/hooks/pre-commit .git/hooks/post-merge
+# Step 2.6: doctor's second row is reproduce-on-read at pre-push, not the
+# retired invalidate-scan at post-merge. post-merge stays, deliberately
+# inert, exactly as install-hooks.sh writes it.
+printf '#!/usr/bin/env bash\nexit 0\n' > .git/hooks/post-merge
+printf '#!/usr/bin/env bash\nexec python3 scripts/truth reproduce\n' > .git/hooks/pre-push
+chmod +x .git/hooks/pre-commit .git/hooks/post-merge .git/hooks/pre-push
 printf '# Agents\nTruth ledger: use scripts/truth (see .truth/README.md)\n' > AGENTS.md
 git add -A && git commit -qm "canary: wire installation" --no-verify
 if $T doctor >/dev/null 2>&1; then
@@ -98,7 +102,8 @@ else
 fi
 # husky-style delegation: user hooks one level above the `_` shim dir, no +x
 printf '#!/usr/bin/env sh\nbash scripts/check-truth.sh || exit 1\n' > .hookmgr/pre-commit
-printf '#!/usr/bin/env sh\npython3 scripts/truth invalidate-scan --quiet\n' > .hookmgr/post-merge
+printf '#!/usr/bin/env sh\nexit 0\n' > .hookmgr/post-merge
+printf '#!/usr/bin/env sh\npython3 scripts/truth reproduce\n' > .hookmgr/pre-push
 if $T doctor >/dev/null 2>&1; then
   ok "doctor passed hook-manager wiring (hooksPath + _ delegation)"
 else
@@ -171,13 +176,13 @@ else
 fi
 rm -rf .github/workflows/disabled
 # a TOP-LEVEL workflow naming BOTH gate scripts must pass BOTH arms, exit 0
-printf 'jobs:\n  gate:\n    steps:\n      - run: bash scripts/check-truth.sh\n      - run: python scripts/truth invalidate-scan\n' > .github/workflows/truth.yml
+printf 'jobs:\n  gate:\n    steps:\n      - run: bash scripts/check-truth.sh\n      - run: python scripts/truth reproduce\n' > .github/workflows/truth.yml
 git add -A && git commit -qm "dg: top-level CI names both gate scripts" --no-verify -q
 DGOUT="$($T doctor 2>&1)"; DGRC=$?
 if [ "$DGRC" -eq 0 ] \
    && printf '%s\n' "$DGOUT" | grep -q "enforces INV-A/INV-B via CI" \
-   && printf '%s\n' "$DGOUT" | grep -q "enforces INV-C via CI"; then
-  ok "doctor PASSes BOTH gate arms via a CI config naming check-truth and invalidate-scan"
+   && printf '%s\n' "$DGOUT" | grep -q "enforces reproduce-on-read (INV-C successor) via CI"; then
+  ok "doctor PASSes BOTH gate arms via a CI config naming check-truth and reproduce"
 else
   miss "doctor did not accept the CI-named gate on both arms at exit 0 (ADR-025 regression)"
 fi
@@ -201,7 +206,14 @@ rmdir .git/hooks/pre-commit
 cd "$TMP1"
 rm -rf "$DG"
 
-say "FAULT B (INV-C): commit touching evidence paths must mark the claim stale"
+# FAULT B FLIPPED (refactor step 2.5). Its subject -- "a commit touching a
+# watched path stales the claim" -- was retired with the path invalidator:
+# measured on this ledger, the proxy fired 1997 times for 71 judged
+# divergences (PPV 3.6%). The arm is kept and INVERTED rather than deleted,
+# because the removal needs a pin as much as the behaviour did: the same
+# fixture, the opposite expectation. `truth reproduce` now answers the
+# question this used to guess at, and FAULT C / the RP family cover it.
+say "FAULT B (step 2.5): a commit touching evidence paths must NOT stale the claim"
 CID_B=$($T claim "watched.txt says hello" --class VERIFIED \
         --evidence-cmd "cat watched.txt" --paths "watched.txt" --tier P0)
 # ADR-010: agree verdicts come from a verifier session, never the author's
@@ -209,12 +221,26 @@ TRUTH_SESSION=s-canary-verifier $T verdict "$CID_B" agree --basis "canary: verif
 git add .truth/claims.jsonl && git commit -qm "canary: claim B" --no-verify
 echo "changed" >> watched.txt
 git add watched.txt && git commit -qm "canary: mutate evidence" --no-verify
-$T invalidate-scan --quiet
+$T ttl-scan --quiet
 if $T list --stale --json | grep -q "$CID_B"; then
-  ok "claim $CID_B stale after evidence path changed"
+  miss "claim $CID_B was staled by a mere path touch -- the retired path invalidator is back"
+elif $T list --live --json | grep -q "$CID_B"; then
+  ok "claim $CID_B stays live after a watched path moved (the proxy is gone)"
 else
-  miss "claim $CID_B still trusted after its evidence changed"
+  miss "claim $CID_B left live for a reason that is neither stale nor live"
 fi
+# CID_B used to be this sandbox's DEAD claim -- four later arms (S2
+# spec-health, FAULT J, FAULT R3, the duplicate-id premise-strip check)
+# borrowed its staleness. It stays live now, so the sandbox gets one
+# deliberately dead claim instead. `diverged` is the ungated dead state
+# (ADR-017 gates only retraction) and the ADR-001 premise matrix treats it
+# exactly as it treated `stale`. Note it is also ACTIVE-set relevant: a
+# live CID_B now participates in the ADR-018 near-duplicate gate, which is
+# why the fixtures below carry deliberately distinct sentences.
+CID_DEAD=$($T claim "the canary corpus records a superseded measurement" \
+           --class UNVERIFIED --tier P1)
+TRUTH_SESSION=s-canary-verifier $T verdict "$CID_DEAD" agree --basis "canary: verified at filing" >/dev/null
+TRUTH_SESSION=s-canary-verifier $T verdict "$CID_DEAD" diverge --basis "canary: the measurement moved" >/dev/null
 
 say "FAULT C (T1): recheck must diverge when reality no longer matches"
 CID_C=$($T claim "fabricated.txt says v1" --class VERIFIED \
@@ -229,7 +255,8 @@ fi
 say "FAULT O (TL-4): recheck with matching hash must report, not file"
 echo hello > intact.txt
 git add intact.txt   # INV-M (v0.5.4): a literal --paths entry must be tracked at filing time
-CID_O=$($T claim "intact.txt says hello" --class VERIFIED \
+CID_O=$($T claim "the intact fixture file carries an unchanged greeting" \
+        --class VERIFIED \
         --evidence-cmd "cat intact.txt" --paths "intact.txt" --tier P1)
 N_BEFORE=$(grep -c "" .truth/claims.jsonl)
 $T verdict "$CID_O" --recheck >/dev/null
@@ -278,7 +305,7 @@ CID_D=$(TRUTH_NOW="2026-06-01T00:00:00+00:00" $T claim \
 if [ -z "$CID_D" ] || ! grep -q "$CID_D" .truth/claims.jsonl; then
   miss "fault injection failed: the ttl claim was never filed (an empty id makes grep -q match anything)"
 else
-  $T invalidate-scan --quiet
+  $T ttl-scan --quiet
   if $T list --stale --json | grep -q "$CID_D"; then
     ok "claim $CID_D expired after ttl elapsed"
   else
@@ -551,17 +578,20 @@ if CID_TG=$($T claim "future docs stay clean" --class VERIFIED \
 else
   miss "intake wrongly refused an explicit glob with zero current matches"
 fi
-# ADR-023 (H5): that empty glob is DORMANT, not dead -- it must fire once
-# its namespace fills, refuting 'an empty glob can never fire'. The
-# invalidator re-evaluates the pattern against each scan's diff.
+# ADR-023 (H5), FLIPPED in step 2.5. The intake exemption above is
+# unchanged and still the point of the arm: a zero-match glob has no single
+# referent, so INV-M must not call it dead. The second half used to assert
+# that the glob then FIRED once its namespace filled -- a statement about
+# the path invalidator, which is retired. Same fixture, inverted: filling
+# the namespace must now change nothing about the claim's status.
 git add .truth/claims.jsonl && git commit -qm "canary: empty-glob claim T" --no-verify
 mkdir -p ghost-dir && echo "# appeared" > ghost-dir/appeared.md
 git add ghost-dir/appeared.md && git commit -qm "canary: materialize ghost-dir/*.md" --no-verify
-$T invalidate-scan --quiet
+$T ttl-scan --quiet
 if $T list --stale --json | grep -q "$CID_TG"; then
-  ok "empty glob $CID_TG fired once its namespace filled (dormant, not dead)"
+  miss "glob $CID_TG staled on a path touch -- the retired path invalidator is back"
 else
-  miss "empty glob $CID_TG never fired after a matching file appeared (ADR-023 regression)"
+  ok "glob $CID_TG unaffected by its namespace filling (path proxy retired)"
 fi
 # ADR-024 (H5 follow-up): an UNREACHABLE glob is dead despite the exemption
 # -- '.git/*' contains '*' (so dead_literal_paths passes it) yet matches no
@@ -658,7 +688,11 @@ chmod +x bd
 CID_L=$($T claim "watched.txt now says hello changed" --class VERIFIED \
         --evidence-cmd "cat watched.txt" --paths "watched.txt" --tier P1 --duplicate-ok)
 TRUTH_SESSION=s-canary-verifier $T verdict "$CID_L" agree --basis "canary: verified at filing" >/dev/null
-$T premise bd-x1 "$CID_B" >/dev/null
+# Step 2.5: this arm used $CID_B, which a path touch used to leave stale.
+# It no longer does, so the HELD side stands on the sandbox's deliberately
+# dead claim (see FAULT B) -- ADR-001 treats `diverged` exactly as it
+# treated `stale`.
+$T premise bd-x1 "$CID_DEAD" >/dev/null
 $T premise bd-x2 "$CID_L" >/dev/null
 READY_OUT=$(PATH="$PWD:$PATH" $T ready)
 if echo "$READY_OUT" | grep -q "^HELD bd-x1" && echo "$READY_OUT" | grep -q "^bd-x2"; then
@@ -965,13 +999,20 @@ else
   miss "real-clock append sorted before the ledger tail ($TS3_ORDER) -- clock-push inert"
 fi
 
-# ---- FAULT L (v0.4): re-verification must survive the next scan ----------
-say "FAULT L: re-verified claim must stay live across a subsequent scan"
+# ---- FAULT L (v0.4, re-aimed in step 2.5) -------------------------------
+# The arm's purpose is unchanged: a re-verification must not be undone by
+# ordinary repository movement. What used to threaten it was the next
+# invalidate-scan, and the defence was the advancing anchor (F2). With the
+# path invalidator retired, the threat is gone and the anchor no longer
+# defends anything -- so the arm now asserts the guarantee that DID
+# replace it: after an ADR-051 refresh the claim is live AND its recorded
+# capsule still reproduces. A live claim that cannot reproduce is exactly
+# the population `truth reproduce` exists to name.
+say "FAULT L: re-verified claim stays live and its refreshed capsule reproduces"
 CID_R=$($T claim "watched.txt has multiple lines" --class VERIFIED \
         --evidence-cmd "wc -l < watched.txt" --paths "watched.txt" --tier P1 --duplicate-ok)
 echo "another line" >> watched.txt
 git add watched.txt && git commit -qm "canary: touch evidence again" --no-verify
-$T invalidate-scan --quiet
 # ADR-051: appending a line CHANGES `wc -l`'s output, so this agree
 # would advance the anchor past a capsule that can no longer be
 # produced -- the exact orphaning this arm's own fixture demonstrates
@@ -981,11 +1022,12 @@ $T invalidate-scan --quiet
 TRUTH_SESSION=s-canary-verifier $T verdict "$CID_R" agree \
   --basis "human re-verified at new HEAD" \
   --refresh-evidence "the line count grew; the claim is that the file has MULTIPLE lines, which still holds" >/dev/null
-$T invalidate-scan --quiet
-if $T list --live --json | grep -q "$CID_R"; then
-  ok "re-verified $CID_R stayed live (anchor advanced)"
+if $T list --live --json | grep -q "$CID_R" \
+   && $T reproduce 2>&1 | grep -q "^$CID_R  reproduces"; then
+  ok "re-verified $CID_R is live and its refreshed capsule reproduces"
 else
-  miss "re-verified $CID_R re-staled on the frozen anchor"
+  miss "re-verified $CID_R lost live status, or its refreshed capsule no longer reproduces"
+  $T reproduce 2>&1 | grep "$CID_R" || true
 fi
 
 # ---- FAULT M (v0.4) + H1-H3 (ADR-011): tombstone confirmation ladder ------
@@ -1071,7 +1113,7 @@ fi
 
 say "FAULT R3 (ADR-002): native ready must HOLD broken premises, pass live ones"
 WK_LIVE=$($T issue "kernel issue on live premise" --premise "$CID_R" 2>/dev/null)
-WK_STALE=$($T issue "kernel issue on stale premise" --premise "$CID_B" 2>/dev/null)
+WK_STALE=$($T issue "kernel issue on a dead premise" --premise "$CID_DEAD" 2>/dev/null)
 READY_NATIVE=$(PATH="/usr/bin:/bin" $T ready)
 if echo "$READY_NATIVE" | grep -q "^$WK_LIVE" && \
    echo "$READY_NATIVE" | grep -q "^HELD $WK_STALE"; then
@@ -1238,6 +1280,11 @@ else
 fi
 git checkout -q -- .truth/claims.jsonl 2>/dev/null || true
 
+# Step 2.5: the arm is unchanged in shape and stricter in wording. `impact`
+# used to say "next commit STALES <claim>"; nothing stales on a path touch
+# now, so it reports the relationship it can actually see (WATCHED BY) and
+# leaves the verdict to `reproduce` or a judge. Exit 3 is unchanged -- the
+# fatigue budget (W2's silence on an unwatched path) is what that code is for.
 say "FAULT W1 (ADR-005): impact on a watched path must report the claim and exit 3"
 echo whisper > w.txt
 git add w.txt   # INV-M: literal paths must be tracked at filing
@@ -1246,8 +1293,10 @@ CID_W=$($T claim "w.txt says whisper" --class VERIFIED \
 W1_OUT=$($T impact w.txt) && W1_RC=0 || W1_RC=$?
 if ! grep -q "$CID_W" .truth/claims.jsonl; then
   miss "fault injection failed: watched claim $CID_W was never filed"
+elif [ "$W1_RC" -eq 3 ] && echo "$W1_OUT" | grep -q "WATCHED BY $CID_W"; then
+  ok "impact reported $CID_W as watching the path, and exited 3"
 elif [ "$W1_RC" -eq 3 ] && echo "$W1_OUT" | grep -q "STALES $CID_W"; then
-  ok "impact predicted STALES $CID_W and exited 3"
+  miss "impact still predicts STALES -- a path touch no longer stales anything (step 2.5)"
 else
   miss "impact on watched path wrong (rc=$W1_RC): $W1_OUT"
 fi
@@ -1296,15 +1345,17 @@ else
 fi
 
 say "FAULT S2 (spec-health): spec standing on a dead fact must fail"
-if ! $T list --stale --json | grep -q "$CID_B"; then
-  miss "fault injection failed: $CID_B is not stale, S2 cannot run armed"
+if ! $T list --json | grep -q "$CID_DEAD"; then
+  miss "fault injection failed: $CID_DEAD was never filed, S2 cannot run armed"
+elif $T list --live --json | grep -q "$CID_DEAD"; then
+  miss "fault injection failed: $CID_DEAD is still live, S2 cannot run armed"
 else
-  printf '# Spec: canary bad\nstands on %s\n' "$CID_B" > docs/specs/bad.md
+  printf '# Spec: canary bad\nstands on %s\n' "$CID_DEAD" > docs/specs/bad.md
   S2_OUT=$(bash scripts/spec-health.sh 2>&1) && S2_RC=0 || S2_RC=$?
-  if [ "$S2_RC" -ne 0 ] && echo "$S2_OUT" | grep -q "FAIL  $CID_B"; then
-    ok "spec on stale $CID_B failed with exit $S2_RC"
+  if [ "$S2_RC" -ne 0 ] && echo "$S2_OUT" | grep -q "FAIL  $CID_DEAD"; then
+    ok "spec on dead $CID_DEAD failed with exit $S2_RC"
   else
-    miss "spec-health passed a spec standing on stale $CID_B (rc=$S2_RC)"
+    miss "spec-health passed a spec standing on dead $CID_DEAD (rc=$S2_RC)"
   fi
   rm -f docs/specs/bad.md
 fi
@@ -1491,7 +1542,14 @@ else
 fi
 
 # ======================================================= sandbox 3 (G14)
-say "FAULT E (G14): erased anchor commit must invalidate, with reason"
+# FAULT E FLIPPED (step 2.6). Its subject was _anchor_unreachable, retired
+# with the rest of the path/anchor cascade: an unreachable anchor says the
+# HISTORY moved, not that the FACT did, and `truth reproduce` answers the
+# second question without guessing from the first. Same fixture (a genuine
+# orphan-branch history rewrite), inverted expectation, plus the positive
+# half that matters now: the capsule is still producible, so the claim is
+# still trustworthy and the rewrite was never evidence against it.
+say "FAULT E (step 2.6): an erased anchor commit must NOT invalidate a reproducible claim"
 mkrepo "$TMP3"
 echo data > g.txt
 git add -A && git commit -qm "canary: init"
@@ -1503,12 +1561,15 @@ git add -A && git commit -qm "canary: history rewritten"
 git branch -D main -q
 git reflog expire --expire=now --expire-unreachable=now --all
 git gc --prune=now -q
-$T invalidate-scan --quiet
-if $T list --stale --json | grep -q "$CID_E" && \
-   grep -q "anchor unreachable" .truth/claims.jsonl; then
-  ok "claim $CID_E stale with reason 'anchor unreachable'"
+$T ttl-scan --quiet
+if $T list --stale --json | grep -q "$CID_E"; then
+  miss "history rewrite staled $CID_E -- the retired _anchor_unreachable strategy is back"
+elif grep -q "anchor unreachable" .truth/claims.jsonl; then
+  miss "an 'anchor unreachable' invalidation record was written -- that writer is retired"
+elif $T reproduce 2>&1 | grep -q "^$CID_E  reproduces"; then
+  ok "claim $CID_E survives a history rewrite and still reproduces (history moved, the fact did not)"
 else
-  miss "history rewrite left $CID_E trusted or unexplained"
+  miss "claim $CID_E no longer reproduces after a history rewrite"
 fi
 
 # =========================== sandbox 4 (TL-2: work-kernel discovery, v0.6.3)
@@ -1546,7 +1607,9 @@ else
 fi
 echo "changed" >> r10.txt
 git add r10.txt && git commit -qm "canary: touch r10 watched path"
-$T invalidate-scan --quiet
+# Step 2.5: the touch above no longer kills the premise; a judge does.
+TRUTH_SESSION=s-canary-verifier $T verdict "$CID_R10A" agree --basis "canary: verified at filing" >/dev/null
+TRUTH_SESSION=s-canary-verifier $T verdict "$CID_R10A" diverge --basis "canary: r10.txt moved" >/dev/null
 if PATH="/usr/bin:/bin" $T ready | grep -q "^$WK_R10"; then
   miss "issue $WK_R10 ready despite a stale premise (pre-supersede)"
 else
@@ -1987,14 +2050,19 @@ else
   miss "contradicts records fail validate"; $T validate || true
 fi
 
-# R3 (ADR-030): `reaffirm` automates ONLY the mechanical re-confirmation
-# of unchanged evidence. The load-bearing negative: a stale claim whose
-# evidence output CHANGED must NEVER be auto-agreed -- and never
-# auto-diverged either (mechanical-vs-genuine is ADR-012's judgment call,
-# so a mismatch files NOTHING and is listed for dispatch). The unchanged
-# peer claim in the same sweep proves the contrast: it IS reaffirmed, and
-# its advanced anchor (F2) survives the next scan.
-say "FAULT RA (ADR-030): reaffirm must file nothing on changed evidence, reaffirm the unchanged peer"
+# FAULT RA RE-AIMED (step 2.6). `truth reaffirm` is retired -- after step
+# 2.5 the only route to `stale` is TTL expiry, which was reaffirm_triage's
+# first arm and an unconditional refusal, so every input the verb could
+# still receive was one it declined by contract.
+#
+# Its LOAD-BEARING NEGATIVE outlives it and is what this arm now pins,
+# against `truth reproduce` and the same two-claim fixture: a claim whose
+# evidence output CHANGED must never be auto-agreed, and never
+# auto-diverged either (mechanical-vs-genuine is ADR-012's judgment call).
+# reproduce is stricter than reaffirm was -- it files NOTHING in EITHER
+# direction, so the unchanged peer is not auto-agreed either -- and it
+# reports the divergence by exit code 7 instead of by a dispatch list.
+say "FAULT RA (step 2.6): reproduce must file nothing either way, and exit 7 on a changed capsule"
 RA="$(mktemp -d)"; TDIRS+=("$RA"); RA_PREV="$PWD"
 mkrepo "$RA"   # NB: mkrepo cd's into $RA. No subshell -- ok/miss mutate the
                # PASS/FAIL counters; cwd restored via $RA_PREV below.
@@ -2008,32 +2076,29 @@ CID_RA_MM=$($T claim "ra-mm.txt says shifty" --class VERIFIED \
         --evidence-cmd "cat ra-mm.txt" --paths "ra-mm.txt" --tier P1)
 TRUTH_SESSION=s-canary-verifier $T verdict "$CID_RA_OK" agree --basis "canary: verified at filing" >/dev/null
 TRUTH_SESSION=s-canary-verifier $T verdict "$CID_RA_MM" agree --basis "canary: verified at filing" >/dev/null
-echo "touched" >> ra-peer.txt   # stales the OK claim; its evidence output is unchanged
-echo "mutated" >  ra-mm.txt     # stales the MM claim; its evidence output CHANGED
+echo "touched" >> ra-peer.txt   # a watched path of the OK claim; its evidence OUTPUT is unchanged
+echo "mutated" >  ra-mm.txt     # the MM claim's evidence output CHANGED
 git add -A && git commit -qm "ra: mutate watched paths" --no-verify -q
-$T invalidate-scan --quiet
 N_RA=$(grep -c "" .truth/claims.jsonl)
-RAOUT=$(TRUTH_SESSION=s-canary-reaffirm $T reaffirm 2>/dev/null)
+RAOUT=$($T reproduce 2>&1); RARC=$?
 MM_VERDICTS=$(grep '"kind": "verdict"' .truth/claims.jsonl | grep -c "\"claim\": \"$CID_RA_MM\"")
-if printf '%s\n' "$RAOUT" | grep -q "diverged evidence -- dispatch for judgment" \
-   && [ "$MM_VERDICTS" -eq 1 ] \
-   && $T list --stale | grep -q "$CID_RA_MM"; then
-  ok "mismatch filed NOTHING: $CID_RA_MM stays stale, listed for dispatch"
+if [ "$RARC" -eq 7 ] \
+   && printf '%s\n' "$RAOUT" | grep -q "^$CID_RA_MM  capsule-stale" \
+   && [ "$MM_VERDICTS" -eq 1 ]; then
+  ok "changed capsule: $CID_RA_MM reported capsule-stale at exit 7, no verdict filed"
 else
-  miss "reaffirm auto-filed on changed evidence (or lost the dispatch report) for $CID_RA_MM"
+  miss "reproduce mis-handled the changed capsule for $CID_RA_MM (rc=$RARC)"
 fi
-if [ "$(grep -c "" .truth/claims.jsonl)" -eq $((N_RA + 1)) ] \
-   && tail -1 .truth/claims.jsonl | grep -q "reaffirm: hash-match, no judgment re-run" \
+if [ "$(grep -c "" .truth/claims.jsonl)" -eq "$N_RA" ]; then
+  ok "reproduce filed NOTHING in either direction -- the sweep leaves no record"
+else
+  miss "reproduce wrote to the ledger; on-read verification must store no state"
+fi
+if printf '%s\n' "$RAOUT" | grep -q "^$CID_RA_OK  reproduces" \
    && $T list --live | grep -q "$CID_RA_OK"; then
-  ok "unchanged peer reaffirmed: exactly one agree appended, $CID_RA_OK live again"
+  ok "unchanged peer $CID_RA_OK still reproduces and stays live (a path touch is not evidence)"
 else
-  miss "reaffirm did not re-confirm the unchanged claim $CID_RA_OK (or appended more than its one agree)"
-fi
-$T invalidate-scan --quiet   # F2: the agree carried HEAD as the new anchor
-if $T list --live | grep -q "$CID_RA_OK"; then
-  ok "advanced anchor survives the next scan: $CID_RA_OK stays live (F2)"
-else
-  miss "reaffirmed claim $CID_RA_OK re-staled on the next scan (anchor did not advance)"
+  miss "unchanged peer $CID_RA_OK lost live status or stopped reproducing"
 fi
 cd "$RA_PREV"
 rm -rf "$RA"
@@ -2074,7 +2139,7 @@ fi
 CID_SD3=$(TRUTH_NOW="2026-06-01T00:00:00+00:00" $T claim \
           "f.txt plainly contains data" --class VERIFIED \
           --evidence-cmd "cat f.txt" --paths f.txt --tier P2 2>/dev/null)
-$T invalidate-scan --quiet
+$T ttl-scan --quiet
 if $T list --stale --json | grep -q "$CID_SD3"; then
   miss "negative control failed: a plain claim got a default TTL and expired"
 else
@@ -2084,14 +2149,19 @@ CID_SD4=$(TRUTH_NOW="2026-06-01T00:00:00+00:00" $T claim \
           "no matches exist anywhere in the whole repo" --class VERIFIED \
           --evidence-cmd "$SD_EC" --paths f.txt --tier P1 \
           --scope-ok "$SD_SB" 2>/dev/null)
-$T invalidate-scan --quiet
-SD4OUT=$(TRUTH_SESSION=s-sd-reaffirm $T reaffirm --dry-run 2>/dev/null)
+$T ttl-scan --quiet
+# Step 2.6: the reaffirm --dry-run half is gone with the verb. What it
+# asserted -- an expired override lands in the "re-file required" arm --
+# is now structural rather than reported: TTL expiry is the ONLY route to
+# `stale`, and ADR-019 says re-verification never resets it, so re-filing
+# is the only exit. The arm keeps the half that is still mechanically
+# checkable, and gains the reason_code that proves WHICH arm staled it.
 if $T list --stale --json | grep -q "$CID_SD4" \
-   && printf '%s\n' "$SD4OUT" | grep -q "re-file required" \
-   && printf '%s\n' "$SD4OUT" | grep -q "$CID_SD4"; then
-  ok "expired scope-ok override is stale, reaffirm triages it to re-file ($CID_SD4)"
+   && grep "\"claim\": \"$CID_SD4\"" .truth/claims.jsonl \
+      | grep -q '"reason_code": "ttl"'; then
+  ok "expired scope-ok override is stale, by the clock arm ($CID_SD4)"
 else
-  miss "expired override not staled or not triaged to the ttl re-file arm"
+  miss "expired override not staled, or staled by something other than TTL"
 fi
 cd "$SD_PREV"
 rm -rf "$SD"
@@ -3349,7 +3419,9 @@ rm -rf "$LK"
 # capsule lives in the immutable claim record. Filed over a CHANGED
 # output, that agree leaves the claim live and permanently
 # un-recheckable: every later --recheck compares against a hash nobody
-# can produce, and reaffirm's hash-match arm can never take it back.
+# can produce, and (before step 2.6 retired it) reaffirm's hash-match arm
+# could never take it back either. `truth reproduce` is what NAMES that
+# population now, which is why EF3 below is measured against it.
 # Measured before the gate: 13 of 126 live claims in that state.
 say "FAULT EF (ADR-051): an agree over a changed output is refused, and the refresh returns the claim to the mechanical arm"
 EF="$(mktemp -d)"; TDIRS+=("$EF"); EF_PREV="$PWD"
@@ -3368,7 +3440,6 @@ else
 fi
 printf 'x\nx\nx\n' > f.txt; git add f.txt >/dev/null 2>&1
 git commit -qm "third x" >/dev/null 2>&1
-$T invalidate-scan >/dev/null 2>&1
 EF_N="$(wc -l < .truth/claims.jsonl | tr -d ' ')"
 EF_OUT="$(TRUTH_SESSION=s-ef-v2 $T verdict "$EF_CID" agree \
   --basis "sentence still holds" 2>&1)"
@@ -3390,9 +3461,8 @@ TRUTH_SESSION=s-ef-v2 $T verdict "$EF_CID" agree \
   >/dev/null 2>&1
 printf 'x\nx\nx\n#c\n' > f.txt; git add f.txt >/dev/null 2>&1
 git commit -qm "comment only" >/dev/null 2>&1
-$T invalidate-scan >/dev/null 2>&1
-if TRUTH_SESSION=s-ef-r $T reaffirm 2>&1 | grep -q "1 reaffirmed"; then
-  ok "EF3: the refreshed claim returned to reaffirm's mechanical arm"
+if $T reproduce 2>&1 | grep -q "^$EF_CID  reproduces"; then
+  ok "EF3: the refreshed claim reproduces again -- the refresh bought a producible capsule"
 else
   miss "EF3: the refresh bought nothing -- still outside the hash-match arm"
 fi
@@ -3417,7 +3487,8 @@ mkrepo "$PA"
 echo ".truth/claims.jsonl merge=union" >> .gitattributes
 printf '# Agents\nUse scripts/truth (see .truth/README.md)\n' > AGENTS.md
 printf '#!/usr/bin/env bash\nexec bash scripts/check-truth.sh\n' > .git/hooks/pre-commit
-printf '#!/usr/bin/env bash\npython3 scripts/truth invalidate-scan --quiet\n' > .git/hooks/post-merge
+printf '#!/usr/bin/env bash\nexec python3 scripts/truth reproduce\n' > .git/hooks/pre-push
+chmod +x .git/hooks/pre-push 2>/dev/null || true
 printf '#!/usr/bin/env bash\nexec bash scripts/check-truth.sh\n' > .git/hooks/pre-merge-commit
 chmod +x .git/hooks/pre-commit .git/hooks/post-merge .git/hooks/pre-merge-commit
 mkdir -p src/generated

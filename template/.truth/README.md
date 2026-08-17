@@ -51,7 +51,7 @@ sorts the raw `ts` string, so `ts` must be the canonical profile
 exactly what the CLI mints; any other offset, `Z` suffix, or precision
 fails `validate` (ADR-015: string order must equal time order). The fold
 reads **no clock**: even TTL expiry is not folded from wall-time — the
-`invalidate-scan` (the sole clock reader) counts elapsed time from the
+`ttl-scan` (the sole clock reader) counts elapsed time from the
 claim's own `ts` and, when *strictly more than* `ttl_days` have passed
 (`now - ts > ttl_days`; the exact boundary has not yet expired), appends
 an **invalidation record**; only that record demotes the claim to
@@ -166,7 +166,7 @@ exists and warns when load+fold exceeds 200ms (the FS-3 scale gate —
 the snapshot cache is deliberately unbuilt until that warning fires;
 since v0.9.29 the same latency also prices the WRITE path, because every
 write verb loads and folds inside the ledger lock's critical section
-(ADR-045) — the remaining linear scans, reaffirm and invalidate-scan
+(ADR-045) — the remaining linear scans, ttl-scan and reproduce
 walking every claim, are watched-by-design residuals with no sensor of
 their own: this warning's trip is their proxy).
 
@@ -216,7 +216,7 @@ their own: this warning's trip is their proxy).
    *commit gate* (`check-truth`); without it
    INV-A/INV-B/INV-G/INV-N and the ADR-008/031 order detections do not run and
    the ledger's append-only guarantee is unenforced. For CI, name the gate
-   scripts (`check-truth`, `invalidate-scan`) in a workflow `doctor` greps
+   scripts (`check-truth`, `reproduce`) in a workflow `doctor` greps
    (`.github/workflows/*`, `.gitlab-ci.yml`, `.circleci/config.yml`,
    `Jenkinsfile`, …) so the installation stays decidable.
 3. `AGENTS.md` already carries the discovery snippet — copy it into
@@ -325,7 +325,7 @@ discipline below).
     scripts/truth impact <path>...      # what knowledge does editing endanger?
 
 Read-only fold query: for each repo-root-relative path, the
-live/unverified claims watching it (the same matcher `invalidate-scan`
+live/unverified claims watching it (the same matcher `reproduce`
 uses — one matcher, by decree) and the open work premised on them. Exit
 0 = silence (nothing watched; the fatigue budget is a canary-gated
 property, FAULT W2), exit 3 = report on stdout, `--json` for harnesses.
@@ -583,12 +583,28 @@ negative controls and two order arms).
 ## Daily operation
 
 Daily (~2 min): `scripts/truth queue` — empty means carry on.
-When stale claims pile up, from a fresh session: `scripts/truth reaffirm`
-— re-runs each stale claim's screened evidence command; a hash-match
-auto-files `agree` (the anchor advances), a mismatch files NOTHING and is
-listed for dispatch; TTL-staled (re-file, ADR-019), unscreened,
-never-agreed, and same-session claims are skipped with the reason
-(ADR-030). `--dry-run` reports without filing. A `--scope-ok` override
+Before a push: `scripts/truth reproduce` — re-runs every LIVE claim's
+recorded evidence capsule here and now and reports reproduces /
+capsule-stale / unexecutable / no-capsule. It files NOTHING: on-read
+verification stores no state, so a green sweep leaves no record. Exit 7
+means a capsule stopped producing and a human must judge it (`verdict
+<id> diverge`, or an agree with `--refresh-evidence`); exit 8 means the
+sweep examined zero claims, which is a failure and never a pass.
+
+`scripts/truth ttl-scan` is the other half, and the only clock reader in
+the system: it expires claims whose `ttl_days` has elapsed (ADR-019) —
+the one thing reproduction cannot detect, since a claim expiring today
+still reproduces perfectly today. A TTL expiry is the ONLY route to
+`stale`, and re-verification never resets it, so the exit is a re-file.
+
+> **Retired by the Reproduce-on-Read refactor:** `invalidate-scan` (narrowed to `ttl-scan`) and
+> `reaffirm`. Both were write paths for a staling proxy that fired 1997
+> times for 71 judged divergences on the template's own ledger — a 3.6%
+> positive predictive value. Reading old records is UNAFFECTED: the fold
+> still parses every `invalidation`, and reports still classify
+> `reaffirm_cleared`. Retiring a writer is not breaking a reader.
+
+A `--scope-ok` override
 you file without `--ttl-days` gets a default 30-day expiry (ADR-032), so
 expect scope overrides to surface for re-file about a month out — a
 re-file that re-fires the ADR-007 gate, not a silent renewal.

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # ADR-051 end-to-end acceptance, through the REAL CLI in a sandbox.
 # Proves the whole chain, not a unit: an agree over a changed output is
-# refused; --refresh-evidence files it; and the refreshed claim RETURNS
-# to reaffirm's mechanical arm -- which is the only thing that makes the
-# refresh worth having.
+# refused; --refresh-evidence files it; and the refreshed claim BECOMES
+# PRODUCIBLE AGAIN -- which is the only thing that makes the refresh worth
+# having. That last check used to be "returns to reaffirm's mechanical
+# arm"; step 2.6 retired that verb and `truth reproduce` asks the same
+# question more strictly, filing nothing in either direction.
 set -u
 TL="$(cd "$(dirname "$0")/.." && pwd)"
 D="$(mktemp -d)"; cd "$D" || exit 1
@@ -34,10 +36,12 @@ TRUTH_SESSION=s-verifier1 t verdict "$CID" agree --basis "re-ran it" \
   >/dev/null 2>&1 && ok "clean agree passes silently (no flag needed)" \
   || fail "a matching capsule must not need --refresh-evidence"
 
-echo "3. change the watched file so the OUTPUT changes, then scan"
+echo "3. change the watched file so the OUTPUT changes"
 printf 'x\nx\nx\n' > f.txt; git add f.txt; git commit -qm "third x"
-t invalidate-scan 2>/dev/null | grep -q "stale: $CID" \
-  && ok "claim staled" || fail "scan did not stale the claim"
+# Step 2.5: a path touch no longer stales anything -- `reproduce` is what
+# names a claim whose capsule stopped producing, and it exits 7 on one.
+t reproduce 2>/dev/null | grep -q "^$CID  capsule-stale" \
+  && ok "capsule no longer reproduces" || fail "reproduce did not flag the changed capsule"
 
 echo "4. the orphaning agree must be REFUSED"
 OUT=$(TRUTH_SESSION=s-verifier2 t verdict "$CID" agree \
@@ -77,18 +81,16 @@ EOF
 echo "7. validate accepts the new record"
 t validate >/dev/null 2>&1 && ok "validate clean" || fail "validate refused"
 
-echo "8. the refreshed claim RETURNS to reaffirm's mechanical arm"
-printf 'x\nx\nx\ny\n' >> /dev/null   # no content change; re-stale via a touch
-git commit -q --allow-empty -m "unrelated"
+echo "8. the refreshed claim REPRODUCES again"
+# Step 2.6: `reaffirm` is retired, so the question "did the refresh buy
+# anything?" is asked of `reproduce` -- which is the stricter test, since
+# it files nothing in either direction and reports by exit code.
 printf 'x\nx\nx\n#c\n' > f.txt; git add f.txt; git commit -qm "comment only"
-t invalidate-scan >/dev/null 2>&1
-OUT=$(TRUTH_SESSION=s-reaffirm t reaffirm 2>&1)
-if printf '%s' "$OUT" | grep -q "1 reaffirmed"; then
-  ok "hash-match arm took it back (the refresh bought something)"
+OUT=$(t reproduce 2>&1)
+if printf '%s' "$OUT" | grep -q "^$CID  reproduces"; then
+  ok "the refreshed capsule is producible again (the refresh bought something)"
 else
-  printf '%s' "$OUT" | grep -q "diverged" \
-    && fail "still in the mismatch arm -- the refresh bought nothing" \
-    || echo "  note: $(printf '%s' "$OUT" | tail -1)"
+  fail "still capsule-stale after the refresh -- the refresh bought nothing"
 fi
 
 echo
