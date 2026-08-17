@@ -4,8 +4,28 @@
 > pamięci sesji. Notatki empiryczne idą do `01-JOURNAL.md`.
 > Jedno zadanie naraz. Po każdym: weryfikacja → status → wpis w JOURNAL → commit.
 
+> ## ✅ REFAKTOR ZAMKNIĘTY — 2026-08-17
+>
+> Fazy **0, 1, 2, 3 i 4** wykonane, przetestowane i wypchnięte. Teza refaktoru
+> jest zweryfikowana na produkcyjnym ledgerze: `stale` jako zmienna decyzyjna
+> **nie istnieje** poza ramieniem zegarowym, a `truth reproduce` mierzy
+> odtwarzalność **66/66 żywych kapsuł w ułamku sekundy**.
+>
+> Bilans końcowy i wszystkie liczby: `01-JOURNAL.md`, wpis **J-043**.
+>
+> **Otwarte, świadomie:**
+> 1. **Wydanie** — bump wersji CLI + tag + CHANGELOG (J-035, „DZIAŁANIA
+>    WYDAWNICZE"). Refaktor jest zamknięty; wydanie to osobna decyzja.
+> 2. **Dwie ceremonie tombstone**, zweryfikowane na foldzie przy zamknięciu:
+>    czwarta sonda z J-038 (nadal `unverified`) i migrowany claim mapy
+>    wyzwalaczy (nadal `diverged`, następca już zweryfikowany). Identyfikatory
+>    i gotowe komendy: **J-043**, sekcja „Otwarte, świadomie" — nie tutaj, bo
+>    ten runbook stoi w zasięgu `fact-health`, a cytowanie w nim martwego id
+>    jest defektem. Sweep złapał dokładnie to, przy tym zamknięciu, po raz
+>    drugi w tym refaktorze.
+
 Gałąź robocza: `claude/git-hooks-architecture-zc97y3`
-Commit bazowy: `fa2e85b` · rewizja runbooka: `r18` (2026-08-17, tabela statusow zsynchronizowana; 3.1 format liniowy, 3.2 twarda odmowa, 4.3 bez nowych ADR-ow)
+Commit bazowy: `fa2e85b` · rewizja runbooka: **`r19` (2026-08-17) — REFAKTOR ZAMKNIĘTY, fazy 0–4 wykonane**
 
 ---
 
@@ -413,7 +433,7 @@ nazwa, duplikat nazwy, polityka bez globów.
 **ABSENT jest łagodny**, inaczej niż u sióstr: polityki są opt-in, brak pliku to
 stan spoczynku, nie ciemna bramka — więc bez wiersza atestacji i bez wiersza w
 `doctor` (koszt ADR-053 nieopłacony po raz trzeci).
-### [x] 3.2 Bramka `max_paths` jako wiersz w `INTAKE_GATES` — **ZROBIONE** (J-038)
+### [x] 3.2 Bramka `max_paths` + `churn_budget` w `INTAKE_GATES` — **ZROBIONE** (J-038, J-039)
 
 **Twarda odmowa** (decyzja 2026-08-17), nie advisory: claim z więcej niż jedną
 ścieżką podaną z palca jest odrzucany i zmuszony do `--watch-policy <name>`
@@ -441,7 +461,7 @@ zablokował baterię na trzech ramionach filujących po dwie ścieżki (`FAULT T
 `--paths-ok`, nie kasację (J-012). `DW6` jest wzorcowym przypadkiem użycia
 flagi: arm **musi** obserwować nazwę sprzed i po `git mv`, bo bada sam wpis
 rename, i żadna polityka takiego zbioru nie nazwie.
-### [ ] 3.3 Migracja pozostałych claimów na polityki
+### [x] 3.3 Migracja claimów na polityki — **ZROBIONE**, celowana pomiarem (J-040)
 
 **Skala zmierzona przed wykonaniem (J-038):**
 

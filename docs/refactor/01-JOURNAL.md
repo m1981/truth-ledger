@@ -2457,3 +2457,142 @@ core 450 · v04 13 · structural 116 · integrations 28 · canary 284/0
 field-consumers 32/0 · reproduce 66/66 exit 0 · reachability 11/11
 release-battery ALL ARMS GREEN
 ```
+
+---
+
+# J-043 · ZAMKNIĘCIE REFAKTORU „Reproduce-on-Read" · 2026-08-17
+
+44 commity od bazy `fa2e85b`, 111 plików, +9268/−1144. Fazy 0–4 wykonane.
+Wszystkie liczby poniżej odczytane z drzewa w chwili zamknięcia, nie przepisane
+z wcześniejszych wpisów.
+
+## Teza i jej weryfikacja
+
+> Zestalenie (`stale`) to zmienna **zastępcza** o wartości predykcyjnej 3,6%,
+> używana jako zmienna **decyzyjna**, przy dostępnym pomiarze **bezpośrednim**.
+
+Zweryfikowana na produkcyjnym ledgerze, nie w sandboxie:
+
+```
+rekordow invalidation w historii:   1997
+...z tego niosacych sygnal TTL:        0     <- caly ten mechanizm to bylo proxy
+truth reproduce:                   66/66 zywych kapsul, exit 0, ulamek sekundy
+```
+
+Proxy odpalało 1997 razy przy 71 osądzonych rozbieżnościach. Zegar — jedyne, czego
+`reproduce` nie zastąpi — nie odpalił się **ani razu**.
+
+## Stan ledgera
+
+```
+retracted 133 · live 66 · diverged 31 · unverified 29     (4710 rekordow)
+polokres:  P1 0,83d (n=27) · P2 0,79d (n=38)
+overrides: scope=10 paths=3 duplicate=20 screened-false=0
+retraction causes: restated=29, expired=5, wrong=3, unrecorded=96
+verifier separation: 17 unevidenced, mediana 169,9 s
+churn: floor 55 (calibrated, history ok)
+```
+
+`stale = 0` i to jest wynik, nie przypadek: po kroku 2.5 ten stan jest osiągalny
+**wyłącznie** przez wygaśnięcie TTL, a ten ledger nigdy TTL nie użył.
+
+## Bramki
+
+```
+core 450 · v04 13 · structural 116 · integrations 28 · canary 284/0 missed
+field-consumers 32 klucze / 0 failures · reachability 11/11
+release-battery: ALL ARMS GREEN, push bez --no-verify
+```
+
+## Co ten refaktor faktycznie znalazł
+
+Najcenniejsze nie były planowane. Wszystkie poniższe wyszły z **pomiaru przed
+wykonaniem**, nie z hipotezy:
+
+1. **`stale` był kryjówką, nie tylko szumem** (J-035). `reproduce` bada tylko
+   claimy live, więc cztery claimy zaparkowane w `stale` miały kapsuły
+   nieodtwarzalne i były niewidzialne dla jedynego pomiaru zdolnego je
+   zweryfikować. Proxy nie było nieprecyzyjne — było schowkiem.
+2. **Bramka przechodząca na własnym akcie zgonu** (J-035). Wiersz INV-C w
+   `doctor` grepował `post-merge` za słowem `invalidate-scan` i trafiał w
+   **komentarz wyjaśniający usunięcie tego werbu**. Ta sama figura wróciła przy
+   `tr-4cf0f3eb`, który reprodukował się wyłącznie dzięki prozie o wycofaniu.
+3. **Obietnica bez mechanizmu** (J-035). „reproduce runs at pre-push" było
+   prawdą wyłącznie w tym repo — `install-hooks.sh` nie pisał takiego hooka,
+   więc u konsumenta zdanie nie miało za sobą niczego.
+4. **96 retrakcji bez zapisanej przyczyny** — ujawnione natychmiast przez
+   `truth health`. Nie defekt do naprawy wstecz: pomiar tego, ile osądu przepadło,
+   zanim pole istniało.
+5. **Kolejność decydowała, czy bramka w ogóle żyje** (J-039). Ramię churn przy
+   kolejności „liczność, potem szerokość" **nigdy by nie odpaliło** — martwy
+   wiersz udający pokrycie.
+6. **Receptura z literałem wersji ma 96% śmiertelności** (J-036), a sentinel
+   `sha256sum` jest poprawny dla plików **polityk** i błędny dla **skryptów w
+   rozwoju** (J-037): 8 z 9 żywych, martwy tylko ten na pliku pod edycją.
+
+## Błędy własne, wszystkie zapisane
+
+Zostawiam je w bilansie, bo dziennik bez nich byłby reklamą, nie zapisem:
+
+* **Sondy filowane do prawdziwego ledgera** zamiast do sandboxa (J-038) — cztery
+  claimy w append-only, obserwujące realne pliki, czyli dokładający ten sam szum,
+  który Faza 3 usuwała.
+* **Własna metryka hałasu policzona źle** (J-040): sumowałem po plikach, a
+  whisper emituje jedną linię na claim. 2329/6,8 → **1670/22,6**. Pomyłka w obie
+  strony, iloraz zaniżony ponad trzykrotnie.
+* **Uzasadnienie ramienia churn okazało się nieprawdziwe** (J-039): argumentowałem
+  oknem 200 commitów, a ADR-039 mierzy w oknie 30 dni. Ramię nie łapie przypadku,
+  który je umotywował — zapisane w kodzie, żeby nie zostawić fałszywej racji.
+* **Sygnał `health` wnioskujący stan sensora z braku pola** (J-041) — dokładnie
+  ta cicho zimna wartość, przed którą sam ostrzega. Złapany pierwszym
+  smoke-testem.
+* **Krotka wyliczająca wszystkie odmowy przed pętlą** (J-037) — zepsuty plik
+  polityk dawał `TypeError` zamiast odmowy.
+
+## Reguła, która niosła cały refaktor
+
+J-012, zastosowana bez wyjątku: **ramię, którego przedmiot nadal istnieje, musi
+zostać przepisane, nie skasowane.** Stąd delta canary **283 → 284 przy zerze
+skasowanych ramion**, wbrew prognozie runbooka o spadku. FAULT B, E, T, L, RA,
+SD-decay, EF3, DG, W1, BF1 — każde odwrócone albo przecelowane, żadne usunięte.
+
+## Otwarte, świadomie
+
+**Wydanie.** Usunięty werb (`reaffirm`) i przemianowany (`invalidate-scan` →
+`ttl-scan`) to zmiana łamiąca dla konsumentów. Komentarze w kodzie celowo mówią
+„refactor step 2.x", a nie „v0.10.0", bo CLI nadal stwierdza v0.9.38 i żadne
+wydanie nie zaszło. Wymaga: linii 2 w `template/scripts/truth`, siedmiu
+przypiętych powierzchni ADR-026, wpisu w `template/CHANGELOG.md` i taga.
+
+**Kasowanie pięciu instrumentów** (J-042) — możliwe, ale to zamiatanie
+governance'u przez `docs/governance/gate-metrics.md`, więc decyzja właściciela
+rejestru.
+
+**Dwie ceremonie tombstone, które przy zamknięciu jeszcze nie wpadły.**
+Sprawdzone na drzewie w chwili pisania tego wpisu, nie przyjęte na słowo —
+podsumowanie sesji mówiło o komplecie, a fold mówi inaczej:
+
+```
+tr-7dbe14ae  unverified   <- CZWARTA sonda z J-038; wycofano trzy, nie cztery
+tr-4cf0f3eb  diverged     <- tombstone z J-040 nie wykonany (nastepca tr-db201971)
+```
+
+`tr-662eb74f` z podsumowania **nie istnieje w tym ledgerze** — to był identyfikator
+z sandboxa `mktemp`, a czwarta realna sonda nazywa się `tr-7dbe14ae` i nadal
+obserwuje `scripts/release-battery.sh` oraz `scripts/fact-health.sh`. Stąd
+`wrong=3` zamiast `wrong=4` w metrykach wyżej.
+
+```
+truth verdict tr-7dbe14ae retracted --cause wrong
+truth verdict tr-4cf0f3eb retracted --cause restated --successor tr-db201971
+```
+
+Nie jest to defekt refaktoru i nie blokuje niczego — bateria jest zielona, a
+`reproduce` daje 66/66. Jest to jednak dokładnie ta klasa różnicy, którą ten
+projekt istnieje po to, żeby łapać: **podsumowanie z pamięci kontra odczyt z
+folda.** Zapisane po stronie odczytu.
+
+**Praca w toku, nieobjęta tym commitem.** W drzewie leżą niezacommitowane zmiany
+w siedmiu plikach `template/truthlib/` — moduł `structural` i selektory
+`#/sciezka` na celach obserwacji (stąd „structural suite: 116 tests" w baterii).
+To nie jest część tego refaktoru i nie została tu zacommitowana.
