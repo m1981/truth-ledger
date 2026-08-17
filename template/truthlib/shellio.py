@@ -47,7 +47,7 @@ from truthlib.kernel import *
 _OVERRIDES = {}
 # An allowlist, not a free dict: the old seam silently did nothing when a
 # name was bound nowhere, so a typo was indistinguishable from a patch.
-CONFIGURABLE = frozenset(("repo_root", "ledger_path"))
+CONFIGURABLE = frozenset(("repo_root", "ledger_path", "tracked_files"))
 
 def configure(**fns):
     """A3: the ONE supported way to substitute an I/O primitive, for tests.
@@ -156,7 +156,14 @@ def changed_files_since(anchor):
 def tracked_files():
     """INV-M fact-gathering: the tracked-file universe a literal
     evidence_path must belong to. Works with zero commits (reads the
-    index, not HEAD)."""
+    index, not HEAD).
+
+    Configurable (A3) since the gate's two refusal bodies -- dead literal
+    and dead glob -- were the only INTAKE_GATES branches no unit test
+    could reach: they sit behind this subprocess, and a suite that spawns
+    git is not the fast inner loop this one is."""
+    if "tracked_files" in _OVERRIDES:        # A3 seam; empty in production
+        return _OVERRIDES["tracked_files"]()
     r = subprocess.run(["git", "ls-files"], capture_output=True, text=True)
     return r.stdout.splitlines() if r.returncode == 0 else []
 
@@ -562,6 +569,84 @@ def load_citation_scope():
                     "git pathspecs (ADR-036/SI-1)")
             globs.append(s)
     return globs, ("file" if globs else "empty"), None
+
+def load_watch_policies():
+    """Shell: the consumer's named watch policies (FAZA 3, defect D-A).
+    Returns (policies, state, err) -- policies is name -> [glob, ...] in
+    file order, state is one of 'absent' / 'empty' / 'file', and err
+    carries a refusal string for a malformed file (R14a: the loader
+    returns it, the verb-level caller sys.exit()s it).
+
+    ABSENT IS BENIGN HERE, and that is the one place this loader departs
+    from its siblings in this file. `.truth/generated-paths` and
+    `.truth/citation-scope` describe a check that runs whether or not you
+    configured it, so an absent file means a DARK check and has to be
+    voiced. Watch policies configure nothing on their own: a repo that
+    names none simply passes --paths by hand, exactly as every repo did
+    before this feature, so absence is a legitimate resting state and
+    stays silent (see WATCH_POLICIES_REL for why no attestation lane).
+
+    THE FILE IS PARSED, NOT INTERPRETED. One `<name> -- <glob>[, <glob>]`
+    per line, '#' comments, blanks ignored -- the .truth/reachability-opt-out
+    shape. Deliberately NOT YAML despite the runbook's first sketch: the
+    CLI is stdlib-only, so a .yml file would need either a dependency this
+    project forbids or a hand-rolled subset parser whose extension
+    promises a generality it refuses.
+
+    Every refusal below is a LOUD one for a file that would otherwise
+    half-work:
+      * pathspec magic (SI-1, verbatim from load_citation_scope) -- these
+        globs go to match_paths(), never to git;
+      * a missing ' -- ' separator, so a line cannot be silently read as
+        a policy named after its own glob;
+      * an empty name or an empty glob list -- a policy matching nothing
+        is a watch set that reports 'covered' over zero files;
+      * a name outside [a-z0-9][a-z0-9-]*, so `--watch-policy` arguments
+        cannot collide with flags or need quoting;
+      * a DUPLICATE name. Last-wins would mean a committed policy nobody
+        can see is silently shadowing the one they are reading."""
+    text = read_policy_file(WATCH_POLICIES_REL)
+    if text is None:
+        return {}, "absent", None
+    policies = {}
+    for i, raw in enumerate(text.splitlines(), 1):
+        s = raw.strip()
+        if not s or s.startswith("#"):
+            continue
+        where = f"{WATCH_POLICIES_REL} line {i}"
+        if s[0] in ":-!":
+            return None, "file", (
+                f"truth: {where} starts with {s[0]!r} -- pathspec magic is "
+                "refused; watch globs are CLI globs (match_paths), never "
+                "git pathspecs (SI-1)")
+        if " -- " not in s:
+            return None, "file", (
+                f"truth: {where} has no ' -- ' separator: {s!r}. The format "
+                "is `<policy-name> -- <glob>[, <glob>...]`")
+        name, rest = s.split(" -- ", 1)
+        name = name.strip()
+        if not WATCH_POLICY_NAME_RE.fullmatch(name):
+            return None, "file", (
+                f"truth: {where} has an unusable policy name {name!r} -- "
+                "names are lowercase [a-z0-9][a-z0-9-]*, so they can be "
+                "passed to --watch-policy without quoting")
+        if name in policies:
+            return None, "file", (
+                f"truth: {where} redefines policy {name!r} -- a duplicate "
+                "would silently shadow the definition a reader is looking "
+                "at; give the second one its own name or merge them")
+        globs = [g.strip() for g in rest.split(",") if g.strip()]
+        if not globs:
+            return None, "file", (
+                f"truth: {where} defines policy {name!r} with no globs -- a "
+                "policy matching nothing reports 'covered' over zero files")
+        for g in globs:
+            if g[0] in ":-!":
+                return None, "file", (
+                    f"truth: {where} glob {g!r} starts with {g[0]!r} -- "
+                    "pathspec magic is refused (SI-1)")
+        policies[name] = globs
+    return policies, ("file" if policies else "empty"), None
 
 def citation_grep(cid):
     """Shell: bare repo-wide `git grep -l -F <cid>` at the repo root

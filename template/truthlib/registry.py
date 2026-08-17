@@ -30,6 +30,31 @@ PROMPT_REL = "prompts/truth-verifier.md"
 # impact-3/4 / baseline-5 precedent).
 CITATION_SCOPE_REL = ".truth/citation-scope"
 CITATION_SCOPE_DEFAULT = ("docs/specs/**",)
+# FAZA 3 / defect D-A: named watch policies. Until now every claim picked
+# its own evidence_paths freehand, and NOTHING checked that the set had
+# anything to do with the evidence -- J-022 measured five claims watching
+# a file their recipe never opens while missing one it does, drifted in
+# BOTH directions. A policy is a named, committed path set a claim can
+# stand on by name, so the set is reviewed once instead of re-invented per
+# filing. Line format is this repo's standard `<name> -- <a>, <b>` (the
+# .truth/reachability-opt-out shape), NOT YAML: the CLI is stdlib-only
+# (scripts/truth line 20) and there is no YAML parser to be had, so a
+# .yml extension would promise a generality the loader must refuse.
+#
+# OPT-IN, unlike its policy-file siblings: ABSENT means "this repo names
+# no policies", which is the state every consumer starts in and a state
+# with nothing wrong about it -- claims keep passing --paths by hand. So
+# there is no attestation lane and no doctor row here; an unused feature
+# must not redden anybody's installation check (the ADR-053 cost, not
+# paid a third time). Adoption is measured, not demanded: stats_report
+# counts it.
+WATCH_POLICIES_REL = ".truth/watch-policies"
+# Policy names travel as a bare `--watch-policy <name>` argument and land
+# in the payload, so the shape is pinned where every other id shape is:
+# lowercase, dash-joined, never leading with a dash (which argparse would
+# read as a flag) and never carrying a glob character (which would make a
+# name indistinguishable from the thing it names).
+WATCH_POLICY_NAME_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
 CITATIONS_EXIT_CITED = 6
 # F1.1: `truth reproduce` exit codes. 7 = at least one live claim's
 # capsule can no longer be produced here -- a REPORT, distinct from a

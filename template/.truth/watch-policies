@@ -1,0 +1,43 @@
+# Watch policies -- YOUR repository's named watch sets. Shipped with none
+# defined, deliberately: which files a claim's evidence reads is a fact
+# about YOUR tree, and a template that guessed would be the freehand
+# problem one level up.
+#
+# FORMAT, one policy per line:
+#     <policy-name> -- <glob>[, <glob>...]
+# Names are lowercase [a-z0-9][a-z0-9-]*. '#' comments and blanks are
+# ignored. Pathspec magic (a line or glob starting ':', '-', '!') is
+# REFUSED: these are CLI globs handed to match_paths(), never git
+# pathspecs (SI-1, the same rule .truth/citation-scope carries).
+#
+#     scripts/truth claim "..." --watch-policy <name> --evidence-cmd ...
+#
+# --watch-policy and --paths cannot be combined: a claim's watch set comes
+# from ONE source, or which one wins would depend on argument order.
+#
+# THIS FILE IS OPTIONAL AND ITS EMPTINESS IS NOT A FINDING. Unlike
+# .truth/generated-paths and .truth/citation-scope, an absent or empty
+# watch-policies file configures nothing away -- claims simply pass
+# --paths by hand, exactly as they did before this feature existed. So
+# there is no attestation line to write here and no doctor row to satisfy:
+# an unused feature must not redden your installation check. `truth stats`
+# reports adoption as a number, which is the honest treatment of an opt-in.
+#
+# WHY YOU MIGHT WANT THEM. Every claim picking its own path list means
+# nothing checks that the list has anything to do with the evidence, and
+# the drift runs both ways: watching a file the recipe never opens (noise
+# on every edit) and missing one it does (a claim nobody is warned about).
+# In the template's own repository, 75 claims with a watch set held 60
+# DISTINCT sets -- near-zero reuse -- and a single edit to the busiest
+# watched file named 31 claims in the pre-edit whisper.
+#
+# The rule that makes a policy correct is one line, and it is worth
+# writing on the wall: WATCH EXACTLY THE PATHS THE RECIPE READS. Not the
+# docs the claim is about; not the ADR that motivated it. The paths the
+# evidence command opens.
+#
+# EXAMPLES -- delete these comments and write your own:
+#
+#   core-suite     -- tests/test_core.py
+#   api-surface    -- src/api/*.py, tests/test_api.py
+#   build-config   -- pyproject.toml, Makefile

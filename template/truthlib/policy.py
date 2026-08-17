@@ -429,6 +429,47 @@ def _ttl_expired(entry, facts, now):
 # the ledger and stay readable forever -- retiring a WRITER is not
 # breaking a READER (J-012).
 
+# --- FAZA 3: named watch policies (defect D-A) ---------------------------
+
+def watch_policy_error(name, policies, state):
+    """Intake decision for `--watch-policy <name>`: a refusal string, or
+    None when the filing may proceed. Pure -- the shell loads the file
+    (shellio.load_watch_policies) and this decides.
+
+    The whole point of the feature is that a watch set stops being
+    re-invented per filing, so the ONE thing this must never do is guess.
+    An unknown name is refused with the available names listed, rather
+    than falling back to 'watch nothing' -- a claim that silently watched
+    nothing would be the dead tripwire INV-M exists to refuse, arrived at
+    by a typo.
+
+    `name is None` is the ordinary case and passes: policies are opt-in,
+    and a repo that names none is not misconfigured (WATCH_POLICIES_REL)."""
+    if name is None:
+        return None
+    if state == "absent":
+        return (f"truth: --watch-policy {name!r} but {WATCH_POLICIES_REL} "
+                "does not exist -- there is no policy set to name. Create "
+                "it with one `<name> -- <glob>[, <glob>...]` line per "
+                "policy, or pass --paths directly.")
+    if name not in policies:
+        known = ", ".join(sorted(policies)) or "(none defined)"
+        return (f"truth: unknown watch policy {name!r} -- "
+                f"{WATCH_POLICIES_REL} defines: {known}. A typo must not "
+                "quietly file a claim that watches nothing (INV-M).")
+    return None
+
+def watch_policy_conflict_error(name, paths_csv):
+    """G-class refusal: --watch-policy and --paths both given. Two
+    sources for one field is the drift shape this feature exists to
+    close, and 'the flag wins' would make the recorded evidence_paths
+    depend on argument order rather than on a committed decision. Pure."""
+    if name is not None and paths_csv:
+        return (f"truth: --watch-policy {name!r} and --paths cannot be "
+                "combined -- a claim's watch set comes from ONE source, "
+                "either the named policy or the explicit list. Drop one.")
+    return None
+
 # --- F3.1: a conscious empty is not the same as an untouched default -----
 
 def policy_file_state(text):

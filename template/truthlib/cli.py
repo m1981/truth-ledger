@@ -27,7 +27,8 @@ from truthlib.shellio import _short_sha
 def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
                         ttl_days, basis, single_run, duplicate_ok, claims, *,
                         scope_basis=None, unsafe_ok=False,
-                        evidence_exit_basis=None, generated_basis=None):
+                        evidence_exit_basis=None, generated_basis=None,
+                        watch_policy=None):
     """Full claim intake, driven by the ADR-034 staged gate table --
     WITHOUT appending. Shared by `claim` and `done --claim` so
     claim-at-death goes through the identical intake, and so `done` can
@@ -40,8 +41,30 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
     advisory pass needs (generated_source from _gate_generated,
     blast_state from _gate_blast) so the shell never re-probes what the
     gate rows already gathered."""
+    # FAZA 3 (defect D-A): a named policy RESOLVES to the watch set, it
+    # does not merely annotate one. Both refusals are pure and live in
+    # policy.py; the shell loads the file and exits. Resolution happens
+    # BEFORE the gate table so every downstream row -- INV-M's dead-glob
+    # check, the ADR-039 blast forecast, the ADR-038 dirty-watch advisory
+    # -- judges the resolved globs, exactly as it judges a hand-written
+    # --paths list. A policy that ships an unreachable glob must be
+    # refused by INV-M like any other.
+    wp_policies, wp_state, wp_err = load_watch_policies()
+    # ORDER IS SHORT-CIRCUIT, not cosmetic: a malformed policy file makes
+    # load_watch_policies return policies=None, so the two predicates below
+    # must not be EVALUATED before that exit -- putting all three in one
+    # tuple looked tidier and raised TypeError on every bad file, which is
+    # the crash-instead-of-refusal shape the refusal text exists to avoid.
+    if wp_err:
+        sys.exit(wp_err)
+    for _e in (watch_policy_conflict_error(watch_policy, paths_csv),
+               watch_policy_error(watch_policy, wp_policies, wp_state)):
+        if _e:
+            sys.exit(_e)
+    resolved_paths = (list(wp_policies[watch_policy]) if watch_policy
+                      else split_csv(paths_csv))
     ctx = {"text": text, "evidence_class": evidence_class,
-           "evidence_cmd": evidence_cmd, "paths": split_csv(paths_csv),
+           "evidence_cmd": evidence_cmd, "paths": resolved_paths,
            "tier": tier, "ttl_days": ttl_days, "basis": basis,
            "claims": claims, "duplicate_ok": duplicate_ok,
            "scope_basis": scope_basis,
@@ -57,6 +80,15 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
     payload = {"text": text, "evidence_class": evidence_class,
                "cost_tier": tier, "ttl_days": ctx["ttl_days"],
                "evidence_paths": ctx["paths"]}
+    if watch_policy:
+        # PROVENANCE, beside the resolved globs -- never instead of them.
+        # The ledger is append-only, so a claim must keep recording WHAT it
+        # watched at filing time; storing only the name would let a later
+        # edit to .truth/watch-policies silently rewrite what every past
+        # claim is understood to have watched. The name records which
+        # committed decision the author stood on, and stats_report counts
+        # adoption from it (ADR-046: the field has a reader).
+        payload["watch_policy"] = watch_policy
     if scope_basis:
         payload["scope_basis"] = scope_basis
     if ctx["ttl_default"]:
@@ -117,7 +149,8 @@ def cmd_claim(a):
         a.ttl_days, a.basis, a.single_run, a.duplicate_ok, claims,
         scope_basis=a.scope_ok, unsafe_ok=a.evidence_unsafe_ok,
         evidence_exit_basis=a.evidence_exit_ok,
-        generated_basis=a.generated_ok)
+        generated_basis=a.generated_ok,
+        watch_policy=getattr(a, "watch_policy", None))
     rec = append_record("claim", payload)
     advisories = intake_advisories(events, a.tier, a.ttl_days, a.scope_ok,
                                    a.evidence_class, payload,
@@ -517,15 +550,34 @@ def cmd_contradicts(a):
     print(f"{rec['id']}: {a.claim_a} <-x-> {a.claim_b} -- {state}")
 
 def cmd_list(a):
+    """FAZA 3 adds `--watch-policy <name>`: which claims stand on a named
+    policy. It is the operational question the migration (step 3.3) asks
+    on every pass -- "what is on this policy, and what is still freehand?"
+    -- and it is also the ADR-046 READER that earns `watch_policy` its
+    place in the payload envelope: a field nothing reads is precisely the
+    defect instruments/field-consumers.py exists to find, and provenance
+    alone would have been exactly that. `--watch-policy -` selects the
+    complement: path-carrying claims on NO policy, i.e. the migration
+    backlog."""
     claims, _ = fold(load_events())
     now = now_dt()
     want = {f for f in STATUSES if getattr(a, f)}
+    wp = getattr(a, "watch_policy", None)
+    def _wp_match(payload):
+        if wp is None:
+            return True
+        if wp == "-":            # the backlog: watches paths, names no policy
+            return bool(payload.get("evidence_paths")) \
+                and not payload.get("watch_policy")
+        return payload.get("watch_policy") == wp
     rows = [{"id": cid, "status": e["status"], "age_days": age_days(e, now),
              "tier": e["claim"]["payload"].get("cost_tier"),
              "class": e["claim"]["payload"].get("evidence_class"),
+             "watch_policy": e["claim"]["payload"].get("watch_policy"),
              "text": e["claim"]["payload"].get("text")}
             for cid, e in claims.items()
-            if not want or e["status"] in want]
+            if (not want or e["status"] in want)
+            and _wp_match(e["claim"]["payload"])]
     if a.json:
         print(json.dumps(rows, indent=2))
     else:
@@ -664,7 +716,8 @@ def cmd_done(a):
             a.duplicate_ok, claims, scope_basis=a.scope_ok,
             unsafe_ok=a.evidence_unsafe_ok,
             evidence_exit_basis=a.evidence_exit_ok,
-            generated_basis=a.generated_ok)
+            generated_basis=a.generated_ok,
+            watch_policy=getattr(a, "watch_policy", None))
     # ADR-014: the acceptance oracle gates a plain close -- it runs after
     # the cheap intake checks and before ANY append (both-or-neither
     # extends to the oracle). --cancel/--reopen skip it: killing or
@@ -1526,6 +1579,11 @@ CLAIM_INTAKE_FLAGS = [
     _flag("--evidence-cmd",
           help="re-runnable command whose output is the evidence"),
     _flag("--paths", help="comma-separated globs the evidence depends on"),
+        _flag("--watch-policy", dest="watch_policy", metavar="NAME",
+              help="take the watch set from a named policy in "
+                   ".truth/watch-policies instead of --paths (FAZA 3): the "
+                   "set is reviewed once and reused, rather than "
+                   "re-invented per filing"),
     _flag("--tier", default="P2", choices=TIERS),
     _flag("--ttl-days", type=int, default=None,
           help="expiry for facts the repo cannot invalidate (G10)"),
@@ -1746,6 +1804,10 @@ VERB_TABLE = [
     ("list", "list claims by derived status", [
         *[_flag("--" + flag.replace("_", "-"), dest=flag,
                 action="store_true") for flag in STATUSES],
+        _flag("--watch-policy", dest="watch_policy", metavar="NAME",
+              help="only claims standing on this named watch policy; "
+                   "'-' selects path-carrying claims on NO policy (the "
+                   "FAZA 3 migration backlog)"),
         JSON_FLAG,
     ], cmd_list),
 

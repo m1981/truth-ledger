@@ -5,7 +5,7 @@
 > Jedno zadanie naraz. Po każdym: weryfikacja → status → wpis w JOURNAL → commit.
 
 Gałąź robocza: `claude/git-hooks-architecture-zc97y3`
-Commit bazowy: `fa2e85b` · rewizja runbooka: `r17` (2026-08-17, 2.5 i 2.6 wykonane i wypchniete)
+Commit bazowy: `fa2e85b` · rewizja runbooka: `r18` (2026-08-17, tabela statusow zsynchronizowana; 3.1 format liniowy, 3.2 twarda odmowa, 4.3 bez nowych ADR-ow)
 
 ---
 
@@ -360,9 +360,70 @@ istnieje**, musi zostać przepisane, nie skasowane.
 Dane: 1 ścieżka → 12,6% precyzji; 2–3 ścieżki → 1,9%. Trzy pliki-agregatory
 (`template/scripts/truth`, `truth-canary.sh`, `test-truth-core.py`) = 75% zestaleń.
 
-### [ ] 3.1 `.truth/watch-policies.yml` + walidator
+> **PRZELICZENIE PO FAZIE 2 (J-037).** Liczby powyżej mierzyły **fałszywe
+> zestalenia**, których po kroku 2.5 nie ma — wniosek się nie zmienia, ale
+> dowód pod nim tak. Ocalały koszt zbyt szerokiej obserwacji to **uwaga**:
+>
+> ```
+> 75 aktywnych claimow ze zbiorem obserwacji  ->  60 ROZNYCH zbiorow
+> 200 commitow = 340 dotkniec = 2329 linii whispera (6,8 claimu na edycje)
+> jedno dotkniecie truth-canary.sh nazywa 31 claimow naraz
+> ```
+>
+> Reużywalność bliska zeru — to jest D-A wyrażone liczbą dla świata po
+> Reproduce-on-Read, i to jest podstawa danych dla twardej odmowy w 3.2.
+
+### [x] 3.1 `.truth/watch-policies` + walidator — **ZROBIONE** (J-037)
+
+**Format liniowy, nie YAML** (decyzja 2026-08-17). Jedna polityka na linię:
+
+```
+name -- path,path,path
+```
+
+Powód: README obiecuje *„no dependencies beyond Python 3 and git"*. YAML
+kosztowałby albo zależność (złamanie obietnicy), albo własny parser. Format
+liniowy jest zgodny z **wszystkimi pięcioma** istniejącymi plikami polityk
+(`evidence-allow`, `evidence-deny`, `generated-paths`, `citation-scope`,
+`arm-subject-opt-out`) i z kontraktem ich loaderów: **stdlib-only, SI-4,
+R14a — loader ZWRACA błąd, wołający decyduje.**
+
+**Wykonane dokładnie w tym kontrakcie:** `load_watch_policies()` w `shellio.py`
+zwraca `(policies, state, err)`; czyste `watch_policy_error` /
+`watch_policy_conflict_error` w `policy.py` (DAG ADR-044: `shellio` nie może
+importować `policy`, więc czyta bajty, a decyduje `policy` — składa `cli`).
+Flagi: `claim --watch-policy NAME` (polityka **rozwiązuje** zbiór przed tabelą
+`INTAKE_GATES`, więc INV-M sądzi jej globy jak listę z ręki) oraz
+`list --watch-policy NAME` — czytelnik pola wymagany przez ADR-046, a przy tym
+widok migracji (`-` wypisuje backlog).
+
+Payload niesie **nazwę i rozwiązane globy**: ledger jest append-only, więc
+późniejsza edycja pliku polityk nie może przepisać tego, co przeszłe claimy
+uważa się za obserwujące. Nazwa to proweniencja, globy to zapis.
+
+Siedem odmów, każda głośna: nieznana nazwa (wylicza istniejące — typo nie może
+po cichu złożyć claimu obserwującego NIC, defekt INV-M), `--watch-policy`
+razem z `--paths`, pathspec magic w linii i w globie, brak separatora, zła
+nazwa, duplikat nazwy, polityka bez globów.
+
+**ABSENT jest łagodny**, inaczej niż u sióstr: polityki są opt-in, brak pliku to
+stan spoczynku, nie ciemna bramka — więc bez wiersza atestacji i bez wiersza w
+`doctor` (koszt ADR-053 nieopłacony po raz trzeci).
 ### [ ] 3.2 Bramka `max_paths` jako wiersz w `INTAKE_GATES`
+
+**Twarda odmowa** (decyzja 2026-08-17), nie advisory: claim z więcej niż jedną
+ścieżką podaną z palca jest odrzucany i zmuszony do `--watch-policy <name>`
+albo do uzasadnienia. Podstawa danych: 1 ścieżka → 12,6% precyzji, 2–3 ścieżki
+→ 1,9%.
+
+> Wiersz dokłada się do tabeli, a `TestIntakeGateFunctions` czyta ją **przez
+> `INTAKE_GATES`**, nie po nazwach — nowy wiersz nie wymaga zmiany testów,
+> a wiersz usunięty z tabeli wywali `test_gate_table_pre_execution_order_is_pinned`.
 ### [ ] 3.3 Migracja pozostałych claimów na polityki
+
+Backlog dzisiaj: **65** żywych claimów ze ścieżkami i bez polityki
+(`truth list --watch-policy - --live`). Plik tego repo nazywa **9 polityk**,
+każda wzięta z faktycznie powtarzającego się zbioru, nie z wyobraźni.
 
 ---
 
@@ -370,12 +431,18 @@ Dane: 1 ścieżka → 12,6% precyzji; 2–3 ścieżki → 1,9%. Trzy pliki-agreg
 
 ### [ ] 4.1 Model odczytu — jedna projekcja nad `fold()`
 ### [ ] 4.2 Werb `truth health [--json]`
-### [ ] 4.3 Zwinięcie 5 instrumentów Tier C + **ADR odwracający ADR-046**
+### [ ] 4.3 Zwinięcie 5 instrumentów Tier C + **odwrócenie ADR-046**
 
 > **Obiekcja O4:** `truth health` **ships do konsumenta**, a zwijane instrumenty
 > są celowo meta-repo-only. To odwrócenie podziału tierów — uzasadnione
 > (`structure.md` nazywa tę asymetrię „największym pojedynczym ryzykiem
 > systemu"), ale **musi być zapisane jako decyzja.**
+>
+> **Gdzie zapisać** (decyzja 2026-08-17): bezpośrednio w
+> `template/docs/ARCHITECTURE.md`, rozdział 4, oraz w `01-JOURNAL.md`.
+> **Nie tworzymy nowych plików ADR w produkcie** — 54 ADR-y wyjechały do
+> `docs/archive/adr/` w kroku 1.3, a dopisanie tam nowego rekordu przestałoby
+> czynić z archiwum archiwum.
 
 ---
 
@@ -392,10 +459,34 @@ Dane: 1 ścieżka → 12,6% precyzji; 2–3 ścieżki → 1,9%. Trzy pliki-agreg
 
 ## Dziennik statusów
 
+> Tabela była nieaktualna do r18 (pokazywała 1.1 „GOTOWE DO STARTU", gdy Fazy
+> 1 i 2 były dawno zamknięte) — a to jest plik, który deklaruje się jako
+> **jedyne źródło prawdy o postępie**. Odtąd aktualizowana razem z nagłówkiem.
+
 | krok | status | commit |
 |---|---|---|
-| 0 — runbook + journal | ZROBIONE | `b98bf00` |
-| r2 — wytyczne wykonawcze + 6 korekt | **ZROBIONE** | (ten commit) |
-| 1.1 — audyt screenera | GOTOWE DO STARTU | — |
-| 1.2 — przekierowanie 14 claimów ADR | czeka | — |
-| 1.3 — archiwizacja + ARCHITECTURE.md | czeka na decyzję A/B | — |
+| 0 — runbook + journal | **[x] ZROBIONE** | `b98bf00` |
+| r2 — wytyczne wykonawcze + 6 korekt | **[x] ZROBIONE** | `441ddd6` |
+| **FAZA 0** | **[x] ZAMKNIĘTA** | |
+| 0.1 + SEC-0 — martwe bramki zdrowia, kanał zapisu | **[x] ZROBIONE** (J-020) | `8970f5d` |
+| **FAZA 1** | **[x] ZAMKNIĘTA** (J-028) | |
+| 1.1 — audyt screenera, werdykt GO | **[x] ZROBIONE** (J-017) | `72a0099` |
+| 1.2 — przekierowanie claimów ADR, 14/14 | **[x] ZROBIONE** (J-022, J-025) | `739d697`, `020b3ef` |
+| 1.3 — `ARCHITECTURE.md` + archiwizacja 54 ADR-ów | **[x] ZROBIONE** (J-027, J-028) | `0e3112d`, `687dbdc` |
+| **FAZA 2** | **[x] ZAMKNIĘTA** (J-035, J-036) | |
+| 2.1 — inwentarz powierzchni | **[x] ZROBIONE** (J-029) | `f405eed` |
+| 2.2 — testy charakteryzujące `reproduce` | **[x] JUŻ ISTNIAŁY**, zweryfikowane (J-030) | — |
+| 2.3 — `reproduce` jako arm baterii pchnięcia | **[x] ZROBIONE** (J-032) | `49588e6` |
+| 2.4 — wygaszenie `invalidate-scan` w dwóch hookach | **[x] ZROBIONE** (J-033) | `1858e7a` |
+| 2.5 — zwężenie stanu `stale` w foldzie | **[x] ZROBIONE** (J-034 stop, J-035 wznowione) | `95fe01f`, `c0ff7f3` |
+| 2.6 — wycofanie `invalidate-scan` i `reaffirm` | **[x] ZROBIONE** (J-035) | `c0ff7f3` |
+| domknięcie po 2.6 — kolejka werdyktów | **[x] ZROBIONE** (J-036) | `de3c0a7`, `c43bfe7` |
+| — oracle `gates.py` przed Fazą 3 | **[x] ZROBIONE** (dossier F-18/F-20) | `cc3aef0` |
+| **FAZA 3 — polityki obserwacji** | **[~] W TOKU** | |
+| 3.1 — `.truth/watch-policies` (format liniowy) + walidator | **[x] ZROBIONE** (J-037) | |
+| 3.2 — bramka `max_paths` (twarda odmowa) | [ ] | — |
+| 3.3 — migracja pozostałych claimów na polityki | [ ] | — |
+| **FAZA 4 — `truth health`** | **[ ] DO STARTU** | |
+| 4.1 — model odczytu, jedna projekcja nad `fold()` | [ ] | — |
+| 4.2 — werb `truth health [--json]` | [ ] | — |
+| 4.3 — zwinięcie 5 instrumentów + odwrócenie ADR-046 | [ ] | — |

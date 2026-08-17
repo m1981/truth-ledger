@@ -217,6 +217,16 @@ def stats_report(events, now, folded=None):
         if days:
             half_life[tier] = {"n": len(days),
                                "median_days": round(statistics.median(days), 2)}
+    # FAZA 3 note, recorded rather than acted on: watch-policy ADOPTION is
+    # the number that phase exists to move, and it is NOT added here. The
+    # ADR-046 tiering ruling says `truth stats` carries the Tier B core --
+    # counts, verdicts, half-life (which feeds the FS-1 intake advisory),
+    # queue aging -- and TestStatsCLIShape pins that key set precisely so a
+    # new section cannot regrow it by habit. An adoption ratio is an
+    # analysis metric of the override-velocity family, which ADR-046 moved
+    # OUT to instruments/. Amending that ruling is an operator decision,
+    # not a side effect of shipping the feature; `truth list
+    # --watch-policy <name>` answers the operational question meanwhile.
     queue = queue_rows(claims, now)
     ages = sorted(r["age_days"] for r in queue if r["age_days"] is not None)
     # ADR-046: the 42010 concern tally moved OUT (Tier C -- the meta-repo's

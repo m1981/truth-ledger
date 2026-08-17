@@ -401,13 +401,36 @@ watcher:
   `.claude/settings.json` or `.githooks/pre-commit`. Re-admitting a shell
   to the allowlist, or deleting the hook block that arms the whisper,
   staled nothing and tripped no gate — the security boundary was quieter
-  than a typo in a doc. Each now carries a `sha256sum` sentinel claim
+  than a typo in a doc. Each now carries a sentinel claim
   (`tr-11701d6f`, `tr-6a3c9fef`, `tr-96351a43`, `tr-48fc1f89`,
-  `tr-45312cff`, `tr-df856f43`, `tr-7a10f167`, `tr-bcd40e31`,
-  `tr-165faff1`). The pin works because the evidence is a DIGEST: an edit
-  stales the claim AND changes the hash, so `reaffirm`'s match arm cannot
-  clear it and the ADR-030 mismatch path forces a dispatched judgment.
-  That is the intended ceremony for a boundary edit.
+  `tr-45312cff`, `tr-df856f43`, `tr-a00459ec`, `tr-bcd40e31`,
+  `tr-165faff1`).
+
+  **The mechanism, restated 2026-08-17.** It used to read: an edit stales
+  the claim AND changes the hash, so `reaffirm`'s match arm cannot clear
+  it and the ADR-030 mismatch path forces a dispatched judgment. Both
+  halves of that are now gone — a path touch stales nothing (the step-2.5
+  double-invalidation rule) and `reaffirm` is retired (step 2.6). The
+  ceremony is *stronger* than it was, not weaker: `truth reproduce` re-runs
+  the digest at the push boundary, a changed byte lands the claim in
+  `capsule-stale`, and the sweep **exits 7 and blocks the push** until a
+  human judges it. Nothing can clear it mechanically, because reproduce
+  files nothing in either direction.
+
+  **Pin the BYTES or pin the PROPERTY — and the file decides which.**
+  Eight of those nine sentinels are `sha256sum <file>` and eight are
+  still live, because they guard POLICY files that change rarely and where
+  the edit itself is the event worth flagging. The ninth guarded
+  `scripts/fact-health.sh`, a script under active development, and it died
+  three times to edits that IMPROVED the boundary it was watching — most
+  recently to a commit that ADDED a scope rule. A digest pin on a moving
+  file spends a human judgment on every improvement, so that one was
+  re-filed (`tr-a00459ec`) with a recipe asserting the properties the
+  sentinel is for — the vocabulary is fetched at runtime, the scope rules
+  are present and counted — which still fails loudly if either is removed.
+  Measured ledger-wide: a recipe that pins a version literal or a whole-file
+  digest of a developed file has a 96% death rate. Ask what a boundary edit
+  must not be able to do quietly, and pin THAT.
 
   Two of those files did not exist before that audit, and their absence
   was the finding: `.truth/citation-scope` was never committed, so the

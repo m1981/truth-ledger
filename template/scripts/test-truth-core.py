@@ -3722,6 +3722,74 @@ class TestIntakeGateFunctions(unittest.TestCase):
         self.assertIsNone(tm.run_intake_stage("pre-execution", gate_ctx()))
 
 
+class TestInvMPathsGate(unittest.TestCase):
+    """INV-M's two refusal bodies, reached through the A3 seam.
+
+    Both branches sit behind `tracked_files()` -- a `git ls-files`
+    subprocess -- which is why they were the last unreachable code in
+    INTAKE_GATES. Substituting the fact-gatherer, not the gate, keeps the
+    refusal logic itself under test and the suite free of git.
+
+    Order matters here and is asserted: malformed, then dead literal,
+    then dead glob. A literal carrying a glob metacharacter is EXEMPT
+    from the literal check (watching a not-yet-created file is a
+    legitimate intent) and is judged by the ADR-024 reachability rule
+    instead."""
+
+    GATE = staticmethod(GATE_FNS["paths-inv-m"])
+
+    def setUp(self):
+        self._restore = tm.configure(
+            tracked_files=lambda: ["docs/guide.md", "template/truthlib/kernel.py"])
+
+    def tearDown(self):
+        self._restore()
+
+    def test_a_tracked_literal_passes(self):
+        self.assertIsNone(self.GATE(gate_ctx(paths=["docs/guide.md"])))
+
+    def test_a_literal_matching_no_tracked_file_is_refused(self):
+        err = self.GATE(gate_ctx(paths=["docs/never-existed.md"]))
+        self.assertIsNotNone(err)
+        self.assertIn("matches zero tracked files", err)
+        self.assertIn("docs/never-existed.md", err)
+        # the refusal must name the escape hatches, or it strands the user
+        self.assertIn("--ttl-days", err)
+
+    def test_a_glob_is_exempt_from_the_literal_check(self):
+        # An empty-for-now pattern is legitimate intent; only literals
+        # have nothing else they could mean.
+        self.assertIsNone(self.GATE(gate_ctx(paths=["docs/**"])))
+        self.assertIsNone(self.GATE(gate_ctx(paths=["docs/*.md"])))
+
+    def test_a_statically_unreachable_glob_is_refused(self):
+        # ADR-024: git diff emits repo-relative, normalized paths, so an
+        # absolute pattern can never match one.
+        err = self.GATE(gate_ctx(paths=["/etc/**"]))
+        self.assertIsNotNone(err)
+        self.assertIn("ADR-024", err)
+
+    def test_the_dead_glob_rule_covers_every_unreachable_shape(self):
+        for pattern in ("/etc/**", "docs/**/", "docs/./*.md", "docs/../*.md",
+                        ".git/**", "docs//*.md"):
+            with self.subTest(pattern=pattern):
+                self.assertIsNotNone(self.GATE(gate_ctx(paths=[pattern])),
+                                     f"{pattern!r} can match no diff path")
+
+    def test_a_wildcard_component_stays_reachable(self):
+        # SOUND, not complete: '.git*' and '.github/**' still match real
+        # names, so refusing them would be a false refusal.
+        for pattern in (".github/**", ".git*/config"):
+            with self.subTest(pattern=pattern):
+                self.assertIsNone(self.GATE(gate_ctx(paths=[pattern])))
+
+    def test_the_literal_check_precedes_the_glob_check(self):
+        # A dead literal beside a dead glob must report the literal --
+        # the order is the contract the message text depends on.
+        err = self.GATE(gate_ctx(paths=["docs/never-existed.md", "/etc/**"]))
+        self.assertIn("matches zero tracked files", err)
+
+
 class TestGeneratedPathsGate(unittest.TestCase):
     """ADR-037's gate body, reached through the ONE supported seam
     (A3: truthlib.configure) rather than by patching a star-imported
@@ -5129,6 +5197,18 @@ class TestConfigureSeam(unittest.TestCase):
         # The seam must be inert unless a test asks for it.
         self.assertEqual(tm._OVERRIDES, {})
 
+    def test_tracked_files_is_configurable_and_reaches_the_gates(self):
+        # Added so INV-M's two refusal bodies became reachable without a
+        # git subprocess; the allowlist is the contract, so it is pinned.
+        self.assertIn("tracked_files", tm.CONFIGURABLE)
+        import truthlib.gates
+        restore = tm.configure(tracked_files=lambda: ["only/this.txt"])
+        try:
+            self.assertEqual(truthlib.gates.tracked_files(), ["only/this.txt"])
+        finally:
+            restore()
+        self.assertNotIn("tracked_files", tm._OVERRIDES)
+
     def test_an_unconfigurable_name_raises(self):
         # The mirror accepted ANY name and silently did nothing when it
         # was bound nowhere, so a typo looked exactly like a patch.
@@ -5255,6 +5335,130 @@ class TestIntakeStageReturns(unittest.TestCase):
         self.assertIn("near-duplicate", err)
         self.assertNotIn("quantifies universally", err)
 
+
+# ------------------------------------ FAZA 3: named watch policies (D-A)
+
+class TestWatchPolicyDecisions(unittest.TestCase):
+    """The PURE half of the feature: which filings are refused, and why.
+
+    Both predicates exist because a watch set that is wrong in either
+    direction is invisible. J-022 measured five claims watching a file
+    their recipe never opens WHILE missing one it does -- so the failure
+    mode this guards is not "the flag errored", it is "the claim filed
+    successfully and watched the wrong thing"."""
+
+    POL = {"core-suite": ["tests/test_core.py"]}
+
+    def test_no_policy_named_is_the_ordinary_case(self):
+        """Policies are OPT-IN. A repo that names none is configured, not
+        broken -- so absence must pass even with an absent policy file."""
+        self.assertIsNone(tm.watch_policy_error(None, {}, "absent"))
+        self.assertIsNone(tm.watch_policy_error(None, self.POL, "file"))
+
+    def test_unknown_name_is_refused_and_lists_what_exists(self):
+        """The crux: an unknown name must NOT degrade to watching nothing.
+        A typo would then file a claim with an empty watch set -- a dead
+        tripwire arrived at silently, which is the INV-M defect."""
+        err = tm.watch_policy_error("cor-suite", self.POL, "file")
+        self.assertIn("unknown watch policy", err)
+        self.assertIn("core-suite", err, "the refusal must name what exists")
+        self.assertIn("INV-M", err)
+
+    def test_named_policy_without_a_policy_file_is_refused(self):
+        err = tm.watch_policy_error("core-suite", {}, "absent")
+        self.assertIn(tm.WATCH_POLICIES_REL, err)
+
+    def test_known_name_passes(self):
+        self.assertIsNone(tm.watch_policy_error("core-suite", self.POL, "file"))
+
+    def test_policy_and_paths_together_are_refused(self):
+        """Two sources for one field would make the RECORDED watch set
+        depend on argument order rather than on a committed decision."""
+        err = tm.watch_policy_conflict_error("core-suite", "a.py,b.py")
+        self.assertIn("cannot be combined", err)
+        self.assertIsNone(tm.watch_policy_conflict_error("core-suite", ""))
+        self.assertIsNone(tm.watch_policy_conflict_error(None, "a.py"))
+
+class TestWatchPolicyLoader(unittest.TestCase):
+    """The file format, and every way it is refused rather than
+    half-honoured. Same shape as .truth/reachability-opt-out; NOT YAML,
+    because the CLI is stdlib-only and a .yml extension would promise a
+    generality the loader has to refuse."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = self._tmp.name
+        self._restore = tm.configure(repo_root=lambda: self.root)
+        self.addCleanup(self._tmp.cleanup)
+        self.addCleanup(self._restore)
+
+    def _write(self, *lines):
+        path = os.path.join(self.root, tm.WATCH_POLICIES_REL)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+
+    def test_absent_is_benign_and_silent(self):
+        """The one departure from this file's policy-loader siblings: an
+        absent watch-policies file is a resting state, not a dark check,
+        so it yields no error to voice (WATCH_POLICIES_REL)."""
+        self.assertEqual(tm.load_watch_policies(), ({}, "absent", None))
+
+    def test_comments_and_blanks_are_ignored_and_order_is_kept(self):
+        self._write("# a comment", "", "core-suite -- tests/test_core.py",
+                    "api -- src/api/*.py, tests/test_api.py")
+        policies, state, err = tm.load_watch_policies()
+        self.assertIsNone(err)
+        self.assertEqual(state, "file")
+        self.assertEqual(policies, {"core-suite": ["tests/test_core.py"],
+                                    "api": ["src/api/*.py",
+                                            "tests/test_api.py"]})
+
+    def test_comments_only_is_empty_not_absent(self):
+        self._write("# nothing named yet")
+        self.assertEqual(tm.load_watch_policies(), ({}, "empty", None))
+
+    def test_pathspec_magic_is_refused_on_line_and_on_glob(self):
+        """SI-1, verbatim from load_citation_scope: these globs go to
+        match_paths(), never to git. One ':(exclude)' idiom would
+        silently invert a watch set to everything-except."""
+        for line in ("!bad -- x.py", ":bad -- x.py", "-bad -- x.py"):
+            self._write(line)
+            self.assertIn("pathspec magic", tm.load_watch_policies()[2])
+        self._write("ok -- x.py, !y.py")
+        self.assertIn("pathspec magic", tm.load_watch_policies()[2])
+
+    def test_missing_separator_is_refused(self):
+        self._write("core-suite tests/test_core.py")
+        self.assertIn("no ' -- ' separator", tm.load_watch_policies()[2])
+
+    def test_unusable_name_is_refused(self):
+        for bad in ("Core-Suite", "core suite", "core/suite", "-core"):
+            self._write(f"{bad} -- x.py")
+            err = tm.load_watch_policies()[2]
+            self.assertTrue(err, f"{bad!r} was accepted as a policy name")
+
+    def test_duplicate_name_is_refused_never_last_wins(self):
+        """Last-wins would leave a committed policy silently shadowing the
+        one a reader is looking at."""
+        self._write("core -- a.py", "core -- b.py")
+        err = tm.load_watch_policies()[2]
+        self.assertIn("redefines policy", err)
+
+    def test_policy_with_no_globs_is_refused(self):
+        """A policy matching nothing reports 'covered' over zero files --
+        ADR-042 rule 2 applied to a watch set."""
+        self._write("core -- , ,")
+        self.assertIn("no globs", tm.load_watch_policies()[2])
+
+    def test_a_bad_file_returns_none_policies_not_a_partial_map(self):
+        """The refusal path must not hand back a half-parsed map: callers
+        exit on err, and a caller that forgot to would otherwise file
+        against whatever was read before the bad line."""
+        self._write("good -- a.py", "!bad -- b.py")
+        policies, _state, err = tm.load_watch_policies()
+        self.assertIsNotNone(err)
+        self.assertIsNone(policies)
 
 class TestPolicyFileState(unittest.TestCase):
     """F3.1: the three-way SI-4 read, made decidable. `unattested` is the

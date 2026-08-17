@@ -1,0 +1,53 @@
+# Watch policies (FAZA 3, defect D-A) -- META-REPO's own set.
+#
+# FORMAT, one policy per line:
+#     <policy-name> -- <glob>[, <glob>...]
+# Names are lowercase [a-z0-9][a-z0-9-]*. '#' comments and blanks are
+# ignored. Pathspec magic (a line or glob starting ':', '-', '!') is
+# REFUSED: these are CLI globs handed to match_paths(), never git
+# pathspecs (SI-1, same rule as .truth/citation-scope).
+#
+# Use:  scripts/truth claim "..." --watch-policy fold-kernel ...
+# The policy RESOLVES to the watch set; --paths and --watch-policy cannot
+# be combined. The resolved globs are still stored on the claim, so a
+# later edit here never rewrites what a past claim is understood to have
+# watched -- the ledger is append-only and the name is provenance.
+#
+# NOT YAML on purpose: the CLI is stdlib-only (scripts/truth line 20), so
+# a .yml extension would promise a generality the loader has to refuse.
+#
+# WHY THIS FILE EXISTS -- the measurement, 2026-08-17:
+#   75 active claims carry a watch set.
+#   Those 75 sets are 60 DISTINCT sets.
+# Reuse is essentially zero: nearly every claim re-invented its watch set
+# freehand, and nothing checked the set against the evidence. J-022 found
+# five claims drifted in BOTH directions at once -- watching an ADR file
+# their recipe never opens, while missing a suite file it does open.
+#
+# The surviving cost of that is ATTENTION, not false stalings: since the
+# step-2.5 double-invalidation rule a path touch stales nothing, but the
+# whisper still fires on every watched path. Measured over the last 200
+# commits: 340 touches of watched files producing 2329 whisper lines,
+# a mean of 6.8 claims named per edit -- and 31 for a single touch of
+# truth-canary.sh.
+#
+# The policies below are NOT invented. Each is a watch set that recurring
+# claims already share, named after the SURFACE its evidence reads. Step
+# 3.3 migrates the existing claims onto them.
+
+# --- test surfaces -------------------------------------------------------
+canary-suite -- template/scripts/truth-canary.sh
+core-suite -- template/scripts/test-truth-core.py
+both-suites -- template/scripts/test-truth-core.py, template/scripts/truth-canary.sh
+
+# --- CLI behaviour -------------------------------------------------------
+# A behaviour claim reads the code that implements it AND the seeded-fault
+# arm that pins it; that pairing is the most common set in the ledger.
+cli-behaviour -- template/truthlib/cli.py, template/scripts/truth-canary.sh
+fold-kernel -- template/truthlib/kernel.py, template/scripts/truth-canary.sh
+record-contract -- template/.truth/schema/claims.schema.json, template/truthlib/kernel.py, template/scripts/truth-canary.sh
+truthlib-package -- template/truthlib/**
+
+# --- meta-repo surfaces (untemplated: these paths exist only here) -------
+release-battery -- scripts/release-battery.sh
+paper -- docs/truth-ledger-paper-v3.md

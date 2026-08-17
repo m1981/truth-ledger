@@ -1860,3 +1860,156 @@ Runbook odsyła teraz do J-036 zamiast powielać id. Dwie rzeczy warte
 odnotowania: bramka zadziałała na własnym autorze w tej samej sesji, w której
 opisywano jej działanie, i był to **jedyny** czerwony arm — pozostałe dziewięć
 przeszło za pierwszym razem.
+
+---
+
+## J-037 · KROK 3.1 — nazwane polityki obserwacji, mechanizm gotowy · 2026-08-17
+
+### Najpierw przeliczenie defektu D-A na obecny reżim
+
+Runbook wnosił do Fazy 3 liczby `1 ścieżka → 12,6% precyzji; 2–3 ścieżki → 1,9%`.
+**Te liczby mierzyły fałszywe zestalenia, których po 2.5 nie ma.** Budowanie
+polityki na nich byłoby optymalizacją pod wskaźnik, który sami usunęliśmy, więc
+najpierw pomiar tego, co `evidence_paths` kosztują dziś.
+
+```
+93 aktywne claimy, z czego 75 ma zbiór obserwacji
+153 wpisy obserwacji, średnio 2,04 na claim
+te 75 zbiorow to 60 ROZNYCH zbiorow   <- reuzywalnosc bliska zeru
+najczestszy zbior wspoldzieli 4 claimy
+```
+
+Ocalały koszt to **uwaga, nie fałszywe zestalenia**. Whisper nadal odpala się na
+każdej obserwowanej ścieżce:
+
+```
+ostatnie 200 commitow: 340 dotkniec obserwowanych plikow
+                       2329 linii whispera  (srednio 6,8 claimu na edycje)
+jedno dotkniecie truth-canary.sh          -> 31 claimow naraz
+```
+
+To jest D-A wyrażone liczbą dla świata po Reproduce-on-Read: 60 zbiorów wybranych
+z palca, nic nie sprawdza ich związku z dowodem, a rachunek płaci się uwagą.
+
+### Format — decyzja operatora, opcja 1, z twardym ograniczeniem w tle
+
+Runbook szkicował `.truth/watch-policies.yml`. **CLI jest stdlib-only**
+(`scripts/truth` linia 20), `yaml` nie jest w stdlib, a wszystkie osiem
+istniejących plików polityk w `.truth/` to bezrozszerzeniowy tekst liniowy z
+identycznym loaderem. Rozszerzenie `.yml` obiecywałoby ogólność, której loader
+musi odmówić — pułapka na konsumenta. Przyjęty format to standard tego repo:
+
+```
+<policy-name> -- <glob>[, <glob>...]
+```
+
+### Co powstało
+
+| warstwa | co | gdzie |
+|---|---|---|
+| stała | `WATCH_POLICIES_REL`, `WATCH_POLICY_NAME_RE` | `registry.py` |
+| loader (I/O) | `load_watch_policies()` → `(policies, state, err)` | `shellio.py` |
+| decyzje (czyste) | `watch_policy_error`, `watch_policy_conflict_error` | `policy.py` |
+| wpięcie | `claim --watch-policy NAME` | `cli.py` |
+| czytelnik | `list --watch-policy NAME` (i `-` = backlog) | `cli.py` |
+
+Podział wymuszony DAG-iem ADR-044: `shellio` importuje tylko `registry` i
+`kernel`, więc nie może wołać `policy` — czyta bajty, a decyduje `policy`;
+składa `cli`. To ten sam kształt, w którym już żyją `read_policy_file` +
+`policy_file_state`.
+
+**Polityka ROZWIĄZUJE zbiór, nie adnotuje go.** Rozwiązanie idzie PRZED tabelą
+`INTAKE_GATES`, więc INV-M, prognoza ADR-039 i doradca ADR-038 sądzą globy
+polityki dokładnie tak, jak sądzą listę z ręki — polityka z nieosiągalnym globem
+zostaje odrzucona jak każda inna.
+
+**Payload niesie OBOJE: nazwę i rozwiązane globy.** Zapis samej nazwy pozwoliłby
+późniejszej edycji `.truth/watch-policies` po cichu przepisać to, co przeszłe
+claimy uważa się za obserwujące. Ledger jest append-only: globy to zapis, nazwa
+to proweniencja.
+
+### Odmowy — wszystkie sprawdzone, każda głośna
+
+```
+nieznana nazwa       -> odmowa WYLICZAJACA istniejace  (typo nie moze po cichu
+                        zlozyc claimu obserwujacego NIC -- to defekt INV-M)
+--watch-policy + --paths -> odmowa (dwa zrodla jednego pola)
+pathspec magic (:-!)  -> odmowa, w linii i w globie (SI-1)
+brak ' -- '           -> odmowa
+nazwa poza [a-z0-9-]  -> odmowa
+duplikat nazwy        -> odmowa (last-wins ukrylby polityke przed czytelnikiem)
+polityka bez globow   -> odmowa (zbior pokrywajacy zero plikow)
+```
+
+### Błąd własny, złapany testem odmowy
+
+Pierwsza wersja składała trzy odmowy w jedną krotkę:
+
+```python
+for _e in (wp_err, watch_policy_conflict_error(...), watch_policy_error(...)):
+```
+
+Krotka wylicza **wszystkie** elementy przed pętlą, a zepsuty plik daje
+`policies=None`, więc `name not in None` rzucało `TypeError` — crash zamiast
+odmowy, dokładnie to, czemu tekst odmowy ma zapobiegać. Naprawione krótkim
+spięciem: `if wp_err: sys.exit(wp_err)` przed resztą.
+
+### USTALENIE — pole bez czytelnika, i dlaczego NIE poszło do `stats`
+
+Pierwsza wersja dodawała sekcję adopcji do `stats_report`. **Test
+`TestStatsCLIShape` ją odrzucił** — i miał rację: ADR-046 rozstrzygnął, że
+`stats` niesie rdzeń Tier B (liczby, werdykty, półokres zasilający doradcę FS-1,
+wiek kolejki), a metryki analityczne pojechały do `instruments/`. Wskaźnik
+adopcji jest z rodziny override-velocity. Zmiana tego rozstrzygnięcia to decyzja
+operatora, nie efekt uboczny dowożenia funkcji, więc sekcję **cofnąłem**, a
+czytelnikiem pola (wymóg ADR-046) został filtr `list --watch-policy`, który przy
+okazji odpowiada na operacyjne pytanie migracji 3.3: `--watch-policy -` wypisuje
+backlog. Dziś: **65 żywych claimów ze ścieżkami i bez polityki.**
+
+### USTALENIE — sentinel `sha256sum`: pinuj BAJTY albo WŁASNOŚĆ, plik decyduje
+
+Trzeci raz w tej sesji padła receptura `sha256sum <plik>` — tym razem
+`tr-7a10f167` na `scripts/fact-health.sh`, zerwana **moją własną** edycją
+(dodaniem reguły zasięgu). Przewodnik operacyjny reklamował te sentinele jako
+„intended ceremony". Pomiar rozstrzyga subtelniej niż „sha256sum jest kruche":
+
+```
+9 sentineli sha256sum ->  8 ZYWYCH, 1 martwy
+zywe:   pliki POLITYK (evidence-allow, citation-scope, settings.json, pre-commit)
+        -- rzadko edytowane, a edycja JEST zdarzeniem, ktore chcesz zglosic
+martwy: SKRYPT w aktywnym rozwoju (fact-health.sh) -- padl trzy razy na
+        edycjach, ktore ULEPSZALY pilnowana granice
+```
+
+Projekt nie jest zły, jest **źle zastosowany** do pliku pod rozwojem. Sentinel
+na `fact-health.sh` przefilowany (`tr-a00459ec`) na recepturę twierdzącą o
+własnościach, po które sentinel istnieje. Przy okazji akapit w przewodniku
+opisywał mechanizm, którego już nie ma („edycja zestala claim… `reaffirm`'s
+match arm") — poprawiony na obecny i **mocniejszy**: `reproduce` przelicza
+digest na granicy pusha, zmieniony bajt ląduje w `capsule-stale`, sweep wychodzi
+7 i **blokuje push**, a wyczyścić tego mechanicznie nie da się, bo `reproduce`
+nie zapisuje nic w żadną stronę.
+
+### Weryfikacja
+
+```
+core 425 testow (14 nowych na 3.1), 0 skipow, OK
+canary 283 caught / 0 missed · integrations 28 OK · v04 13 OK
+field-consumers 31 kluczy (watch_policy z czytelnikiem) -- 0 failures
+reproduce 66/66, exit 0 · reachability 10/10
+release-battery: ALL ARMS GREEN
+```
+
+Pierwszy claim na polityce: `tr-a2614cf7` (`--watch-policy canary-suite`),
+zweryfikowany z osobnej sesji.
+
+### Stan Fazy 3
+
+* **3.1 — ZROBIONE.** Mechanizm, odmowy, testy, plik polityk tego repo (9
+  polityk nazwanych z faktycznie powtarzających się zbiorów) i szablonowy plik
+  dla konsumenta (pusty, opt-in, bez wiersza w doktorze).
+* **3.2 — NASTĘPNY.** `max_paths` / `churn_budget` jako wiersz `INTAKE_GATES`.
+  Projektowa teza do potwierdzenia: claim stojący na nazwanej polityce jest
+  **zwolniony** z budżetu, bo zbiór został zrecenzowany raz — to jest cała
+  wymiana, jaką polityki oferują, i to daje bramce zęby zamiast samego licznika.
+* **3.3 — migracja 65 claimów z backlogu.**
