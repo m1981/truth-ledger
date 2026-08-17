@@ -15,6 +15,15 @@ bootstrap to template/); the pure report itself
 
 Usage: python3 instruments/override-velocity.py [--json]
 Gate:  scripts/test-instruments.sh
+
+
+FAZA 4 (2026-08-17): this is now a META-REPO-LOCAL VIEW, not the
+only one. `truth health` composes override_report() into a section that
+SHIPS to consumers -- which is the point, since instruments/ is not
+templated and a generated repo could never see this number. There is
+still exactly ONE implementation: both call override_report() in
+truthlib/reports.py. Keep it that way; a second computation here
+would drift from the shipped one and both would look authoritative.
 """
 import json
 import os

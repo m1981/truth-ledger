@@ -198,6 +198,43 @@ gate reads it. The rule is measured, not asserted: an AST sweep
 nothing reads — and distinguishes a real read from a mere presence test, because
 a field whose only consumer asks whether it exists could have been a boolean.
 
+**One projection, and it ships.** Every number describing this ledger's health
+comes from `health_report()` — a single fold, composing the pure functions that
+already own each number. The rule it enforces is not "one file" but **one
+implementation per measurement**: a second function computing override velocity
+or churn would drift from the first, and the drift would be invisible because
+both would look authoritative.
+
+The correction it embodies is worth stating plainly, because it reverses an
+earlier decision of this system. Tiering (the 2026-08 migration) moved five pure
+ledger projections out of the CLI into meta-repo instruments — and the
+meta-repo's instruments are **not templated**. A generated repository could see
+its claim counts and its queue, and nothing else: no override velocity, no
+verifier-separation evidence, no churn report, no retraction causes, no staling
+breakdown. The measurements that say whether a ledger is being operated honestly
+existed only in the repository that ships the tool. `truth health` is where that
+asymmetry ends: the same sections, in the consumer's own CLI. The instruments
+that remain in the meta-repo are the two that sweep SOURCE rather than the
+ledger — the payload-key AST sweep and the arm index — and that is the line: a
+projection over records ships, an analysis of this repository's own code does
+not.
+
+**A health view reports; it does not refuse.** Every surface that blocks already
+exists and owns one question — the commit gate, the intake table, the
+reproduction sweep's exit codes, the release battery. A second blocking surface
+over the same facts would be a second place to disagree about them, and the
+disagreement would be silent because both would be "the gate". So `health`
+carries `ok` and `warn` and no `fail`, and its thresholds are the ones already
+on record rather than new limits arriving under the authority of looking
+official.
+
+**A section that was never computed says so.** Reproduction executes recorded
+commands, so no pure projection can perform it; the section is `null` and the
+signal reads "not run" rather than reporting zeros. This is the same rule as the
+one below, applied to a *view* instead of a gate: the difference between "clean"
+and "unmeasured" is the whole value of the report, and a view that blurs it is
+worse than one that omits the section.
+
 **Sensors that cannot run must scream.** A check that degrades to a zero count
 reads as "clean" and is worse than no check. Health gates fail loudly when their
 inputs are unavailable, and a sweep that examined nothing is a failure, never a

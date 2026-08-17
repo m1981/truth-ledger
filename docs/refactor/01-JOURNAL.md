@@ -2380,3 +2380,80 @@ core 450 (8 nowych) · v04 13 · structural 116 · integrations 28 · canary 284
 field-consumers 32/0 · reproduce 66/66 exit 0 · reachability 11/11
 release-battery ALL ARMS GREEN
 ```
+
+---
+
+## J-042 · KROK 4.3 — zwinięcie okazało się już wykonane, i to jest ustalenie · 2026-08-17
+
+### Pomiar przed cięciem
+
+Sprawdziłem, co właściwie jest do zwinięcia. Cztery z pięciu instrumentów
+**już wołają dokładnie te same czyste funkcje**, które komponuje
+`health_report()`:
+
+```
+blast-report.py      -> blast_report()
+override-velocity.py -> override_report()
+separation-report.py -> separation_report()
+retraction-causes.py -> retraction_cause_report()
+```
+
+**Duplikacji logiki nigdy nie było.** Instrumenty to cienkie opakowania CLI
+(58–134 linii) nad funkcjami z `reports.py`. Prawdziwe zwinięcie — jedna
+implementacja na pomiar i jedno wejście dla czytelnika — **dostarczył krok 4.2**,
+kiedy `truth health` zaczął komponować te same funkcje w werbie, który **jedzie
+do konsumenta**.
+
+### Czego NIE zrobiłem i dlaczego
+
+Skasowanie pięciu plików miałoby zmierzony promień rażenia: każdy jest
+cytowany w **kilkunastu miejscach** — `test-integrations.py` (rodzina
+`TestTierCInstruments`), canary, `docs/governance/gate-metrics.md` (kolumna
+„instrument source" dla metryk adopcji ADR-047), `structure.md`,
+`asbuilt-architecture.md`, `template/.truth/README.md`, CHANGELOG, przewodnik
+operacyjny, paper i explainer.
+
+To jest zamiatanie governance'u, nie sprzątanie kodu: `gate-metrics.md` to
+rejestr, w którym operator zadeklarował, **skąd** bierze się każda metryka
+adopcji. Przepisanie go jest decyzją właściciela rejestru, nie efektem ubocznym
+kroku refaktoru — zwłaszcza że korzyść jest kosmetyczna (logika już jest jedna),
+a ryzyko realne. Zostawione operatorowi z wyliczonym kosztem.
+
+Zamiast tego każdy z czterech instrumentów dostał nagłówek mówiący, czym teraz
+jest: **widokiem meta-repo na sekcję, którą `truth health` wysyła konsumentowi**,
+z jawnym „obie ścieżki wołają tę samą funkcję; nie dodawaj drugiej". Czytelnik,
+który trafi do `instruments/`, nie pomyśli, że znalazł drugą implementację.
+
+### Granica, która została nazwana
+
+Dwa instrumenty **zostają i nie są kandydatami do zwinięcia**:
+`field-consumers.py` (przemiat AST po kluczach payloadu) i `arm-index.py`
+(indeks ramion tego repo). One skanują **kod źródłowy**, nie ledger. To jest
+linia zapisana teraz w ARCHITECTURE rozdz. 4: *projekcja nad rekordami jedzie do
+konsumenta, analiza kodu tego repozytorium — nie.*
+
+### Inwariant w ARCHITECTURE, rozdz. 4
+
+Dopisane cztery akapity, w tym jawne odwrócenie wcześniejszej decyzji systemu:
+
+* **jedna projekcja, i ona jedzie** — reguła to nie „jeden plik", tylko **jedna
+  implementacja na pomiar**; druga funkcja licząca prędkość nadużyć rozjechałaby
+  się z pierwszą, a rozjazd byłby niewidzialny, bo obie wyglądałyby wiarygodnie;
+* **widok raportuje, nie odmawia** — każda blokująca powierzchnia już istnieje i
+  posiada jedno pytanie; druga nad tymi samymi faktami byłaby drugim miejscem
+  sporu, i to sporu cichego, bo obie nazywałyby się „bramką";
+* **sekcja, której nie policzono, mówi o tym** — `reproduce` jest `null`, a nie
+  zerami; różnica między „czysto" a „niezmierzone" jest całą wartością raportu;
+* **granica tieringu** — projekcja nad rekordami vs analiza kodu.
+
+Runbook przewidywał tu odwrócenie ADR-046 zapisane jako decyzja (obiekcja O4) i
+bez nowych ADR-ów (r18). Tak zrobione: rozdział 4 niesie odwrócenie wprost,
+razem z powodem — konsument nie widział tych pomiarów wcale.
+
+### Weryfikacja
+
+```
+core 450 · v04 13 · structural 116 · integrations 28 · canary 284/0
+field-consumers 32/0 · reproduce 66/66 exit 0 · reachability 11/11
+release-battery ALL ARMS GREEN
+```
