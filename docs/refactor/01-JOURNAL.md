@@ -1883,8 +1883,11 @@ Ocalały koszt to **uwaga, nie fałszywe zestalenia**. Whisper nadal odpala się
 każdej obserwowanej ścieżce:
 
 ```
-ostatnie 200 commitow: 340 dotkniec obserwowanych plikow
-                       2329 linii whispera  (srednio 6,8 claimu na edycje)
+ostatnie 200 commitow: 2329 linii whispera  (srednio 6,8 claimu na edycje)
+  ^^^ TE DWIE LICZBY SA BLEDNE -- sprostowane w J-040 na 1670 linii i
+      22,6 claimu na edycje (sumowalem po plikach, a whisper emituje
+      jedna linie na CLAIM). Zostawione w oryginale, bo dziennik jest
+      zapisem append-only, a korekta jest czescia zapisu.
 jedno dotkniecie truth-canary.sh          -> 31 claimow naraz
 ```
 

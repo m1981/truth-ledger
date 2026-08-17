@@ -366,7 +366,11 @@ Dane: 1 ścieżka → 12,6% precyzji; 2–3 ścieżki → 1,9%. Trzy pliki-agreg
 >
 > ```
 > 75 aktywnych claimow ze zbiorem obserwacji  ->  60 ROZNYCH zbiorow
-> 200 commitow = 340 dotkniec = 2329 linii whispera (6,8 claimu na edycje)
+> 200 commitow = 1670 linii whispera, srednio 22,6 CLAIMU NAZYWANEGO PRZY
+>   JEDNEJ EDYCJI
+>   (SPROSTOWANE w J-040: pierwsza wersja podawala 2329 linii i 6,8 na edycje --
+>    sumowala po plikach, a whisper emituje jedna linie na CLAIM. Wniosek sie
+>    nie zmienil, jest mocniejszy.)
 > jedno dotkniecie truth-canary.sh nazywa 31 claimow naraz
 > ```
 >
