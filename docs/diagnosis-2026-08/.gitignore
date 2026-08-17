@@ -1,0 +1,5 @@
+# raw/ to wyjscia regenerowalne przez diagnose.sh, nie fakty (ADR-037:
+# artefakt generowany nie jest faktem). Poza gitem, wiec nie jest tez
+# watched path zadnego twierdzenia -- inaczej kazde odswiezenie pomiarow
+# zestalalo by wnioski, ktore wlasnie potwierdzilo.
+raw/
