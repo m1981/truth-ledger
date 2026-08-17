@@ -9,7 +9,7 @@
 > decyzyjne** i dostarcza dowodów. Nie zarządza pracą, nie duplikuje statusu.
 
 **Pytanie decyzyjne:** naprawiać, czy wyłuskać substancję i napisać na nowo.
-**Ostatni pomiar:** 2026-08-17, HEAD `dc330c1` (runda 2).
+**Ostatni pomiar:** 2026-08-17, HEAD `47fba44` (runda 3, po działaniu naprawczym F-18).
 
 ## ► ODPOWIEDŹ: NAPRAWIAĆ — rozstrzygnięte
 
@@ -21,16 +21,19 @@ w dwa dni. **Pytanie decyzyjne jest zamknięte.**
 
 ## ► NASTĘPNY KROK
 
-Dobić `gates.py` z 53,8% do ≥80% mutation score **zanim wznowi się krok 2.5
-refaktoru** — 12 ocalałych mutantów siedzi dokładnie w logice `paths`, której
-semantykę „Reproduce-on-Read" zmienia (F-15). Lista ocalałych:
-`python3 scripts/mutation-report.py gates`.
+Domierzyć mutation score na 8 nietkniętych modułach (`cli`, `evidence`,
+`policy`, `reports`, `shellio`, `advisory`) — to jedyna część analizy 0.1,
+która została. Kolejność z F-19: `mutmut-coverage.sh` → `rm -f .mutmut-cache`
+→ `mutate.sh run`. Przy okazji odtwarza wpisy `kernel`/`contract` skasowane
+podczas F-18.
+
+*(Poprzedni krok — `gates.py` do ≥80% — wykonany: 94,9%, patrz F-18.)*
 
 ## Status portfela
 
 | # | Analiza | Status | Wynik |
 |---|---|---|---|
-| 0.1 | mutation score | **ZROBIONE (częściowo)** | F-12: 88,5% na 3 z 11 modułów; kernel 91,4%, gates 53,8% |
+| 0.1 | mutation score | **ZROBIONE (częściowo)** | F-12: kernel 91,4%, contract 77,8%; **gates 53,8% → 94,9% (F-18)** |
 | 0.1b | mutation na pozostałych 8 modułach | **TODO** | cli/evidence/policy/reports/shellio/advisory niezmierzone |
 | 0.2 | coverage --branch | TODO | — |
 | 1.1 | macierz ADR→kod→test | **PRZEDAWNIONE** | ADR-ów w produkcie już nie ma (F-13); przeformułować na ARCHITECTURE.md→kod→test |
@@ -38,9 +41,10 @@ semantykę „Reproduce-on-Read" zmienia (F-15). Lista ocalałych:
 | 1.3 | koszt dodania funkcji | TODO | — |
 | 2.1 | import-linter (zamrożenie) | TODO | DAG nadal czysty (F-03) |
 | 2.3 | rozłożyć `validate_events` | **TODO — nadal CC=129** | nietknięte przez refaktor; kernel ma 91,4% oracle, więc bezpieczne |
+| — | oracle `gates.py` | **ZROBIONE** | F-18: pokrycie 29%→86%, mutacja 53,8%→94,9%, +31 testów |
 | 3.2 | cicha nieuzbrojona instalacja | TODO | realny tryb awarii (F-08) |
 | 3.4 | realni konsumenci | TODO | — |
-| — | oracle zielony | ZROBIONE | 398+28 testów, 283 ramiona, 1004 arms |
+| — | oracle zielony | ZROBIONE | 403+13+28 testów, 283 ramiona, 0 pominięć |
 | — | profil złożoności | ZROBIONE | mediana CC=4, maks 129 — bez zmian |
 | — | graf importów | ZROBIONE | czysty DAG |
 | — | masa dokumentacji | **ZROBIONE** | F-13 zastępuje F-04 |
@@ -62,6 +66,10 @@ semantykę „Reproduce-on-Read" zmienia (F-15). Lista ocalałych:
   Podstawa: F-12 (88,5%/91,4%) domyka ostatni warunek reguły decyzyjnej.
 - **2026-08-17 · Priorytet: oracle `gates.py` przed semantyką `paths`.** Powód:
   F-15 — najcieńsza siatka dokładnie pod miejscem, w którym się spada.
+  **WYKONANE** (F-18): 94,9%, blokada dla kroku 2.5 zdjęta.
+- **2026-08-17 · Numeracja ustaleń jest append-only i nie jest nadpisywana**,
+  nawet gdy zadanie prosi o zajęty numer. Powód: to właśnie ta własność
+  wykryła zgniłe wnioski w rundzie 2 (F-04, F-07).
 - **2026-08-17 · F-04 zastąpione przez F-13; metryka docs:kod musi rozdzielać
   produkt od warsztatu.** Powód: liczenie ich razem dało fałszywy alarm.
 - **2026-08-17 · RUNBOOK jest właścicielem postępu; dossier tylko decyzji.**

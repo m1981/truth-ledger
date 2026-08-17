@@ -3499,6 +3499,293 @@ class TestAdvisoryAssembler(unittest.TestCase):
         self.assertEqual(tm.override_report(ev, now),
                          tm.override_report(ev, now, folded=folded))
 
+GATE_FNS = {name: fn for _st, name, fn in tm.INTAKE_GATES}
+
+def gate_ctx(**over):
+    """The intake ctx as build_claim_payload assembles it.
+
+    Plain data: every case in TestIntakeGateFunctions exercises a path
+    that returns BEFORE its gate's own I/O, so this file's
+    no-git/no-filesystem contract holds unbroken."""
+    ctx = {"text": "f.txt says data", "claims": {}, "duplicate_ok": False,
+           "evidence_cmd": None, "scope_basis": None, "generated_basis": None,
+           "paths": [], "ttl_days": None, "basis": None,
+           "evidence_class": "UNVERIFIED", "head": None,
+           "evidence_exit_basis": None,
+           "payload": {"evidence": {"returncode": 0}}}
+    ctx.update(over)
+    return ctx
+
+class TestIntakeGateFunctions(unittest.TestCase):
+    """ADR-034: every row of INTAKE_GATES as a unit, reached THROUGH the
+    table rather than by name -- the table is the contract, so a row that
+    silently stops being wired fails here instead of going quiet.
+
+    Where a guard's inversion would fall through into the gate's own I/O
+    (tracked_files / load_generated_globs / blast_history), the assertion
+    is on the ctx key that the I/O half stamps: the key's ABSENCE is the
+    evidence that the early return fired, which keeps the test pure while
+    still pinning the branch in both directions."""
+
+    # -- text-nonempty ----------------------------------------------------
+    def test_text_gate_refuses_empty_none_and_whitespace_only(self):
+        for bad in ("", None, "   ", "\t\n  "):
+            err = GATE_FNS["text-nonempty"](gate_ctx(text=bad))
+            self.assertIsNotNone(err, f"{bad!r} must be refused")
+            self.assertIn("non-empty", err)
+
+    def test_text_gate_passes_text_padded_with_whitespace(self):
+        # The other side of .strip(): padding is not emptiness.
+        self.assertIsNone(GATE_FNS["text-nonempty"](gate_ctx(text="  x  ")))
+
+    # -- near-duplicate G8 ------------------------------------------------
+    DUP_BASE = "payments module handles currency conversion"
+    DUP_NEAR = "payments module handles all currency conversion"
+
+    def _live_claims(self, *ids):
+        return {cid: {"status": "live",
+                      "claim": rec("claim", claim_p(text=self.DUP_BASE))}
+                for cid in ids}
+
+    def test_duplicate_refusal_names_every_conflict_one_per_line(self):
+        # Declared out of order so the assertion pins ordering too.
+        ctx = gate_ctx(text=self.DUP_NEAR,
+                       claims=self._live_claims("tr-0000000b", "tr-0000000a"))
+        err = GATE_FNS["near-duplicate-g8"](ctx)
+        self.assertIsNotNone(err)
+        listed = [ln for ln in err.splitlines() if ln.startswith("  tr-")]
+        self.assertEqual(len(listed), 2, err)
+        for cid in ("tr-0000000a", "tr-0000000b"):
+            self.assertIn(f"  {cid}: {self.DUP_BASE}", err)
+
+    def test_duplicate_ok_records_the_bypassed_ids_sorted(self):
+        # MEDIUM-1: the override stamps what it bypassed, so the author's
+        # "genuinely distinct" judgment is attackable ledger content.
+        ctx = gate_ctx(text=self.DUP_NEAR, duplicate_ok=True,
+                       claims=self._live_claims("tr-0000000b", "tr-0000000a"))
+        self.assertIsNone(GATE_FNS["near-duplicate-g8"](ctx))
+        self.assertEqual(ctx["overridden_duplicates"],
+                         ["tr-0000000a", "tr-0000000b"])
+
+    def test_duplicate_ok_with_no_conflict_records_an_empty_list(self):
+        ctx = gate_ctx(text="an unrelated sentence about turtles",
+                       duplicate_ok=True)
+        self.assertIsNone(GATE_FNS["near-duplicate-g8"](ctx))
+        self.assertEqual(ctx["overridden_duplicates"], [])
+
+    def test_conflict_without_the_override_never_records(self):
+        ctx = gate_ctx(text=self.DUP_NEAR,
+                       claims=self._live_claims("tr-0000000a"))
+        self.assertIsNotNone(GATE_FNS["near-duplicate-g8"](ctx))
+        self.assertNotIn("overridden_duplicates", ctx)
+
+    # -- scope decay ADR-032 / ADR-037 ------------------------------------
+    def test_scope_basis_alone_stamps_the_default_expiry(self):
+        ctx = gate_ctx(scope_basis="the package is the whole repo here")
+        self.assertIsNone(GATE_FNS["scope-decay-adr032"](ctx))
+        self.assertEqual(ctx["ttl_days"], tm.DEFAULT_OVERRIDE_TTL_DAYS)
+        self.assertTrue(ctx["ttl_default"])
+
+    def test_stored_generated_basis_alone_stamps_the_default_expiry(self):
+        # ADR-037 extends the decay to --generated-ok; this is the half
+        # the `or` in the override_decay argument carries.
+        ctx = gate_ctx(generated_basis="the artifact itself is the fact")
+        ctx["payload_generated_basis"] = "the artifact itself is the fact"
+        self.assertIsNone(GATE_FNS["scope-decay-adr032"](ctx))
+        self.assertEqual(ctx["ttl_days"], tm.DEFAULT_OVERRIDE_TTL_DAYS)
+        self.assertTrue(ctx["ttl_default"])
+
+    def test_a_dropped_generated_flag_does_not_decay(self):
+        # R3's catch: a --generated-ok that matched nothing is never
+        # stored, and ADR-032 re-asks a RECORDED judgment only. Keyed on
+        # the stored basis, so the raw flag alone must change nothing.
+        ctx = gate_ctx(generated_basis="never stored, matched nothing")
+        self.assertIsNone(GATE_FNS["scope-decay-adr032"](ctx))
+        self.assertIsNone(ctx["ttl_days"])
+        self.assertFalse(ctx["ttl_default"])
+
+    def test_an_explicit_ttl_is_the_visible_opt_out(self):
+        ctx = gate_ctx(scope_basis="x", ttl_days=365)
+        self.assertIsNone(GATE_FNS["scope-decay-adr032"](ctx))
+        self.assertEqual(ctx["ttl_days"], 365)
+        self.assertFalse(ctx["ttl_default"])
+
+    def test_no_override_at_all_leaves_the_ttl_untouched(self):
+        ctx = gate_ctx()
+        self.assertIsNone(GATE_FNS["scope-decay-adr032"](ctx))
+        self.assertIsNone(ctx["ttl_days"])
+        self.assertFalse(ctx["ttl_default"])
+
+    # -- INV-M paths ------------------------------------------------------
+    def test_inv_m_returns_early_when_there_are_no_paths(self):
+        self.assertIsNone(GATE_FNS["paths-inv-m"](gate_ctx(paths=[])))
+
+    def test_inv_m_refuses_a_space_joined_literal_in_memory(self):
+        # malformed_path_list runs ahead of tracked_files(), so this is
+        # decided without git -- and it pins that `paths` is read at all.
+        err = GATE_FNS["paths-inv-m"](gate_ctx(paths=["docs and more"]))
+        self.assertIsNotNone(err)
+        self.assertIn("INV-M", err)
+        self.assertIn("forget a comma", err)
+
+    # -- generated paths ADR-037 ------------------------------------------
+    def test_generated_gate_returns_before_loading_the_policy_file(self):
+        ctx = gate_ctx(paths=[])
+        self.assertIsNone(GATE_FNS["generated-paths-adr037"](ctx))
+        self.assertNotIn("generated_source", ctx)
+
+    # -- blast forecast ADR-039 -------------------------------------------
+    def test_blast_gate_returns_before_reading_git_history(self):
+        ctx = gate_ctx(paths=[])
+        self.assertIsNone(GATE_FNS["blast-forecast-adr039"](ctx))
+        self.assertNotIn("blast_state", ctx)
+        self.assertNotIn("blast_forecast", ctx)
+
+    # -- class precheck ---------------------------------------------------
+    def test_class_precheck_fires_only_for_the_two_classes_it_owns(self):
+        self.assertIsNone(
+            GATE_FNS["class-precheck"](gate_ctx(evidence_class="UNVERIFIED")))
+        self.assertIsNotNone(
+            GATE_FNS["class-precheck"](gate_ctx(evidence_class="INFERRED",
+                                                basis=None)))
+        self.assertIsNone(
+            GATE_FNS["class-precheck"](gate_ctx(evidence_class="INFERRED",
+                                                basis="reasoned from the fold")))
+
+    def test_class_precheck_routes_verified_to_its_own_checker(self):
+        # The VERIFIED arm is a distinct branch, not a fallthrough: a
+        # VERIFIED filing with no evidence command has nothing to re-run.
+        self.assertIsNotNone(
+            GATE_FNS["class-precheck"](gate_ctx(evidence_class="VERIFIED",
+                                                evidence_cmd=None)))
+
+    # -- evidence exit ADR-035 (the one post-execution row) ---------------
+    def _exit_ctx(self, rc, basis=None, text="f.txt says data"):
+        return gate_ctx(text=text, evidence_exit_basis=basis,
+                        payload={"evidence": {"returncode": rc}})
+
+    def test_exit_gate_passes_a_command_that_exited_zero(self):
+        self.assertIsNone(GATE_FNS["evidence-exit-adr035"](self._exit_ctx(0)))
+
+    def test_exit_gate_refuses_a_basis_with_nothing_to_excuse(self):
+        ctx = self._exit_ctx(0, basis="the diff legitimately exits 1")
+        err = GATE_FNS["evidence-exit-adr035"](ctx)
+        self.assertIsNotNone(err)
+        self.assertIn("nothing to excuse", err)
+        # the refusal returns BEFORE the stamp -- a refused filing must
+        # not leave the basis on the record.
+        self.assertNotIn("evidence_exit_basis", ctx["payload"])
+
+    def test_exit_gate_refuses_a_hollow_positive_claim(self):
+        err = GATE_FNS["evidence-exit-adr035"](self._exit_ctx(1))
+        self.assertIsNotNone(err)
+
+    def test_exit_gate_leaves_an_absence_proof_unstamped(self):
+        # A negation token keeps the v0.9.11 warning path: grep proving
+        # absence exits 1 and that exit IS the demonstration, so there is
+        # no basis to record. Nothing may be stamped without one.
+        ctx = self._exit_ctx(1, text="f.txt is absent from the tree")
+        self.assertIsNone(GATE_FNS["evidence-exit-adr035"](ctx))
+        self.assertNotIn("evidence_exit_basis", ctx["payload"])
+
+    def test_exit_gate_stamps_the_basis_only_for_a_failing_command(self):
+        # ADR-035: the basis is recorded (and counted in override_report)
+        # exactly when there is a non-zero exit to excuse.
+        ctx = self._exit_ctx(1, basis="a differential proof exits 1 by design")
+        self.assertIsNone(GATE_FNS["evidence-exit-adr035"](ctx))
+        self.assertEqual(ctx["payload"]["evidence_exit_basis"],
+                         "a differential proof exits 1 by design")
+
+    # -- the runner -------------------------------------------------------
+    def test_run_intake_stage_reaches_a_later_row_after_skipping_earlier_ones(self):
+        # The post-execution row is LAST in the table, behind eight
+        # pre-execution rows. Reaching it at all is what `continue`
+        # buys: a runner that stopped at the first foreign stage would
+        # return None here and silently skip the ADR-035 gate.
+        ctx = self._exit_ctx(0, basis="nothing to excuse")
+        self.assertIsNotNone(tm.run_intake_stage("post-execution", ctx))
+
+    def test_run_intake_stage_skips_rows_belonging_to_other_stages(self):
+        # The `continue` IS the staging contract: a ctx that a
+        # pre-execution row refuses must pass the post-execution stage
+        # untouched. The GS canary arms assert the same end to end.
+        ctx = gate_ctx(text="")
+        self.assertIsNotNone(tm.run_intake_stage("pre-execution", ctx))
+        self.assertIsNone(tm.run_intake_stage("post-execution", ctx))
+
+    def test_run_intake_stage_returns_the_first_refusal_in_table_order(self):
+        # Both rows would refuse; text-nonempty precedes paths-inv-m.
+        ctx = gate_ctx(text="", paths=["docs and more"])
+        self.assertIn("non-empty", tm.run_intake_stage("pre-execution", ctx))
+
+    def test_run_intake_stage_returns_none_when_every_row_passes(self):
+        self.assertIsNone(tm.run_intake_stage("pre-execution", gate_ctx()))
+
+
+class TestGeneratedPathsGate(unittest.TestCase):
+    """ADR-037's gate body, reached through the ONE supported seam
+    (A3: truthlib.configure) rather than by patching a star-imported
+    name. Deliberately its own class: TestIntakeGateFunctions stays
+    plain-data, and these cases read one policy FILE -- no git, no
+    clock, no subprocess, so the suite's cost is unchanged."""
+
+    # staticmethod: a plain function on a class body would bind `self`
+    # as the gate's ctx.
+    GATE = staticmethod(GATE_FNS["generated-paths-adr037"])
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = self._tmp.name
+        self._restore = tm.configure(repo_root=lambda: self.root)
+
+    def tearDown(self):
+        self._restore()
+        self._tmp.cleanup()
+
+    def _policy(self, *lines):
+        path = os.path.join(self.root, tm.GENERATED_PATHS_REL)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+
+    def test_absent_policy_file_records_its_source_and_passes(self):
+        ctx = gate_ctx(paths=["docs/x.md"])
+        self.assertIsNone(self.GATE(ctx))
+        self.assertEqual(ctx["generated_source"], "absent")
+
+    def test_a_path_off_the_list_passes(self):
+        self._policy("# comment", "", "build/**")
+        ctx = gate_ctx(paths=["docs/x.md"])
+        self.assertIsNone(self.GATE(ctx))
+        self.assertEqual(ctx["generated_source"], "file")
+
+    def test_a_watch_on_a_generated_artifact_is_refused(self):
+        self._policy("build/**")
+        err = self.GATE(gate_ctx(paths=["build/out.js"]))
+        self.assertIsNotNone(err)
+        self.assertIn("generated", err)
+        self.assertIn("build/out.js", err)
+
+    def test_the_override_is_stored_not_merely_flagged(self):
+        # ADR-032 decays a RECORDED judgment, so the gate must stash the
+        # basis on the payload -- a flag that matched nothing never does.
+        self._policy("build/**")
+        ctx = gate_ctx(paths=["build/out.js"],
+                       generated_basis="the artifact itself is the fact")
+        self.assertIsNone(self.GATE(ctx))
+        self.assertEqual(ctx["payload_generated_basis"],
+                         "the artifact itself is the fact")
+
+    def test_a_pathspec_magic_line_refuses_as_the_loaders_error(self):
+        # R14a: loaders RETURN errors and the gate hands the refusal on
+        # unchanged -- the gate-table contract, not a second message.
+        self._policy(":(glob)build/**")
+        ctx = gate_ctx(paths=["build/out.js"])
+        err = self.GATE(ctx)
+        self.assertIsNotNone(err)
+        self.assertNotIn("generated_source", ctx)
+
+
 class TestExitGate(unittest.TestCase):
     """ADR-035: the positive-claim exit gate's pure decision, and the
     X6 lexicon subset tripwire (one-directional: catches removals from

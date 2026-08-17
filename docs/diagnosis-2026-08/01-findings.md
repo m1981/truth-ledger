@@ -302,3 +302,93 @@ które zaprojektowałem w tym dossier.
 > na *pytanie decyzyjne* i nie zarządza pracą.
 
 Tripwire: `docs/refactor/**`
+
+---
+
+# Runda 3 — 2026-08-17, działanie naprawcze
+
+> Zadanie zlecało zapis jako „F-12". Ten numer jest zajęty (mutation score
+> rdzenia, runda 2), a numery są append-only — nadpisanie F-12 zerwałoby
+> właśnie tę własność, która pozwoliła wykryć zgniłe wnioski w rundzie 2.
+> Wpis dostaje kolejny wolny numer.
+
+## F-18 · `gates.py`: luka z F-15 zamknięta · AKTUALNE
+**2026-08-17**, działanie na podstawie F-15
+
+```
+                     przed        po
+pokrycie linii        29 %       86 %   (13 z 90 instrukcji niepokrytych)
+mutation score      53,8 %     94,9 %   (14/26  ->  37/39)
+testy w suicie         372        403   (+31, czas suity 4,2 s -> 7,1 s)
+```
+
+Nowe klasy w `template/scripts/test-truth-core.py`:
+* `TestIntakeGateFunctions` (26) — każdy wiersz `INTAKE_GATES` osobno,
+  osiągany **przez tabelę**, nie po nazwie: wiersz, który przestanie być
+  podpięty, wywala test zamiast cicho zniknąć. Wszystkie czysto pamięciowe.
+* `TestGeneratedPathsGate` (5) — korpus bramki ADR-037 przez jedyny wspierany
+  seam (`truthlib.configure(repo_root=…)`, A3). Czyta jeden plik polityki:
+  bez gita, bez zegara, bez podprocesu.
+
+**Technika warta zapamiętania:** tam gdzie odwrócenie strażnika wpadłoby w I/O
+gate'a, asercja jest na **braku klucza**, który to I/O stempluje w `ctx`
+(`generated_source`, `blast_state`). Nieobecność klucza jest dowodem, że
+early return zadziałał — to pinuje gałąź w obie strony, nie łamiąc kontraktu
+„no git, no filesystem" tego pliku.
+
+**2 ocalałe mutanty, oba zweryfikowane jako RÓWNOWAŻNE** (`mutate.sh show`):
+* `#8 L50` `and`→`or` w `(similar and ctx["duplicate_ok"])` — gdy `similar`
+  jest puste, generator daje `[]` niezależnie od operatora; gdy niepuste
+  a `duplicate_ok` fałszywe, gate zwrócił już odmowę. Żaden osiągalny stan
+  nie rozróżnia wariantów.
+* `#15 L79` `flag = None` — `flag` trafia wyłącznie do komunikatu, który
+  `override_decay` zwraca trzecim elementem, a gate odrzuca go przez `_`.
+  Nieobserwowalne bez zmiany kodu produkcyjnego.
+
+94,9 % to zatem **sufit dla obecnego kształtu `gates.py`**, nie plateau
+testów.
+
+**Niepokryte pozostają 100-119 i 180-185** — korpus odmów INV-M
+(`tracked_files()` = `git ls-files`) i korpus prognozy blast
+(`blast_history()` = `git log`). Oba wymagają gita, a `CONFIGURABLE` obejmuje
+tylko `repo_root`/`ledger_path`. Domknięcie ich to decyzja o rozszerzeniu
+seamu — poza zakresem tego zadania, odnotowane jako kandydat.
+
+**Regresja po zmianie:** `test-truth-core` 403 OK · `test-truth-v04` 13 OK ·
+`test-integrations` 28 OK · canary 283 caught / 0 missed. Zero pominięć
+(`PYTHONPATH` ustawiony, waiver nietknięty).
+
+> **Werdykt:** ryzyko operacyjne z F-15 — zmiana semantyki `paths` w module
+> z najcieńszą siatką — **przestało istnieć**. `gates.py` jest teraz drugim
+> najlepiej opancerzonym modułem po `kernel.py` (91,4 %). Krok 2.5 refaktoru
+> „Reproduce-on-Read" może ruszyć.
+
+Tripwire: `template/truthlib/gates.py`, `template/scripts/test-truth-core.py`
+
+## F-19 · Cache mutmuta czyta „survived" ze starych wyników · AKTUALNE
+**2026-08-17**, zaobserwowane podczas F-18
+
+Po dopisaniu testów, które **udowodnienie** zabijały mutanty (ręczne
+`mutate.sh apply 377` + przebieg suity = `FAILED`), `mutate.sh run` nadal
+raportował je jako ocalałe. Ani regeneracja `.coverage`, ani `--rerun-all` nie
+pomogły — dopiero `rm -f .mutmut-cache` dał prawdziwy wynik.
+
+Kolejność, która działa:
+```bash
+bash scripts/mutmut-coverage.sh          # po KAŻDEJ zmianie suity
+rm -f .mutmut-cache                      # inaczej stary werdykt przeżywa
+./scripts/mutate.sh run --paths-to-mutate <plik>
+```
+
+> **Werdykt:** `mutmut_config.py` ostrzega, że nieświeży `.coverage`
+> under-selects i że „an under-selected mutant reads as survived". To jest
+> **druga, niezależna** pułapka tego samego kształtu: nieświeży `.mutmut-cache`
+> daje ten sam fałszywy odczyt, mimo `--rerun-all`. Warta dopisania do
+> nagłówka `mutate.sh`, bo kosztowała tu trzy przebiegi zanim się wydała.
+>
+> **Uwaga o stanie roboczym:** `.mutmut-cache` zawiera teraz wyłącznie wyniki
+> `gates.py`; wpisy `kernel.py`/`contract.py` z F-12 zostały skasowane przez
+> ten `rm`. Kopia sprzed: `mutmut-cache.backup` w katalogu scratch sesji.
+> Liczby z F-12 są zapisane, więc odtworzenie jest przeliczeniem, nie stratą.
+
+Tripwire: `scripts/mutate.sh`, `mutmut_config.py`
