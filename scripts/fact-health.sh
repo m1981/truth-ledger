@@ -40,7 +40,23 @@
 #    naming them is the point, exactly as the field notes name theirs. Its
 #    sibling docs/refactor/00-RUNBOOK.md deliberately STAYS in scope: a
 #    runbook is an instruction a reader acts on today, so a dead citation
-#    in one is a real defect.
+#    in one is a real defect. (That distinction was not theoretical: on
+#    2026-08-17 the runbook duplicated a retraction table out of the
+#    journal and this sweep blocked the push for it.)
+#    docs/diagnosis-2026-08/ joins the excluded set on the same reasoning,
+#    2026-08-17. It is a DATED diagnostic dossier -- its own 00-STATE.md
+#    header stamps the measurement ("Ostatni pomiar: <date>, HEAD <sha>")
+#    and disclaims managing work ("nie zarzadza praca, nie duplikuje
+#    statusu"); it answers one decision question with evidence. Its
+#    citations narrate what was live AT DIAGNOSIS, and two of them name
+#    tr-a8bda1a1 precisely to argue that it was false and should be
+#    retracted -- which then happened. Judging that record against
+#    today's ledger flags the dossier for having been RIGHT.
+#    Flagged as an EXTENSION, not a ruling -- drop the line to put it back
+#    in scope. Note the asymmetry that makes this safe to get wrong in
+#    only one direction: if a future docs/diagnosis-*/ file turns into an
+#    instruction, it must come back into scope, and the test is the same
+#    one used above -- is a reader meant to ACT on it today?
 #    Only prose that a reader is meant to ACT on today stays in scope.
 #
 # 2. FOREIGN ids are not ours to judge. A deployment (kuchnie) keeps its
@@ -86,6 +102,7 @@ FILES="$(git ls-files 'README.md' 'AGENTS.md' 'docs/*.md' 'docs/**/*.md' \
   | grep -v '^docs/roadmap-v3\.md$' \
   | grep -v '^docs/field-notes' \
   | grep -v '^docs/refactor/01-JOURNAL\.md$' \
+  | grep -v '^docs/diagnosis-' \
   | sort -u)"
 export CLAIMS_FILE VOCAB_JSON FILES
 

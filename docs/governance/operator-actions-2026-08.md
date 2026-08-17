@@ -216,7 +216,10 @@ note predicted; the closing session filed and citation-swapped the
 successors the same day, and an independent verifier session
 (s-verifier-p6-pins) agreed all three: the ADR-series sentinel then
 counting 001–047 (that chain ended 2026-08-16 when the corpus was archived),
-tr-8d9005d0 (explainer Scope at v0.9.31), and the check-truth gate
+the explainer Scope sentinel then pinned at v0.9.31 (that chain ran two
+further generations and was cut on 2026-08-17: its current link asserts
+version PARITY without naming a version, so a release bump no longer kills
+it -- see docs/refactor/01-JOURNAL.md J-036), and the check-truth gate
 sentinel then pinned at the v0.9.31 lockstep line (current link in that
 chain: tr-84a9a3e3). The three staled intermediates were appended
 to the (c) retraction block above. Nothing further is owed here; the
