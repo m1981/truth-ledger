@@ -1394,3 +1394,97 @@ zestalenia — ale **nic już nowych zestaleń nie produkuje**. Stare pozostają
 w ledgerze jako historia. Okno „każde zestalenie wymaga osądu" **nie otworzyło
 się**, bo źródło wyschło przed usunięciem absorbera. To był powód, dla którego
 kolejność 2.4 → 2.5 → 2.6 jest lepsza od 2.4 → 2.6 → 2.5.
+
+---
+
+## J-034 · KROK 2.5 — próba wykonana, ZATRZYMANA na odkrytym zakresie · 2026-08-16
+
+### Co zostało zrobione i ZOSTAJE (commit 95fe01f)
+
+Pin konfluencji dla rekordów `invalidation`, w 6 permutacjach. Przy okazji
+**korekta mojej wcześniejszej analizy**: twierdziłem, że konfluencji nic nie
+testuje — testuje (`itertools.permutations` w 3 miejscach,
+`test_verdict_precedence_is_confluent`, 5 rodzin `FAULT UM`). Ale wszystkie te
+ramiona permutują **wyłącznie werdykty**; żadne nie wkładało do permutacji
+rekordu `invalidation`. Ta luka była realna i jest zamknięta.
+
+### Zmiana algebry — DZIAŁA, i zmierzyłem dokładnie co robi
+
+```
+PRZED  retracted 117 · live 62 · unverified 22 · stale 7 · diverged 30
+PO     retracted 117 · live 68 · unverified 23 · stale 0 · diverged 30
+```
+
+Siedem zestalonych claimów wróciło do tego, co mówią ich werdykty. Algebra
+`unverified → live → diverged/retracted` jest osiągalna.
+
+### USTALENIE 1: rekordy `invalidation` niosą DWA różne znaczenia
+
+Test charakteryzujący zrobił dokładnie to, do czego służy — pokazał, że
+usunięcie gałęzi zabija **dwa** mechanizmy, nie jeden:
+
+| znaczenie | czym jest | los |
+|---|---|---|
+| zmiana obserwowanej ścieżki | proxy o PPV 3,6% | **do usunięcia** |
+| wygaśnięcie TTL (ADR-019/G10) | **fakt zegarowy**, którego repo nie zaobserwuje inaczej | **musi zostać** |
+
+`reproduce` **nie zastąpi** TTL: receptura claimu z TTL odtwarza się doskonale
+w dniu, w którym wygasa. Zabicie obu, bo dzielą `kind`, po cichu usunęłoby
+działający mechanizm. Padły na tym cztery ramiona (`test_ttl_staled_claim_*`,
+`test_backdated_scope_ok_expires_*`, `test_verbatim_repeat_across_expiry`).
+
+Rozwiązanie zaimplementowane i zweryfikowane: dyskryminator `ttl_invalidation`
+w `kernel` (bo `kernel` jest **poniżej** `evidence` w DAG-u ADR-044, więc zależność
+mogła pójść tylko w tę stronę), z `is_ttl_reason` przeniesionym tam i
+re-eksportowanym przez star-import — **jedna implementacja**, zgodnie z lekcją
+F1/F5.
+
+### USTALENIE 2: `reports.py` miał WŁASNE odwzorowanie — i arm to złapał
+
+`half_life_observations` replayuje statusy niezależnie od folda
+(`new = "stale" if kind == "invalidation"`). Po zmianie folda replay opisywał
+ledger, którego nikt nie ma. **Złapał to `test_half_life_replay_matches_fold`** —
+arm istniejący dokładnie po to. To jest ta para, o której repo pisze, że nie
+wolno jej pozwolić się rozjechać, i nie pozwoliła.
+
+### USTALENIE 3 — powód zatrzymania: cała rodzina raportowa jest DOWNSTREAM
+
+Po naprawie parytetu padła rodzina `TestStats`, w tym arm nazwany wprost
+`test_ttl_expiry_excluded_but_path_invalidation_kept`. Powód strukturalny:
+**raport półokresu MIERZY przejścia live→stale spowodowane zmianą ścieżki.**
+To nie jest test zepsuty przez zmianę — to raport, którego przedmiot znika.
+
+Bilans: 18 porażek w 6 rodzinach. Osiem to `TestReaffirmCLI` (zadeklarowane
+do wycofania w 2.6). Dwie to piny usuniętego zachowania (oczekiwane).
+**Sześć to nowy zakres**: `TestStats` half-life ×4, `TestIntakeAdvisories`
+(sugestia TTL czyta te same strumienie), `TestScanRenameBlindness`.
+
+### Decyzja: kod cofnięty, drzewo zielone
+
+```
+git checkout -- kernel.py reports.py evidence.py  →  Ran 398 tests, OK
+```
+
+**Nie dokańczam zmiany w kernelu na kończącym się budżecie kontekstu.** Kernel
+to jedyny moduł, w którym pomyłka jest cicha: fold liczy status przy każdym
+odczycie, więc błąd nie wywala się — zwraca inną prawdę. Zostawienie w drzewie
+półzrobionej algebry byłoby gorsze niż jej brak.
+
+Pin zostaje zacommitowany, więc następna sesja startuje z siatką, której
+wcześniej nie było, i z trzema ustaleniami zamiast z hipotezą.
+
+### DO DECYZJI przed wznowieniem 2.5
+
+Raport półokresu / `ttl_suggestion` (ADR-050, FS-1) mierzy metrykę mechanizmu,
+który usuwamy. Trzy opcje:
+
+1. **Wycofać rodzinę** razem z mechanizmem — spójne, ale kasuje jedyne źródło
+   kalibracji TTL per tier.
+2. **Przekierować na `diverge`** — półokres liczony od `live` do rozbieżności
+   dowodu zamiast do dotknięcia ścieżki. Metryka staje się semantyczna;
+   danych będzie **o rząd wielkości mniej** (70 zamiast 1971).
+3. **Zostawić jako czytnik historii** — raportuje wyłącznie rekordy sprzed
+   refaktoru, zamrożony jak `reaffirm_cleared`.
+
+Rekomendacja: **(2)**, bo zachowuje cel raportu przy nowym, uczciwym sygnale.
+Ale to zmiana znaczenia publikowanej metryki, więc nie moja decyzja.

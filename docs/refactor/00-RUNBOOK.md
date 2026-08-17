@@ -5,7 +5,7 @@
 > Jedno zadanie naraz. Po każdym: weryfikacja → status → wpis w JOURNAL → commit.
 
 Gałąź robocza: `claude/git-hooks-architecture-zc97y3`
-Commit bazowy: `fa2e85b` · rewizja runbooka: `r14` (2026-08-16, 2.4 zrobiony)
+Commit bazowy: `fa2e85b` · rewizja runbooka: `r15` (2026-08-16, 2.5 zatrzymany na zakresie)
 
 ---
 
@@ -260,7 +260,7 @@ przechodziłby przez bramkę po cichu.
 
 ### [x] 2.4 Wygaszenie `invalidate-scan` — **ZROBIONE**, dwa hooki nie jeden (J-033)
 
-### [ ] 2.5 Usunięcie stanu `stale` z folda
+### [~] 2.5 Usunięcie stanu `stale` z folda — **ZATRZYMANY**: rodzina half-life jest downstream (J-034)
 Stan wyliczany z logu: `unverified` → `live` → `diverged`/`retracted`.
 Dotyka `kernel.fold`, `registry`, oraz `spec-health.sh`/`fact-health.sh`
 (pobierają `citation_bad` z `truth vocab --json` — zmiana wokabularza propaguje
