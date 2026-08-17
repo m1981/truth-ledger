@@ -36,6 +36,31 @@
 # docs the claim is about; not the ADR that motivated it. The paths the
 # evidence command opens.
 #
+# SUB-TREE TARGETS. A glob may name part of a file instead of the whole
+# of it, by appending '#<selector>' -- for .json, .toml and .md only:
+#
+#   stripe-dep     -- package.json#/dependencies/stripe
+#   lint-config    -- pyproject.toml#tool.ruff.lint
+#   jwt-section    -- docs/spec.md#2-session-management
+#
+# A '#' at the START of a line is still a comment; only a mid-glob '#'
+# is a selector. JSON/TOML take an RFC 6901 pointer (/a/b) or a dot-path
+# (a.b); Markdown takes a heading title or its anchor slug.
+#
+# WHAT IT BUYS: `truth reproduce` compares the DIGEST of that sub-tree at
+# two commits, so a dependency bump three keys over is not an event and
+# never reports the claim as drifted. Selector targets are also outside
+# the one-path freehand budget and the churn floor, because the author
+# named an exact address and intake read the file to confirm it resolves.
+#
+# WHEN NOT TO. The rule above still governs: watch what the recipe READS.
+# A recipe that greps a whole document for four phrases reads the whole
+# document, and anchoring it to one section would make the watch narrower
+# than the evidence -- the same drift as watching a file the recipe never
+# opens, pointed the other way. Selectors pay when the recipe's subject
+# genuinely IS one key or one section, which is most often a config file
+# a dependency or a version lives in.
+#
 # EXAMPLES -- delete these comments and write your own:
 #
 #   core-suite     -- tests/test_core.py
