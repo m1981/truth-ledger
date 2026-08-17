@@ -1837,3 +1837,26 @@ kolejka:    32 pozycje, najstarsza 17 d
 ```
 
 Push wykonany bez `--no-verify` — bateria przeszła na bramce pre-push.
+
+### POST SCRIPTUM — bramka cytowań złapała ten właśnie wpis
+
+Pierwszy `git push` **został zablokowany**, i nie przez kod:
+
+```
+FAIL  tr-39eb58bc  retracted -- live prose stands on a dead fact
+FAIL  tr-c6170e24  diverged  -- live prose stands on a dead fact
+FAIL  tr-d1049451  diverged  -- live prose stands on a dead fact
+```
+
+Źródłem był **`00-RUNBOOK.md`**, do którego przepisano tabelę „stary → następca"
+z tego dziennika. `fact-health` rozróżnia te dwa pliki celowo i ma rację:
+
+* `01-JOURNAL.md` jest **poza zasięgiem** — to zapis append-only, który *ma*
+  nazywać id, które wycofał; nazwanie ich jest treścią wpisu.
+* `00-RUNBOOK.md` **zostaje w zasięgu** — to instrukcja, na której czytelnik
+  działa dziś, więc martwe cytowanie w niej jest defektem.
+
+Runbook odsyła teraz do J-036 zamiast powielać id. Dwie rzeczy warte
+odnotowania: bramka zadziałała na własnym autorze w tej samej sesji, w której
+opisywano jej działanie, i był to **jedyny** czerwony arm — pozostałe dziewięć
+przeszło za pierwszym razem.

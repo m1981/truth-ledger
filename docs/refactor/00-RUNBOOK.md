@@ -300,23 +300,28 @@ operatora: **zwęzić werb, nie kasować**.
 
 ### [x] Domkniecie po 2.6 — kolejka werdyktow rozstrzygnieta (J-036)
 
-Piec claimow, nie trzy: obsluga dwoch pierwszych odslonila `tr-c6170e24` i
-`tr-d1049451`, ktore siedzialy za nimi w cieniu `stale`. Trzy nazwane przez
+Piec claimow, nie trzy: obsluga dwoch pierwszych odslonila dwa kolejne z tej
+samej siodemki, ktore siedzialy za nimi w cieniu `stale`. Trzy nazwane przez
 operatora wycofane z `--cause restated --successor`; dwa odkryte po drodze
 dostaly `diverge` z rekomendowana komenda tombstone w `basis` — ADR-011 mowi
-agentowi konczyc na `diverge`, a bramka odblokowuje sie tak samo.
+agentowi konczyc na `diverge`, a bramka odblokowuje sie tak samo. Pelna tabela
+"stary -> nastepca" jest w J-036; NIE jest przepisana tutaj, bo ten runbook
+stoi w zasiegu `fact-health` i cytowanie w nim wycofanego id jest defektem, a
+nie notatka (sweep zlapal dokladnie to na bramce pre-push).
 
 **Odstepstwo od wytycznej (b), z pomiarem:** nowe claimy sa NIEZALEZNE OD
 WERSJI — ani zdanie, ani receptura nie nazywa `v0.9.38`. W tym ledgerze
 receptura z literalem wersji ma **96% smiertelnosci** (24 z 25 martwe), a trzy
 osadzane rodziny mialy juz po 3-5 pokolen umierajacych na tym samym bumpie.
-Uzyty wzorzec pochodzi z tego repo (niezyjacy `tr-39eb58bc`): wyciagnij wersje z
-linii 2 CLI i sprawdz jej obecnosc w drugiej powierzchni, w obie strony.
+Uzyty wzorzec pochodzi z tego repo: wyciagnij wersje z linii 2 CLI i sprawdz
+jej obecnosc w drugiej powierzchni, w obie strony, wiec twierdzeniem jest
+*zgadzaja sie*, a nie *obie mowia X*.
 
-**Do decyzji operatora:** `tr-8d9005d0` twierdzi ten sam fakt co nowy
-`tr-f8b946cd`, tyle ze przypiety do v0.9.38 — rekomendowane
-`retracted --cause restated --successor tr-f8b946cd`. Plus dwa tombstone'y z
-tabeli J-036.
+**DO ZROBIENIA — trzy tombstone'y u operatora.** Sa to decyzje terminalne
+(ADR-011), wiec agent ich nie wykonuje; komendy z konkretnymi id sa w J-036,
+sekcje "Co z czym zrobione" i "DO DECYZJI". Jedna z nich usuwa podwojny claim
+o nagłowku Scope: ledger niesie dzis dwa zywe claimy o jednym fakcie, jeden
+przypiety do biezacej wersji, jeden od niej niezalezny.
 
 **Bramka:** `reproduce` 66/66, 0 capsule-stale, exit 0; bateria wszystkie 10
 ramion zielone; push bez `--no-verify`.
