@@ -2187,3 +2187,101 @@ core 441 (18 nowych na 3.2 lacznie) · canary 284/0 · integrations 28 OK
 v04 13 OK · field-consumers 32 klucze 0 failures · reproduce 66/66 exit 0
 release-battery ALL ARMS GREEN
 ```
+
+---
+
+## J-040 · KROK 3.3 — migracja celowana, i SPROSTOWANIE własnej metryki · 2026-08-17
+
+### SPROSTOWANIE: metryka hałasu, którą cytowałem, była policzona źle
+
+Liczby `2329 linii whispera / 6,8 claimu na edycję` z J-037 i J-039 są **błędne**.
+Sumowałem po plikach, więc commit dotykający dwóch obserwowanych plików tego
+samego claimu liczył się dwa razy — a whisper emituje **jedną linię na claim**,
+nie na plik. Poprawnie (distinct commits per claim, to samo okno 200 commitów):
+
+```
+BLEDNIE:   2329 linii, 6,8 claimu na edycje
+POPRAWNIE: 1670 linii, 22,6 claimu na edycje
+```
+
+Pomyliłem się w obie strony: licznik zawyżony, a mianownik („dotknięcia") tak
+samo zawyżony, przez co iloraz **zaniżony ponad trzykrotnie**. Wniosek
+jakościowy się nie zmienia — jest **mocniejszy**: przy jednej edycji pada
+średnio 22,6 claimu, nie 6,8. Decyzje 3.2 stały na wniosku, nie na liczbie, więc
+nie wymagają rewizji; cytaty wymagają.
+
+Lekcja jest ta sama, którą to repo stosuje do claimów: metryka też potrzebuje
+receptury, którą da się odtworzyć i zakwestionować.
+
+### Migracja — cztery claimy, wybrane pomiarem, nie kolejnością
+
+Niezmiennik z J-022 („obserwuj dokładnie to, co czyta receptura") uczynił wybór
+mechanicznym: porównanie zbioru obserwacji z tokenami ścieżkowymi receptury.
+
+| claim | obserwował | receptura czyta | werdykt |
+|---|---:|---:|---|
+| `tr-4cf0f3eb` | 8 | **1** | migrowany |
+| `tr-0c9099c2` | 4 | 3 | migrowany |
+| `tr-ef37611b` | 2 | 1 | migrowany |
+| `tr-6308173b` | 2 | 1 | migrowany |
+| `tr-6bdfed46` | 4 | 4 | **zostawiony — poprawny** |
+| `tr-789b11be` | 2 | 2 | **zostawiony — poprawny** |
+| `tr-f8b946cd` | 2 | 2 | **zostawiony — poprawny** |
+| `tr-2c5de4e2` | 4 | — | brak receptury; niezmiennik nie ma zastosowania |
+
+Trzy z ośmiu najgłośniejszych obserwowały **dokładnie** to, co czytają. Ich
+hałas jest ceną prawdziwego zakresu, nie niechlujstwa — i migrowanie ich byłoby
+optymalizacją pod wskaźnik kosztem poprawności.
+
+### Wynik, w poprawnej metryce
+
+```
+158 -> 105 linii na 4 migrowanych parach   spadek 53 (34%)
+  tr-4cf0f3eb 64 -> 42   tr-0c9099c2 39 -> 37
+  tr-ef37611b 27 -> 23   tr-6308173b 28 ->  3
+```
+
+**Ledger jako całość NIE spadł**: 1670 linii przy 80 aktywnych zbiorach. Powód
+jest mój: w tej sesji złożyłem 14 aktywnych claimów kosztem 320 linii, z czego
+**4 sondy testowe kosztem 102 linii** to czysty błąd własny (J-038). Migracja
+zadziałała na swoich celach; moje własne filowanie zjadło zysk. Zapisuję to
+tak, a nie jako sukces — inaczej ta sama metryka, którą właśnie prostuję,
+zaczęłaby kłamać po raz drugi.
+
+### `tr-4cf0f3eb` — genuine, nie mechanical, i ten sam trap co w doktorze
+
+Ten claim reprodukował się **wyłącznie dlatego, że przewodnik nadal wspominał
+`invalidate-scan` — we własnej prozie o wycofaniu tego werbu.** Dokładnie ta
+sama figura, co wiersz doktora grepujący komentarz o swoim usunięciu (J-035
+USTALENIE 2). Kapsuła zielona, przedmiot martwy.
+
+Sprawdzenie odsłoniło większy dryf: **`docs/truth-ledger-operations-guide.md`
+opisywał wycofaną maszynerię jako żywą w ośmiu miejscach** — wiersz „Every
+merge/pull" z `invalidate-scan`, lista werbów zapisu z `reaffirm`, przepis CI,
+trzy diagramy i cały „Rung 3" o triage'u reaffirm. To dokument idący do
+konsumenta. Poprawiony: tabela wyzwalaczy ma teraz wiersze `reproduce` (pre-push)
+i `ttl-scan` (jedyny czytnik zegara), a „Rung 3" mówi, że `reproduce` jest
+**ostrzejszy** od tego, co zastąpił — nie zapisuje nic w żadną stronę.
+
+Trzy pozostałe wzmianki są jawnie historyczne („it used to run", „all that
+remains of", „until v0.10 this rung was") i tak mają zostać.
+
+### Ceremonie u operatora
+
+Cztery poprzedniki dostały `diverge` z rekomendowaną komendą tombstone w
+`basis` (ADR-011: agent kończy na diverge). Dwa cytowania w przewodniku
+podmienione na następców, bo bramka ADR-036 słusznie je złapała.
+
+```
+truth verdict tr-4cf0f3eb retracted --cause restated --successor tr-db201971
+truth verdict tr-0c9099c2 retracted --cause restated --successor tr-4df1a9fd
+truth verdict tr-ef37611b retracted --cause restated --successor tr-4a666db0
+truth verdict tr-6308173b retracted --cause restated --successor tr-d0cfd9ea
+```
+
+### Weryfikacja
+
+```
+core 442 · v04 13 · integrations 28 · canary 284/0 · field-consumers 32/0
+reproduce 66/66 exit 0 · reachability 10/10 · release-battery ALL ARMS GREEN
+```
