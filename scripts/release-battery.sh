@@ -41,6 +41,30 @@ set -u
 exec </dev/null
 cd "$(dirname "$0")/.."
 
+# --- project virtualenv, activated not dispatched ------------------------
+# A project-local .venv is put on PATH here so every arm below runs against
+# the same interpreter and the same installed jsonschema, whatever the
+# operator's shell had. Activation is the whole mechanism: it changes what
+# the WORD `python3` resolves to, and the arms keep spelling that word.
+#
+# THAT SPELLING IS LOAD-BEARING, and the cost of forgetting it is measured.
+# Hoisting the interpreter into a variable (PYTHON="$(command -v python3)";
+# "$PYTHON" template/scripts/test-truth-core.py) is the obvious tidy-up and
+# it silently un-wires this file: gate-reachability.sh reads invocations
+# textually, its INVOKER token is the literal bash|sh|zsh|python3?|exec|
+# source|./, and a line dispatching through "$PYTHON" carries no such
+# token. On 2026-08-17 exactly that edit turned the battery's four python
+# arms -- test-truth-core.py, test-truth-v04.py, test-integrations.py and
+# instruments/field-consumers.py -- into dark gates: still RUN by this
+# script, but invisible to the sweep that certifies they have a schedule,
+# which failed 4/10 unreachable. The sweep is fail-safe by design (a
+# variable-built path reads as unreachable, never as reached), so the
+# alarm was loud and correct. Keep the literal.
+if [ -f ".venv/bin/activate" ]; then
+  # shellcheck source=/dev/null
+  . ".venv/bin/activate"
+fi
+
 FAIL=0
 ENVBAD=0
 say()  { printf '%s\n' "$*" >&2; }
