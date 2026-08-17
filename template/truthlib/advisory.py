@@ -132,8 +132,17 @@ def intake_advisories(events, tier, ttl_days_arg, scope_ok, evidence_class,
                         f"you chose {ttl_days_arg}d (FS-1 suggestion, "
                         "not a gate)")
     stored_gen = payload.get("generated_ok_basis")
-    flag = "--scope-ok" if scope_ok else "--generated-ok"
-    _, _, decay_notice = override_decay(scope_ok or stored_gen,
+    # Step 3.2: --paths-ok decays like its two siblings, so the notice has
+    # to be able to name it -- a notice that said --scope-ok over a
+    # --paths-ok filing would send the author to the wrong flag.
+    stored_paths = payload.get("paths_basis")
+    if scope_ok:
+        flag = "--scope-ok"
+    elif stored_paths:
+        flag = "--paths-ok"
+    else:
+        flag = "--generated-ok"
+    _, _, decay_notice = override_decay(scope_ok or stored_paths or stored_gen,
                                         ttl_days_arg, flag=flag)
     msgs.append(decay_notice)
     if generated_ok and not stored_gen:

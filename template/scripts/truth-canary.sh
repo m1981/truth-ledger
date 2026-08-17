@@ -565,9 +565,16 @@ if $T claim "ghost.sh is fine" --class VERIFIED \
 else
   ok "intake refused the zero-match literal"
 fi
+# Step 3.2: the freehand watch budget is ONE path, so this fixture now
+# carries --paths-ok. The arm's subject is unchanged and still the point --
+# INV-M must not mistake a comma-separated LIST for a space-joined literal
+# -- and it gained a second one for free: the budget's stated-basis escape
+# hatch, exercised end to end through the CLI rather than only as a unit.
 if CID_T=$($T claim "watched and fabricated are fine" --class VERIFIED \
      --evidence-cmd "cat watched.txt fabricated.txt" \
-     --paths "watched.txt,fabricated.txt" --tier P1 --duplicate-ok 2>/dev/null); then
+     --paths "watched.txt,fabricated.txt" --tier P1 --duplicate-ok \
+     --paths-ok "the recipe reads both files, so both belong in the set" \
+     2>/dev/null); then
   ok "comma-separated literals still accepted ($CID_T)"
 else
   miss "intake wrongly refused legitimate comma-separated paths"
@@ -2071,7 +2078,8 @@ echo "peer"   > ra-peer.txt
 echo "shifty" > ra-mm.txt
 git add -A && git commit -qm "ra: init" --no-verify -q
 CID_RA_OK=$($T claim "ra-ok.txt says solid" --class VERIFIED \
-        --evidence-cmd "cat ra-ok.txt" --paths "ra-ok.txt,ra-peer.txt" --tier P1)
+        --evidence-cmd "cat ra-ok.txt" --paths "ra-ok.txt,ra-peer.txt" --tier P1 \
+        --paths-ok "the fixture deliberately watches a path the recipe does NOT read, to prove a touch of it is inert")
 CID_RA_MM=$($T claim "ra-mm.txt says shifty" --class VERIFIED \
         --evidence-cmd "cat ra-mm.txt" --paths "ra-mm.txt" --tier P1)
 TRUTH_SESSION=s-canary-verifier $T verdict "$CID_RA_OK" agree --basis "canary: verified at filing" >/dev/null
@@ -3064,9 +3072,16 @@ git mv other.txt moved.txt
 # The OLD name leaves the index on git mv, so a literal watch on it is
 # INV-M-dead (correctly refused); the arm watches the NEW name and the
 # rename entry must fire via either of its two NUL fields.
+# Step 3.2: two paths, so the freehand budget wants a stated basis. The
+# arm needs BOTH names deliberately -- the old one to show it is
+# INV-M-dead after the mv, the new one to catch the rename entry -- which
+# is exactly the "this set is right and no policy fits" case --paths-ok
+# exists for.
 DW6=$($T claim "the rename keeps its keep marker under the new watch" \
       --class VERIFIED --evidence-cmd "grep keep moved.txt" \
-      --paths f.txt,moved.txt --duplicate-ok 2>&1 >/dev/null) || true
+      --paths f.txt,moved.txt --duplicate-ok \
+      --paths-ok "the arm needs the pre-mv and post-mv names together to see the rename entry" \
+      2>&1 >/dev/null) || true
 if printf '%s\n' "$DW6" | grep -q "dirty watch: moved.txt"; then
   ok "DW6: an uncommitted git mv fires on the rename entry (two-field parse)"
 else

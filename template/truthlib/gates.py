@@ -63,6 +63,57 @@ def _gate_quantifier_scope(ctx):
                 "covers that quantifier>\".")
     return None
 
+def _gate_paths_budget(ctx):
+    """FAZA 3 step 3.2: a freehand watch set wider than
+    MAX_FREEHAND_WATCH_PATHS is REFUSED. Two exits, both of which leave a
+    record; there is deliberately no silent third.
+
+      --watch-policy <name>   the set was reviewed once and committed by
+                              name. This is the whole bargain the policy
+                              file offers, and it is why the gate has
+                              teeth instead of being a counter.
+      --paths-ok "<sentence>" the author states why THIS set is right.
+                              Stored as paths_basis, decays at 30 days
+                              (ADR-032) and counted in override_report,
+                              so an unreviewed wide set is re-asked rather
+                              than accumulated.
+
+    Runs directly after paths-inv-m: INV-M asks whether each path could
+    ever match, this asks whether the SET was chosen or accumulated. Both
+    are about the same field and neither depends on the other's outcome.
+
+    The symmetric refusals matter as much as the budget. A basis with
+    nothing to excuse is schema noise (the ADR-035 --evidence-exit-ok
+    precedent, verbatim reasoning): --paths-ok on a set inside the budget,
+    or beside a --watch-policy that already exempts it, buys nothing and
+    would decay a judgment nobody needed to make."""
+    paths, basis = ctx["paths"], ctx.get("paths_basis")
+    policy = ctx.get("watch_policy")
+    over = len(paths) > MAX_FREEHAND_WATCH_PATHS
+    if basis and policy:
+        return ("truth: --paths-ok beside --watch-policy -- the named "
+                "policy already carries the review this basis would "
+                "state, so the basis excuses nothing and would decay a "
+                "judgment nobody needed to make (ADR-032). Drop it.")
+    if basis and not over:
+        return (f"truth: --paths-ok with {len(paths)} watched path(s) -- "
+                f"the freehand budget is {MAX_FREEHAND_WATCH_PATHS}, so "
+                "there is nothing to excuse (a basis with nothing to "
+                "excuse is schema noise; drop the flag).")
+    if not over or policy or basis:
+        return None
+    return (f"truth: {len(paths)} watched paths picked by hand -- the "
+            f"freehand budget is {MAX_FREEHAND_WATCH_PATHS} "
+            f"({WATCH_POLICIES_REL}). Measured on this ledger, 75 claims "
+            "with a watch set held 60 DISTINCT sets: almost every set was "
+            "re-invented rather than reviewed, and each extra path costs "
+            "a whisper line on every edit (6.8 claims named per touch of "
+            "a watched file). Either:\n"
+            f"  --watch-policy <name>   a reviewed set from {WATCH_POLICIES_REL}\n"
+            "  --paths-ok \"<sentence>\"  why THIS set is right (stored, "
+            "decays at 30 days, counted)\n"
+            "Nothing was filed.")
+
 def _gate_scope_decay(ctx):
     # ADR-032 transform row -- never refuses. Stamps the default shelf
     # life BEFORE the class precheck reads ttl_days, so the effective
@@ -76,10 +127,22 @@ def _gate_scope_decay(ctx):
     # a dropped override must not decay -- ADR-032 re-asks a RECORDED
     # judgment (the R3 adversarial review's catch). This row therefore
     # runs AFTER the generated gate in the table.
+    # Step 3.2 joins --paths-ok to the same decay, for the same reason
+    # ADR-037 joined --generated-ok: "this wide watch set is the right one"
+    # rots exactly as "this scope is covered" does, and the re-ask is the
+    # point. Precedence in the flag label is filing order; only one of the
+    # three can be the reason a given claim decays, and the notice must
+    # name the flag the author actually passed.
     gen_stored = ctx.get("payload_generated_basis")
-    flag = "--scope-ok" if ctx["scope_basis"] else "--generated-ok"
+    paths_basis = ctx.get("paths_basis")
+    if ctx["scope_basis"]:
+        flag = "--scope-ok"
+    elif paths_basis:
+        flag = "--paths-ok"
+    else:
+        flag = "--generated-ok"
     ctx["ttl_days"], ctx["ttl_default"], _ = \
-        override_decay(ctx["scope_basis"] or gen_stored,
+        override_decay(ctx["scope_basis"] or paths_basis or gen_stored,
                        ctx["ttl_days"], flag=flag)
     return None
 
@@ -189,6 +252,7 @@ INTAKE_GATES = (
     ("pre-execution", "near-duplicate-g8", _gate_duplicate),
     ("pre-execution", "quantifier-scope-adr007", _gate_quantifier_scope),
     ("pre-execution", "paths-inv-m", _gate_inv_m),
+    ("pre-execution", "paths-budget-max", _gate_paths_budget),
     ("pre-execution", "generated-paths-adr037", _gate_generated),
     ("pre-execution", "scope-decay-adr032", _gate_scope_decay),
     ("pre-execution", "blast-forecast-adr039", _gate_blast),

@@ -311,6 +311,13 @@ def override_report(events, now, folded=None):
     before calling -- stats_report's overall-count convention, no
     per-window split of its own). Returns a dict:
       * scope_basis_filings -- ADR-007 --scope-ok overrides;
+      * paths_basis_filings -- FAZA 3 step 3.2 --paths-ok overrides: a
+        freehand watch set wider than MAX_FREEHAND_WATCH_PATHS, admitted
+        on a stated sentence instead of a reviewed policy. Counted for the
+        same reason scope_basis is: the gate's own health metric. A rising
+        count means authors are talking their way past the budget rather
+        than naming policies, which is a signal to add a policy, not to
+        widen the gate;
       * decay_expiries -- ADR-032 override-decay invalidations
         (reason_code=='ttl' on a ttl_default claim);
       * overridden_duplicates -- G8/--duplicate-ok filings;
@@ -326,7 +333,7 @@ def override_report(events, now, folded=None):
     not recomputed; kept for signature parity with stats_report)."""
     del now  # signature parity; the report reads records, not the clock
     claims, _ = folded if folded is not None else fold(events)
-    scope_filings = overridden_dupes = screened_false = 0
+    scope_filings = overridden_dupes = screened_false = paths_filings = 0
     exit_overrides = hollow_warned = generated_overrides = 0
     max_scope_ttl = None
     for e in claims.values():
@@ -340,6 +347,8 @@ def override_report(events, now, folded=None):
             exit_overrides += 1
         elif (p.get("evidence") or {}).get("returncode"):
             hollow_warned += 1
+        if p.get("paths_basis"):
+            paths_filings += 1
         if p.get("scope_basis"):
             scope_filings += 1
             t = p.get("ttl_days")
@@ -394,6 +403,7 @@ def override_report(events, now, folded=None):
                 break
         seen.append((toks, cid, e["status"]))
     return {"scope_basis_filings": scope_filings,
+            "paths_basis_filings": paths_filings,
             "decay_expiries": decay_expiries,
             "overridden_duplicates": overridden_dupes,
             "screened_false_filings": screened_false,

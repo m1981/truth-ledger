@@ -2013,3 +2013,103 @@ zweryfikowany z osobnej sesji.
   **zwolniony** z budżetu, bo zbiór został zrecenzowany raz — to jest cała
   wymiana, jaką polityki oferują, i to daje bramce zęby zamiast samego licznika.
 * **3.3 — migracja 65 claimów z backlogu.**
+
+---
+
+## J-038 · KROK 3.2 — budżet obserwacji jako twarda odmowa · 2026-08-17
+
+`MAX_FREEHAND_WATCH_PATHS = 1`. Wiersz `paths-budget-max` w `INTAKE_GATES`,
+zaraz po `paths-inv-m`: INV-M pyta, czy ścieżka MOŻE kiedykolwiek trafić,
+budżet pyta, czy zbiór został **wybrany, czy uzbierany**.
+
+Dwa wyjścia, oba zostawiają ślad; trzeciego, cichego, nie ma:
+
+```
+--watch-policy <name>     zbior zrecenzowany raz i zacommitowany pod nazwa
+--paths-ok "<zdanie>"     autor mowi, dlaczego TEN zbior; zapis paths_basis,
+                          decay 30 dni (ADR-032), liczone w override_report
+```
+
+Pozycja w tabeli jest wymuszona: musi być **przed** `scope-decay-adr032`, bo
+`--paths-ok` jest jedną z trzech podstaw, które ten wiersz wygasza.
+
+### Odmowy symetryczne — tak samo ważne jak sam budżet
+
+Precedens ADR-035 (`--evidence-exit-ok` przy komendzie kończącej się zerem)
+zastosowany dosłownie: **podstawa, która niczego nie usprawiedliwia, to szum
+schematu** — a tutaj gorzej, bo wygaszałaby osąd, którego nikt nie musiał
+podjąć. Odrzucane są więc również: `--paths-ok` przy jednej ścieżce oraz
+`--paths-ok` obok `--watch-policy` (polityka już niesie tę recenzję).
+
+### Canary złapał zmianę intake'u — trzy ramiona, każde przepisane
+
+Bateria zablokowała się na `FAULT T`, potem na `DW6`. To nie były testy zepsute
+przez zmianę — to fixture'y filujące po dwie ścieżki, więc **nowa bramka je
+odrzuciła i miała rację**. Zgodnie z J-012 przedmiot każdego z nich nadal
+istnieje, więc każdy dostał `--paths-ok`, a nie kasację:
+
+| ramię | przedmiot, który został | co zyskało |
+|---|---|---|
+| `FAULT T` | INV-M nie może wziąć listy po przecinkach za literał ze spacją | przejście przez escape hatch budżetu, end-to-end przez CLI |
+| `FAULT RA` | dotknięcie obserwowanej-ale-nieczytanej ścieżki jest inertne | jawne uzasadnienie, dlaczego fixture watchuje plik, którego receptura nie czyta |
+| `DW6` | wpis rename widoczny przez dwa pola NUL | jawne uzasadnienie, że arm POTRZEBUJE nazwy sprzed i po `git mv` |
+
+Trzeci przypadek jest najciekawszy: `DW6` **musi** obserwować obie nazwy, bo bada
+sam wpis rename. To jest wzorcowy przypadek użycia `--paths-ok` — zbiór jest
+poprawny i żadna polityka go nie nazwie.
+
+### BŁĄD WŁASNY — sondy filowane do PRAWDZIWEGO ledgera
+
+Testując bramkę odpaliłem `truth claim` z tekstami `probe ...` w tym
+repozytorium zamiast w sandboxie. Ledger jest append-only, więc **zostają na
+stałe**:
+
+```
+tr-e079a1d5  unverified  probe single path
+tr-3d1ffc53  unverified  probe policy exempt from the budget
+tr-7dbe14ae  unverified  probe wide freehand set with a stated reason
+tr-abdfddc3  unverified  probe decay notice flag naming for the wide set case
+```
+
+Ironia jest częścią lekcji: wszystkie cztery obserwują realne pliki, więc
+dokładają dokładnie ten szum whispera, który Faza 3 usuwa. Sondy należą do
+sandboxa — canary robi to od zawsze i miałem wzorzec przed oczami.
+
+Rekomendacja: `retracted --cause wrong` (nigdy nie były faktami, tylko sondami
+przyrządu). Ceremonia jest ludzka (ADR-011), więc zostaje u operatora; komendy
+w raporcie sesji. Pozostałe testy 3.2 napisane już jako testy jednostkowe nad
+tabelą `INTAKE_GATES`, bez dotykania ledgera.
+
+### Weryfikacja
+
+```
+core 436 (11 nowych na 3.2), 0 skipow, OK · canary 283/0 · integrations 28 OK
+field-consumers 32 klucze -- paths_basis i watch_policy MAJA czytelnikow, 0 failures
+reproduce 66/66 exit 0 · reachability 10/10 · release-battery ALL ARMS GREEN
+```
+
+## Skala kroku 3.3, zmierzona przed wykonaniem
+
+```
+backlog freehand ze sciezkami:                        78
+  SZEROKIE (>1 sciezka, dzis odrzucone przez bramke): 46
+  w budzecie (1 sciezka, legalne jak sa):             32
+
+z 46 szerokich:
+  13 pasuje DOKLADNIE do jednej z 9 polityk   (cli-behaviour 4, both-suites 4,
+                                               record-contract 3, fold-kernel 2)
+  33 nie pasuje do zadnej -- w 32 ROZNYCH zbiorach
+```
+
+Liczba 32 jest rozstrzygająca dla kształtu 3.3: **nazwanie 32 kolejnych polityk
+byłoby tym samym defektem z nową etykietą** — polityka użyta raz to lista
+ścieżek z nazwą. Jedyny powtarzający się zbiór wśród nich to
+`scripts/fact-health.sh, scripts/release-battery.sh` (2 claimy) i on zasługuje
+na politykę; reszta to kandydaci na `--paths-ok` albo na pozostawienie w spokoju.
+
+**Koszt migracji jest asymetryczny i trzeba go nazwać:** claim jest niezmienny,
+więc „migracja" to re-file + weryfikacja z osobnej sesji + **retrakcja
+bramkowana człowiekiem**. 46 claimów = ~138 nowych rekordów i **46 ceremonii
+tombstone**, żeby zmienić pole metadanych w faktach, które są prawdziwe i
+poprawnie obserwowane. Decyzja o zakresie należy do operatora — pytanie w
+raporcie sesji.

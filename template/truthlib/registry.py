@@ -55,6 +55,22 @@ WATCH_POLICIES_REL = ".truth/watch-policies"
 # read as a flag) and never carrying a glob character (which would make a
 # name indistinguishable from the thing it names).
 WATCH_POLICY_NAME_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
+# FAZA 3 step 3.2: the freehand watch budget. ONE path may be picked by
+# hand; a wider set must come from a reviewed policy (--watch-policy) or
+# carry a stated, decaying basis (--paths-ok).
+#
+# WHY ONE, and why a REFUSAL rather than an advisory. The precision figures
+# this budget was first argued from (1 path -> 12.6%, 2-3 paths -> 1.9%)
+# measured FALSE STALINGS, and step 2.5 retired those. The conclusion
+# survived the recount on different evidence: 75 active claims carrying a
+# watch set held 60 DISTINCT sets -- reuse of essentially zero -- and the
+# surviving cost is attention, since the pre-edit whisper still fires on
+# every watched path. Measured over 200 commits: 340 touches of watched
+# files producing 2329 whisper lines, a mean of 6.8 claims named per edit
+# and 31 for a single touch of the busiest file. An advisory on that
+# population is 44 more lines nobody reads; the refusal is what makes the
+# author choose a reviewed set or say why not.
+MAX_FREEHAND_WATCH_PATHS = 1
 CITATIONS_EXIT_CITED = 6
 # F1.1: `truth reproduce` exit codes. 7 = at least one live claim's
 # capsule can no longer be produced here -- a REPORT, distinct from a

@@ -409,7 +409,7 @@ nazwa, duplikat nazwy, polityka bez globów.
 **ABSENT jest łagodny**, inaczej niż u sióstr: polityki są opt-in, brak pliku to
 stan spoczynku, nie ciemna bramka — więc bez wiersza atestacji i bez wiersza w
 `doctor` (koszt ADR-053 nieopłacony po raz trzeci).
-### [ ] 3.2 Bramka `max_paths` jako wiersz w `INTAKE_GATES`
+### [x] 3.2 Bramka `max_paths` jako wiersz w `INTAKE_GATES` — **ZROBIONE** (J-038)
 
 **Twarda odmowa** (decyzja 2026-08-17), nie advisory: claim z więcej niż jedną
 ścieżką podaną z palca jest odrzucany i zmuszony do `--watch-policy <name>`
@@ -419,11 +419,44 @@ albo do uzasadnienia. Podstawa danych: 1 ścieżka → 12,6% precyzji, 2–3 śc
 > Wiersz dokłada się do tabeli, a `TestIntakeGateFunctions` czyta ją **przez
 > `INTAKE_GATES`**, nie po nazwach — nowy wiersz nie wymaga zmiany testów,
 > a wiersz usunięty z tabeli wywali `test_gate_table_pre_execution_order_is_pinned`.
+
+**Wykonane.** `MAX_FREEHAND_WATCH_PATHS = 1`; wiersz `paths-budget-max` zaraz po
+`paths-inv-m` i **przed** `scope-decay-adr032` (bo `--paths-ok` jest jedną z
+trzech podstaw, które ten wiersz wygasza). Flaga `--paths-ok "<zdanie>"` zapisuje
+`paths_basis`, wygasa po 30 dniach z `ttl_default=True` i liczy się jako
+`paths_basis_filings` w `override_report()`.
+
+Odmowy symetryczne wg precedensu ADR-035: `--paths-ok` przy jednej ścieżce i
+`--paths-ok` obok `--watch-policy` są odrzucane — podstawa, która niczego nie
+usprawiedliwia, to szum schematu, a tutaj gorzej, bo wygaszałaby osąd,
+którego nikt nie musiał podjąć.
+
+Pin kolejności **padł, jak przewidziano**, i został zaktualizowany. Canary
+zablokował baterię na trzech ramionach filujących po dwie ścieżki (`FAULT T`,
+`FAULT RA`, `DW6`) — przedmiot każdego nadal istnieje, więc każde dostało
+`--paths-ok`, nie kasację (J-012). `DW6` jest wzorcowym przypadkiem użycia
+flagi: arm **musi** obserwować nazwę sprzed i po `git mv`, bo bada sam wpis
+rename, i żadna polityka takiego zbioru nie nazwie.
 ### [ ] 3.3 Migracja pozostałych claimów na polityki
 
-Backlog dzisiaj: **65** żywych claimów ze ścieżkami i bez polityki
-(`truth list --watch-policy - --live`). Plik tego repo nazywa **9 polityk**,
-każda wzięta z faktycznie powtarzającego się zbioru, nie z wyobraźni.
+**Skala zmierzona przed wykonaniem (J-038):**
+
+```
+backlog freehand ze sciezkami:                        78
+  SZEROKIE (>1 sciezka, dzis odrzucone przez bramke): 46
+  w budzecie (1 sciezka, legalne jak sa):             32
+z 46 szerokich: 13 pasuje DOKLADNIE do jednej z 9 polityk
+                33 nie pasuje do zadnej -- w 32 ROZNYCH zbiorach
+```
+
+Liczba **32** rozstrzyga kształt kroku: nazwanie 32 kolejnych polityk byłoby tym
+samym defektem z nową etykietą — polityka użyta raz to lista ścieżek z nazwą.
+
+**Koszt jest asymetryczny:** claim jest niezmienny, więc migracja = re-file +
+weryfikacja z osobnej sesji + **retrakcja bramkowana człowiekiem**. 46 claimów
+to ~138 nowych rekordów i 46 ceremonii tombstone, żeby zmienić pole metadanych
+w faktach, które są prawdziwe i poprawnie obserwowane. Zakres — decyzja
+operatora.
 
 ---
 

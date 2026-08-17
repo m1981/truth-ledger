@@ -3478,9 +3478,14 @@ class TestAdvisoryAssembler(unittest.TestCase):
         names = [n for st, n, _ in tm.INTAKE_GATES if st == "pre-execution"]
         # scope-decay sits AFTER the generated gate: it decays only a
         # STORED override basis (the R3 review's dropped-flag catch).
+        # paths-budget-max (FAZA 3 step 3.2) sits directly after
+        # paths-inv-m -- both judge the same field, neither depends on the
+        # other's outcome, and it must precede scope-decay because a
+        # --paths-ok basis is one of the three things that row decays.
         self.assertEqual(names, ["text-nonempty", "near-duplicate-g8",
                                  "quantifier-scope-adr007",
-                                 "paths-inv-m", "generated-paths-adr037",
+                                 "paths-inv-m", "paths-budget-max",
+                                 "generated-paths-adr037",
                                  "scope-decay-adr032",
                                  "blast-forecast-adr039",
                                  "class-precheck"])
@@ -5337,6 +5342,96 @@ class TestIntakeStageReturns(unittest.TestCase):
 
 
 # ------------------------------------ FAZA 3: named watch policies (D-A)
+
+class TestPathsBudgetGate(unittest.TestCase):
+    """FAZA 3 step 3.2: the freehand watch budget, reached THROUGH the
+    INTAKE_GATES table (a row that silently stops being wired fails here).
+
+    The budget is a REFUSAL, not an advisory, and the reason is a
+    measurement rather than a preference: 75 active claims carrying a
+    watch set held 60 DISTINCT sets, and the surviving cost of a wide set
+    is attention -- the whisper names 6.8 claims per touch of a watched
+    file. An advisory over that population is more lines nobody reads."""
+
+    GATE = "paths-budget-max"
+
+    def _run(self, **over):
+        return GATE_FNS[self.GATE](gate_ctx(**over))
+
+    def test_within_budget_passes_untouched(self):
+        self.assertIsNone(self._run(paths=[]))
+        self.assertIsNone(self._run(paths=["a.py"]))
+
+    def test_wide_freehand_set_is_refused_and_teaches_both_exits(self):
+        err = self._run(paths=["a.py", "b.py"])
+        self.assertIsNotNone(err, "a 2-path freehand set must be refused")
+        self.assertIn("--watch-policy", err)
+        self.assertIn("--paths-ok", err)
+        self.assertIn("Nothing was filed", err)
+
+    def test_named_policy_exempts_any_width(self):
+        """The whole bargain the policy file offers: a set reviewed once
+        and committed by name is not re-argued per filing."""
+        self.assertIsNone(self._run(paths=["a.py", "b.py", "c.py"],
+                                    watch_policy="core-suite"))
+
+    def test_stated_basis_admits_a_wide_set(self):
+        self.assertIsNone(self._run(paths=["a.py", "b.py"],
+                                    paths_basis="these two move together"))
+
+    def test_basis_with_nothing_to_excuse_is_refused(self):
+        """The ADR-035 --evidence-exit-ok precedent, verbatim reasoning: a
+        basis that excuses nothing is schema noise, and worse here --
+        it would decay (ADR-032) a judgment nobody needed to make."""
+        err = self._run(paths=["a.py"], paths_basis="why not")
+        self.assertIn("nothing to excuse", err)
+
+    def test_basis_beside_a_policy_is_refused(self):
+        err = self._run(paths=["a.py", "b.py"], watch_policy="core-suite",
+                        paths_basis="why not")
+        self.assertIn("--paths-ok beside --watch-policy", err)
+
+class TestPathsBasisDecay(unittest.TestCase):
+    """ADR-032 extended to --paths-ok (step 3.2). 'This wide watch set is
+    the right one' rots exactly as 'this scope is covered' does, so the
+    same 30-day re-ask applies -- and the notice must name the flag the
+    author actually passed, or it sends them to the wrong one."""
+
+    def _decay(self, **over):
+        ctx = gate_ctx(**over)
+        GATE_FNS["scope-decay-adr032"](ctx)
+        return ctx["ttl_days"], ctx["ttl_default"]
+
+    def test_paths_basis_gets_the_default_shelf_life(self):
+        self.assertEqual(self._decay(paths=["a.py", "b.py"],
+                                     paths_basis="stated"),
+                         (tm.DEFAULT_OVERRIDE_TTL_DAYS, True))
+
+    def test_explicit_ttl_is_the_visible_opt_out(self):
+        self.assertEqual(self._decay(paths=["a.py", "b.py"],
+                                     paths_basis="stated", ttl_days=365),
+                         (365, False))
+
+    def test_no_basis_no_decay(self):
+        self.assertEqual(self._decay(paths=["a.py"]), (None, False))
+
+    def test_notice_names_paths_ok_not_scope_ok(self):
+        _, _, notice = tm.override_decay("stated", None, flag="--paths-ok")
+        self.assertIn("--paths-ok", notice)
+        self.assertNotIn("--scope-ok", notice)
+
+    def test_override_report_counts_paths_basis(self):
+        """The gate's own health metric, and the ADR-046 reader that earns
+        `paths_basis` its place in the envelope. A rising count means
+        authors are talking past the budget rather than naming policies --
+        a signal to add a policy, not to widen the gate."""
+        evs = events(
+            rec("claim", claim_p(text="wide set, stated",
+                                 paths_basis="they move together"),
+                rid="tr-0000pb01"),
+            rec("claim", claim_p(text="ordinary claim"), rid="tr-0000pb02"))
+        self.assertEqual(
+            tm.override_report(evs, NOW)["paths_basis_filings"], 1)
 
 class TestWatchPolicyDecisions(unittest.TestCase):
     """The PURE half of the feature: which filings are refused, and why.

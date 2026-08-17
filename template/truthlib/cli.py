@@ -28,7 +28,7 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
                         ttl_days, basis, single_run, duplicate_ok, claims, *,
                         scope_basis=None, unsafe_ok=False,
                         evidence_exit_basis=None, generated_basis=None,
-                        watch_policy=None):
+                        watch_policy=None, paths_basis=None):
     """Full claim intake, driven by the ADR-034 staged gate table --
     WITHOUT appending. Shared by `claim` and `done --claim` so
     claim-at-death goes through the identical intake, and so `done` can
@@ -70,6 +70,7 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
            "scope_basis": scope_basis,
            "evidence_exit_basis": evidence_exit_basis,
            "generated_basis": generated_basis,
+           "watch_policy": watch_policy, "paths_basis": paths_basis,
            "head": head_commit() if evidence_class == "VERIFIED" else None,
            "overridden_duplicates": [], "ttl_default": False}
     # A1: the stage RETURNS its first refusal; exiting is the shell's job
@@ -80,6 +81,12 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
     payload = {"text": text, "evidence_class": evidence_class,
                "cost_tier": tier, "ttl_days": ctx["ttl_days"],
                "evidence_paths": ctx["paths"]}
+    if paths_basis:
+        # Step 3.2: the stated reason a freehand watch set wider than the
+        # budget is the right one. Stored so it decays (ADR-032) and gets
+        # counted (override_report) -- an override nobody re-asks is an
+        # override that accumulates.
+        payload["paths_basis"] = paths_basis
     if watch_policy:
         # PROVENANCE, beside the resolved globs -- never instead of them.
         # The ledger is append-only, so a claim must keep recording WHAT it
@@ -150,7 +157,8 @@ def cmd_claim(a):
         scope_basis=a.scope_ok, unsafe_ok=a.evidence_unsafe_ok,
         evidence_exit_basis=a.evidence_exit_ok,
         generated_basis=a.generated_ok,
-        watch_policy=getattr(a, "watch_policy", None))
+        watch_policy=getattr(a, "watch_policy", None),
+        paths_basis=getattr(a, "paths_ok", None))
     rec = append_record("claim", payload)
     advisories = intake_advisories(events, a.tier, a.ttl_days, a.scope_ok,
                                    a.evidence_class, payload,
@@ -717,7 +725,8 @@ def cmd_done(a):
             unsafe_ok=a.evidence_unsafe_ok,
             evidence_exit_basis=a.evidence_exit_ok,
             generated_basis=a.generated_ok,
-            watch_policy=getattr(a, "watch_policy", None))
+            watch_policy=getattr(a, "watch_policy", None),
+            paths_basis=getattr(a, "paths_ok", None))
     # ADR-014: the acceptance oracle gates a plain close -- it runs after
     # the cheap intake checks and before ANY append (both-or-neither
     # extends to the oracle). --cancel/--reopen skip it: killing or
@@ -1584,6 +1593,11 @@ CLAIM_INTAKE_FLAGS = [
                    ".truth/watch-policies instead of --paths (FAZA 3): the "
                    "set is reviewed once and reused, rather than "
                    "re-invented per filing"),
+        _flag("--paths-ok", dest="paths_ok", metavar="SENTENCE",
+              help="why THIS freehand watch set is right, when it exceeds "
+                   "the one-path budget and no named policy fits: stored "
+                   "as paths_basis, decays at 30 days (ADR-032) and "
+                   "counted in the override report"),
     _flag("--tier", default="P2", choices=TIERS),
     _flag("--ttl-days", type=int, default=None,
           help="expiry for facts the repo cannot invalidate (G10)"),
