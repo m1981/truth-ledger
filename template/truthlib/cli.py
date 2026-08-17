@@ -1077,6 +1077,72 @@ def cmd_stats(a):
     print(f"queue: {report['queue_size']} item(s)"
           + (f", oldest {age}d" if age is not None else ""))
 
+def cmd_health(a):
+    """FAZA 4 step 4.2: one command, one fold, every health section.
+
+    A READ verb -- deliberately NOT in WRITE_VERBS: it files nothing,
+    takes no ledger lock, and prints no commit-gate banner.
+
+    IT REPORTS AND REFUSES NOTHING, and that is the design rather than
+    timidity. This repository already has surfaces that block -- the
+    commit gate, the intake table, `reproduce`'s exit 7/8, the release
+    battery -- and each owns a question. A second blocking surface over
+    the same facts would be a second place to disagree about them.
+    `health` answers "how is this ledger doing", which is not a gate's
+    question. Exit is 0 unless the ledger cannot be read.
+
+    --reproduce runs the capsule sweep and folds its counts in. It is
+    OPT-IN because it EXECUTES author-recorded commands: a read verb that
+    silently ran the repository's own recipes would be a surprising thing
+    for `health` to do, and the ADR-009 screen is a boundary a reader
+    should cross knowingly. Without it the reproduce section is null and
+    the signal says so, rather than implying a clean sweep nobody ran."""
+    events = load_events()
+    folded = fold(events)
+    history, hstate = blast_history()
+    policies, _pstate, perr = load_watch_policies()
+    reproduce = None
+    if a.reproduce:
+        sweep = reproduce_sweep(events)
+        reproduce = dict(sweep["counts"], examined=sweep["examined"])
+    report = health_report(events, now_dt(), folded=folded,
+                           history=history if hstate == "ok" else None,
+                           history_state=hstate, reproduce=reproduce,
+                           watch_policies=None if perr else policies)
+    if a.json:
+        print(json.dumps(report, indent=2))
+        return
+    for s in report["signals"]:
+        print(f"{'ok  ' if s['level'] == 'ok' else 'WARN'}  {s['code']}: "
+              f"{s['detail']}")
+    print()
+    led = report["ledger"]
+    print("claims by status: " + (", ".join(
+        f"{k}={v}" for k, v in sorted(led["claims_by_status"].items()))
+        or "none"))
+    v = led["verdicts"]
+    print(f"verdicts: agree={v['agree']} diverge_genuine={v['diverge_genuine']} "
+          f"diverge_mechanical={v['diverge_mechanical']} "
+          f"cannot_verify={v['cannot_verify']} retracted={v['retracted']}")
+    for tier, h in sorted(led["half_life"].items()):
+        print(f"half-life {tier}: median {h['median_days']}d (n={h['n']})")
+    ov = report["overrides"]
+    print(f"overrides: scope={ov['scope_basis_filings']} "
+          f"paths={ov['paths_basis_filings']} "
+          f"exit={ov.get('exit_overrides', 0)} "
+          f"duplicate={ov.get('overridden_duplicates', 0)} "
+          f"screened-false={ov.get('screened_false_filings', 0)}")
+    rc = report["retractions"]
+    print("retraction causes: " + (", ".join(
+        f"{k}={v}" for k, v in sorted(rc.get("by_cause", {}).items()))
+        or "none"))
+    sep = report["separation"]
+    print(f"verifier separation: {sep.get('unevidenced', 0)} unevidenced, "
+          f"median {sep.get('median_seconds')}s")
+    b = report["blast"]
+    print(f"churn: floor {b['effective_floor']} ({b['floor_source']}, "
+          f"history {b['history_state']})")
+
 def cmd_staling(a):
     """ADR-050: the staling breakdown -- how much of this ledger's
     invalidation traffic was a false alarm, and which kind of watched
@@ -1170,37 +1236,20 @@ def _capsule_stale_facts(entry, diff_cache, dirty_entries):
                     "watched_buried": [], "watched_dirty": dirty}
     return capsule_stale_shape(entry, ahead, buried, dirty)
 
-def cmd_reproduce(a):
-    """F1.1: re-run every LIVE claim's evidence capsule and classify what
-    came back. Read verb -- deliberately NOT in WRITE_VERBS: it executes
-    author-recorded commands and files NOTHING, so it takes no ledger lock
-    and prints no commit-gate banner.
+def reproduce_sweep(events, since=None):
+    """The capsule sweep as a FUNCTION, extracted in FAZA 4 step 4.2 so
+    `truth health --reproduce` can fold its counts in without owning a
+    second copy of it. The body below is `cmd_reproduce`'s, moved
+    unchanged; that verb now calls this and keeps every byte of its
+    rendering, its --arm filter and its 0/7/8 exit contract.
 
-    The measurement this verb exists for: `invalidate-scan`'s rule -- a
-    watched path moved, so the claim is suspect -- is wrong about seven
-    times in eight in this repo, and over half of those false alarms still
-    cost a human a read (`truth staling`, ADR-050). Nothing so far
-    measures the OTHER error: a claim that is live and whose capsule
-    quietly stopped being producible. Every arm below is a population the
-    ledger could not previously name.
-
-    Execution goes through the SAME screened path `verdict --recheck` and
-    `reaffirm` use -- screen_evidence_command against the CURRENT
-    allowlist (committed policy now, not at filing time), then
-    run_evidence + recheck_verdict against the ADR-051 effective capsule.
-    A second executor or a second matcher is forbidden.
-
-    WHAT THIS MEASURES IS THE WORKING TREE, NOT THE COMMIT. Measured on
-    kuchnie: two live claims (`ls kitchen-cam/src/kitchen_cam | sort`,
-    `grep -rln recipe kuchnie-core/src/kuchnie_core`) reproduce in a tree
-    that carries gitignored __pycache__ directories and do NOT reproduce
-    in a clean checkout of the same commit -- their capsules are hostage
-    to build artifacts no tripwire watches. No warning is emitted for
-    this: an "ignored files present" banner would fire in every repo and
-    train `2>/dev/null` (the ADR-046 noise lesson). The report carries
-    `head` and `dirty` instead, and F1.3's CI lane -- a clean checkout on
-    another machine -- is the mechanism that surfaces it."""
-    events = load_events()
+    Extracted rather than re-implemented for the reason this package
+    repeats: a second sweep would answer the same question with its own
+    screen, its own triage and its own drift. Returns the report dict."""
+    class _A:                       # the two fields the body reads
+        pass
+    a = _A()
+    a.since = since
     if a.since:
         # Same window convention as `stats` and `staling`: the shell
         # filters, and the fold then derives status from what is left --
@@ -1253,11 +1302,51 @@ def cmd_reproduce(a):
     # that disagree are only comparable if they say which tree they ran
     # against (the `staling --append-order` precedent -- a number that
     # does not say how it was produced is not a result).
-    report = {"examined": len(rows), "counts": counts,
-              "capsule_stale_shapes": shapes,
-              "head": head_commit(),
-              "dirty": (None if porcelain is None else bool(porcelain)),
-              "claims": rows}
+    return {"examined": len(rows), "counts": counts,
+            "capsule_stale_shapes": shapes,
+            "head": head_commit(),
+            "dirty": (None if porcelain is None else bool(porcelain)),
+            "claims": rows}
+
+def cmd_reproduce(a):
+    """F1.1: re-run every LIVE claim's evidence capsule and classify what
+    came back. Read verb -- deliberately NOT in WRITE_VERBS: it executes
+    author-recorded commands and files NOTHING, so it takes no ledger lock
+    and prints no commit-gate banner.
+
+    The measurement this verb exists for: `invalidate-scan`'s rule -- a
+    watched path moved, so the claim is suspect -- is wrong about seven
+    times in eight in this repo, and over half of those false alarms still
+    cost a human a read (`truth staling`, ADR-050). Nothing so far
+    measures the OTHER error: a claim that is live and whose capsule
+    quietly stopped being producible. Every arm below is a population the
+    ledger could not previously name.
+
+    Execution goes through the SAME screened path `verdict --recheck` and
+    `reaffirm` use -- screen_evidence_command against the CURRENT
+    allowlist (committed policy now, not at filing time), then
+    run_evidence + recheck_verdict against the ADR-051 effective capsule.
+    A second executor or a second matcher is forbidden.
+
+    WHAT THIS MEASURES IS THE WORKING TREE, NOT THE COMMIT. Measured on
+    kuchnie: two live claims (`ls kitchen-cam/src/kitchen_cam | sort`,
+    `grep -rln recipe kuchnie-core/src/kuchnie_core`) reproduce in a tree
+    that carries gitignored __pycache__ directories and do NOT reproduce
+    in a clean checkout of the same commit -- their capsules are hostage
+    to build artifacts no tripwire watches. No warning is emitted for
+    this: an "ignored files present" banner would fire in every repo and
+    train `2>/dev/null` (the ADR-046 noise lesson). The report carries
+    `head` and `dirty` instead, and F1.3's CI lane -- a clean checkout on
+    another machine -- is the mechanism that surfaces it."""
+    events = load_events()
+    report = reproduce_sweep(events, since=a.since)
+    rows = report["claims"]
+    # The renderer below reads these three as locals, exactly as it did
+    # when the sweep was inline. Rebinding them here (rather than editing
+    # ~40 lines of rendering) keeps the extraction a pure MOVE: every byte
+    # this verb prints, and its 0/7/8 exit contract, are untouched.
+    counts, shapes = report["counts"], report["capsule_stale_shapes"]
+    stale_rows = [r for r in rows if r["arm"] == "capsule-stale"]
     if a.json:
         print(json.dumps(report, indent=2))
     else:
@@ -1836,6 +1925,17 @@ VERB_TABLE = [
         WINDOW_FLAG,
         JSON_FLAG,
     ], cmd_stats),
+
+    ("health", "one fold, every health section (FAZA 4): the "
+               "signals first, then ledger counts, overrides, retraction "
+               "causes, verifier separation and churn. A READ verb -- it "
+               "reports and refuses nothing; the gates that block already "
+               "exist. --reproduce additionally runs the capsule sweep "
+               "(opt-in: it EXECUTES recorded commands)", [
+        _flag("--reproduce", action="store_true",
+              help="also run the capsule sweep and fold its counts in"),
+        JSON_FLAG,
+    ], cmd_health),
 
     ("staling", "what the path-touched-means-"
                 "stale rule cost (ADR-050): every resolved "

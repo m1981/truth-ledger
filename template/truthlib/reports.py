@@ -605,6 +605,162 @@ def retraction_cause_report(events):
 # writes -- the ADR-018/021 hand-copy lesson applied to a literal.
 REAFFIRM_BASIS_PREFIX = REAFFIRM_BASIS.split(":", 1)[0] + ":"
 
+# ------------------------------------------------- FAZA 4: one health view
+
+def health_report(events, now, *, folded=None, history=None,
+                  history_state=None, reproduce=None, watch_policies=None):
+    """FAZA 4 step 4.1: ONE projection over ONE fold, carrying every
+    section that describes this ledger's health.
+
+    WHAT THIS FIXES, and it is not speed. ADR-046 moved five pure ledger
+    projections out of `truth stats` into meta-repo instruments, and
+    `instruments/` is not templated -- so a generated consumer repo can
+    see counts, verdicts, half-life and queue aging, and NOTHING else. No
+    override velocity, no verifier-separation evidence, no churn report,
+    no retraction causes, no staling breakdown. The measurements that say
+    whether a consumer's ledger is being operated honestly exist only in
+    the repository that ships the tool. structure.md names that asymmetry
+    the system's single largest risk; this is the correction.
+
+    The speedup is real but secondary: five instruments are five
+    processes doing five folds (0.55s here) against one fold (0.15s), a
+    3.7x factor that would matter more on a larger ledger than this one.
+
+    A COMPOSITION, NOT A REWRITE. Every section below is an existing pure
+    function called with a shared `folded`, exactly as ADR-034 intended
+    when it threaded that parameter through. Nothing here re-derives a
+    number another function already owns -- a second implementation of
+    any of these is the F1/F5 drift this package keeps refusing.
+
+    PURE, so the shell gathers what needs the world:
+      * `history` / `history_state` -- blast_history()'s parsed log AND
+                       the state string it returned. The state is passed
+                       EXPLICITLY rather than inferred from a missing key:
+                       the first cut guessed it from blast_report's output
+                       shape, and blast_report does not carry one, so the
+                       signal warned "history unavailable" over a perfectly
+                       good log. Inferring a sensor's health from the
+                       absence of a field is the quietly-cold reading this
+                       whole section exists to refuse -- caught here by the
+                       first smoke test, which is the only reason it is a
+                       comment and not a defect.
+      * `reproduce` -- the sweep's counts, or None when it was not run.
+                       Reproduction EXECUTES author-recorded commands, so
+                       it can never happen inside a pure projection; the
+                       section is honest about being absent.
+      * `watch_policies` -- load_watch_policies()'s map, or None.
+
+    `watch` lands here rather than in `stats` on purpose. Step 3.1 tried
+    to put watch-policy adoption in stats_report and TestStatsCLIShape
+    refused it, correctly: ADR-046 ruled that stats carries the Tier B
+    core and analysis metrics live elsewhere. This IS elsewhere, and it
+    ships."""
+    folded = folded if folded is not None else fold(events)
+    claims, _ = folded
+    out = {
+        "ledger": stats_report(events, now, folded=folded),
+        "overrides": override_report(events, now, folded=folded),
+        "separation": separation_report(events, now, folded=folded),
+        "blast": dict(blast_report(events, folded=folded, history=history),
+                      history_state=history_state or
+                      ("ok" if history is not None else "unavailable")),
+        "retractions": retraction_cause_report(events),
+        "staling": staling_report(events),
+        "watch": watch_adoption(claims, watch_policies),
+        "reproduce": reproduce,
+    }
+    out["signals"] = health_signals(out, now)
+    return out
+
+def watch_adoption(claims, policies=None):
+    """FAZA 3's adoption number, over ACTIVE claims only. Counting dead
+    claims would let the ratio improve by retracting things.
+
+    `unnamed` is the migration backlog: claims that watch paths without
+    standing on a committed policy. `orphaned` is the sharper half -- a
+    claim naming a policy the file no longer defines, which means the
+    provenance points at nothing. That cannot happen at intake (the gate
+    refuses an unknown name) but it CAN happen afterwards, by editing
+    .truth/watch-policies, and nothing else would notice."""
+    named, unnamed = {}, 0
+    for e in claims.values():
+        if e["status"] not in ACTIVE_STATUSES:
+            continue
+        p = e["claim"]["payload"]
+        if not p.get("evidence_paths"):
+            continue
+        n = p.get("watch_policy")
+        if n:
+            named[n] = named.get(n, 0) + 1
+        else:
+            unnamed += 1
+    adopted = sum(named.values())
+    orphaned = ([n for n in sorted(named) if n not in policies]
+                if policies is not None else [])
+    return {"by_policy": dict(sorted(named.items())), "adopted": adopted,
+            "unnamed": unnamed, "total": adopted + unnamed,
+            "orphaned_policies": orphaned}
+
+def health_signals(report, now):
+    """The one-line answers, each derived from a threshold that ALREADY
+    exists in the registry. This function deliberately invents no policy:
+    a health view that shipped its own new limits would be asserting
+    standards nobody agreed to, under the authority of looking official.
+
+    Returns a list of {level, code, detail}; level is 'ok' | 'warn'.
+    Nothing here is 'fail' -- `truth health` REPORTS, and the gates that
+    refuse (check-truth, reproduce, the intake table) already exist and
+    already block. A second blocking surface would be a second place to
+    disagree about the same fact."""
+    del now  # every input is already derived; kept for signature symmetry
+    sig = []
+    def add(level, code, detail):
+        sig.append({"level": level, "code": code, "detail": detail})
+
+    age = report["ledger"]["queue_max_age_days"]
+    n = report["ledger"]["queue_size"]
+    if age is not None and age > QUEUE_AGE_WARN_DAYS:
+        add("warn", "queue-aging",
+            f"{n} item(s) in the review queue, oldest {age}d "
+            f"(> {QUEUE_AGE_WARN_DAYS}d): attention debt is accruing")
+    else:
+        add("ok", "queue-aging", f"{n} item(s), none older than "
+                                 f"{QUEUE_AGE_WARN_DAYS}d")
+
+    rep = report["reproduce"]
+    if rep is None:
+        add("warn", "reproduce",
+            "not run -- reproduction executes recorded commands, so this "
+            "view cannot do it for you; `truth reproduce` is the sweep")
+    elif rep.get("capsule-stale") or rep.get("unexecutable"):
+        add("warn", "reproduce",
+            f"{rep.get('capsule-stale', 0)} capsule-stale, "
+            f"{rep.get('unexecutable', 0)} unexecutable of "
+            f"{rep.get('examined', 0)} live claim(s)")
+    else:
+        add("ok", "reproduce",
+            f"{rep.get('reproduces', 0)}/{rep.get('examined', 0)} live "
+            "capsules reproduce here")
+
+    w = report["watch"]
+    if w["orphaned_policies"]:
+        add("warn", "watch-policy-orphaned",
+            "claims name policies .truth/watch-policies no longer "
+            f"defines: {', '.join(w['orphaned_policies'])} -- their "
+            "recorded provenance points at nothing")
+    if w["total"]:
+        add("ok", "watch-adoption",
+            f"{w['adopted']}/{w['total']} active path-claims stand on a "
+            f"named policy ({w['unnamed']} freehand)")
+
+    b = report["blast"]
+    if b.get("history_state") != "ok":
+        add("warn", "blast-history",
+            f"churn history is {b.get('history_state')} -- the forecast "
+            "and its floor are unavailable, and a floor is not a bound "
+            "(ADR-039). Nothing here is a clean zero; it is unknown")
+    return sig
+
 def watched_path_kind(path):
     """ADR-050: the structural KIND of a watched path -- its lowercased
     file suffix, or `<none>` for a suffix-less basename (`Makefile`,

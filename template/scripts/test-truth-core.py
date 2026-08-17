@@ -5512,6 +5512,122 @@ class TestPathsBasisDecay(unittest.TestCase):
         self.assertEqual(
             tm.override_report(evs, NOW)["paths_basis_filings"], 1)
 
+class TestHealthReport(unittest.TestCase):
+    """FAZA 4 step 4.1: one projection over one fold.
+
+    The sections are COMPOSED from functions that already own their
+    numbers, so these cases pin the composition and the parts that are
+    genuinely new -- adoption, the signals, and the honesty of a section
+    whose input was never gathered."""
+
+    def _world(self):
+        return events(
+            rec("claim", claim_p(cost_tier="P1"), rid="tr-0000h001"),
+            rec("verdict", {"claim": "tr-0000h001", "verdict": "agree",
+                            "basis": "b"}, rid="tr-0000h002",
+                ts="2026-07-02T00:00:00+00:00"))
+
+    def test_every_section_is_present_even_when_empty(self):
+        """A missing section and an empty one must not look alike: a
+        consumer reading this JSON has to be able to tell 'nothing to
+        report' from 'this was never computed'."""
+        r = tm.health_report(self._world(), NOW)
+        for k in ("ledger", "overrides", "separation", "blast",
+                  "retractions", "staling", "watch", "reproduce",
+                  "signals"):
+            self.assertIn(k, r, f"health lost the {k} section")
+
+    def test_reproduce_is_null_and_SAYS_so_when_not_run(self):
+        """The load-bearing honesty case. Reproduction executes recorded
+        commands, so a pure projection can never do it -- and a section
+        silently reporting zeros would read as a clean sweep nobody ran,
+        which is the quietly-cold failure this repo refuses."""
+        r = tm.health_report(self._world(), NOW)
+        self.assertIsNone(r["reproduce"])
+        sig = {s["code"]: s for s in r["signals"]}
+        self.assertEqual(sig["reproduce"]["level"], "warn")
+        self.assertIn("not run", sig["reproduce"]["detail"])
+
+    def test_reproduce_counts_fold_in_when_given(self):
+        r = tm.health_report(self._world(), NOW,
+                             reproduce={"examined": 3, "reproduces": 3})
+        sig = {s["code"]: s for s in r["signals"]}
+        self.assertEqual(sig["reproduce"]["level"], "ok")
+        self.assertIn("3/3", sig["reproduce"]["detail"])
+
+    def test_blast_history_state_is_passed_not_inferred(self):
+        """REGRESSION. The first cut guessed the history state from
+        blast_report's output shape -- which carries none -- so the signal
+        announced 'history unavailable' over a perfectly good log.
+        Inferring a sensor's health from a missing field is exactly the
+        reading this section exists to refuse."""
+        r = tm.health_report(self._world(), NOW, history=[],
+                             history_state="ok")
+        self.assertEqual(r["blast"]["history_state"], "ok")
+        self.assertNotIn("blast-history",
+                         {s["code"] for s in r["signals"]})
+        r2 = tm.health_report(self._world(), NOW, history=None,
+                              history_state="shallow")
+        self.assertEqual(r2["blast"]["history_state"], "shallow")
+        sig = {s["code"]: s for s in r2["signals"]}
+        self.assertIn("a floor is not a bound", sig["blast-history"]["detail"])
+
+    def test_signals_never_carry_a_fail_level(self):
+        """`health` REPORTS. Every surface that blocks already exists and
+        owns its question; a second blocking surface over the same facts
+        would be a second place to disagree about them."""
+        r = tm.health_report(self._world(), NOW)
+        self.assertEqual({s["level"] for s in r["signals"]} - {"ok", "warn"},
+                         set())
+
+class TestWatchAdoption(unittest.TestCase):
+    """The FAZA 3 number, in the place ADR-046 leaves room for it."""
+
+    def _claims(self, *specs):
+        evs = []
+        for i, (status, paths, policy) in enumerate(specs):
+            cid = "tr-0000w%03d" % i
+            p = claim_p(cost_tier="P1")
+            p["evidence_paths"] = paths
+            if policy:
+                p["watch_policy"] = policy
+            evs.append(rec("claim", p, rid=cid))
+            if status == "live":
+                evs.append(rec("verdict", {"claim": cid, "verdict": "agree",
+                                           "basis": "b"},
+                               rid="tr-0000v%03d" % i,
+                               ts="2026-07-02T00:00:00+00:00"))
+        claims, _ = tm.fold(events(*evs))
+        return claims
+
+    def test_counts_only_active_path_claims(self):
+        """Counting dead claims would let the ratio improve by retracting
+        things, and claims watching nothing are neither adopted nor
+        freehand -- they are not in this question at all."""
+        c = self._claims(("live", ["a.py"], "core"),
+                         ("live", ["b.py"], None),
+                         ("live", [], None))
+        a = tm.watch_adoption(c)
+        self.assertEqual((a["adopted"], a["unnamed"], a["total"]), (1, 1, 2))
+        self.assertEqual(a["by_policy"], {"core": 1})
+
+    def test_orphaned_policy_is_named(self):
+        """A claim naming a policy the file no longer defines has
+        provenance pointing at nothing. Intake cannot produce this (the
+        gate refuses an unknown name) but an edit to
+        .truth/watch-policies can, and nothing else would notice."""
+        c = self._claims(("live", ["a.py"], "gone"))
+        self.assertEqual(tm.watch_adoption(c, {"core": ["x"]})["orphaned_policies"],
+                         ["gone"])
+        self.assertEqual(tm.watch_adoption(c, {"gone": ["x"]})["orphaned_policies"],
+                         [])
+
+    def test_unknown_policy_map_makes_no_orphan_claim(self):
+        """policies=None means 'the file was not read', which must not be
+        reported as 'every policy is missing'."""
+        c = self._claims(("live", ["a.py"], "gone"))
+        self.assertEqual(tm.watch_adoption(c, None)["orphaned_policies"], [])
+
 class TestWatchPolicyDecisions(unittest.TestCase):
     """The PURE half of the feature: which filings are refused, and why.
 

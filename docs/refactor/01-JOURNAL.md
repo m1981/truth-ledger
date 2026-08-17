@@ -2288,3 +2288,95 @@ truth verdict tr-6308173b retracted --cause restated --successor tr-d0cfd9ea
 core 442 · v04 13 · integrations 28 · canary 284/0 · field-consumers 32/0
 reproduce 66/66 exit 0 · reachability 10/10 · release-battery ALL ARMS GREEN
 ```
+
+---
+
+## J-041 · KROKI 4.1 i 4.2 — jedna projekcja, jeden werb · 2026-08-17
+
+### Uzasadnienie okazało się inne, niż zakładał runbook
+
+Runbook motywował Fazę 4 zwinięciem rozproszenia. Pomiar mówi, że to jest
+**drugorzędne**:
+
+```
+5 instrumentow = 5 procesow = 5 foldow : 0,55 s
+1 proces, 1 fold, te same sekcje       : 0,15 s   (3,7x)
+```
+
+Prawdziwy powód jest inny i większy: **`instruments/` nie jest szablonowane.**
+ADR-046 przeniósł pięć czystych projekcji ledgera do instrumentów meta-repo, a
+te nie jadą do konsumenta. Wygenerowane repo widzi dziś `truth stats` — liczby,
+werdykty, półokres, wiek kolejki — i **nic więcej**: żadnej prędkości nadużyć,
+żadnego dowodu separacji weryfikatora, żadnego raportu churnu, przyczyn
+retrakcji ani rozbicia zestaleń. Pomiary mówiące, czy czyjś ledger jest
+prowadzony uczciwie, istnieją wyłącznie w repozytorium, które wydaje narzędzie.
+`structure.md` nazywa tę asymetrię największym pojedynczym ryzykiem systemu.
+
+### 4.1 — `health_report()`: kompozycja, nie przepisanie
+
+Każda sekcja to **istniejąca czysta funkcja** wołana ze wspólnym `folded` —
+dokładnie tak, jak ADR-034 zamierzał, przewlekając ten parametr. Nic tu nie
+przelicza liczby, którą już ktoś posiada; druga implementacja którejkolwiek
+byłaby dryfem F1/F5.
+
+Czysta, więc powłoka dostarcza to, co wymaga świata: `history` + `history_state`,
+`reproduce` (albo `None`) i `watch_policies`.
+
+**`watch` wylądowało tutaj, nie w `stats` — i to rozwiązuje napięcie z 3.1.**
+Wtedy próbowałem wstawić adopcję polityk do `stats_report`, a
+`TestStatsCLIShape` słusznie odmówił: ADR-046 rozstrzygnął, że `stats` niesie
+rdzeń Tier B. `health` **jest** tym „gdzie indziej" — i w dodatku jedzie do
+konsumenta.
+
+### BŁĄD WŁASNY, złapany pierwszym smoke-testem
+
+Pierwsza wersja wnioskowała stan historii churnu **z braku klucza** w wyjściu
+`blast_report` — a ta funkcja żadnego stanu nie zwraca. Sygnał ogłaszał więc
+„historia niedostępna" nad zupełnie zdrowym logiem. To jest dokładnie ta cicho
+zimna odczytana wartość, przed którą sama sekcja ostrzega: **wnioskowanie o
+zdrowiu sensora z nieobecności pola.** Naprawione jawnym parametrem
+`history_state`, regresja przypięta testem.
+
+### 4.2 — werb `truth health [--json] [--reproduce]`
+
+**Raportuje i niczego nie odmawia**, i to jest projekt, nie nieśmiałość. To repo
+ma już powierzchnie, które blokują — bramka commitu, tabela intake'u, exit 7/8
+`reproduce`, bateria — i każda posiada swoje pytanie. Druga blokująca
+powierzchnia nad tymi samymi faktami byłaby drugim miejscem, w którym można się
+o nie pokłócić. `health` odpowiada „jak się ma ten ledger", co nie jest pytaniem
+bramki.
+
+`--reproduce` jest **opt-in**, bo wykonuje receptury autorów. Werb odczytu, który
+po cichu uruchamia własne przepisy repozytorium, byłby zaskoczeniem; ekran
+ADR-009 to granica, którą czytelnik powinien przekraczać świadomie. Bez flagi
+sekcja jest `null`, a sygnał **mówi, że nie została uruchomiona** — zamiast
+sugerować czysty przemiat, którego nikt nie zrobił.
+
+Sweep kapsuł **wyodrębniony** z `cmd_reproduce` do `reproduce_sweep()`: czysty
+ruch, `cmd_reproduce` woła go i zachowuje każdy bajt renderowania oraz kontrakt
+0/7/8. Alternatywą było drugie przejście z własnym ekranem i własnym triage'em.
+
+### Widok, dziś
+
+```
+WARN  queue-aging: 35 pozycji, najstarsza 17d (> 14d)
+ok    reproduce: 66/66 kapsul odtwarza sie tutaj      (z --reproduce)
+ok    watch-adoption: 2/80 na nazwanej polityce (78 freehand)
+
+overrides: scope=9 paths=3 duplicate=20 screened-false=0
+retraction causes: expired=5, restated=24, unrecorded=96, wrong=0
+verifier separation: 17 unevidenced, mediana 172,7 s
+churn: floor 55 (calibrated, history ok)
+```
+
+`unrecorded=96` jest tu najciekawszą liczbą, jaką ten widok ujawnia od razu:
+96 retrakcji sprzed ADR-049 nie ma zapisanej przyczyny. Nie jest to defekt do
+naprawy wstecz — to pomiar tego, ile osądu przepadło, zanim pole istniało.
+
+### Weryfikacja
+
+```
+core 450 (8 nowych) · v04 13 · structural 116 · integrations 28 · canary 284/0
+field-consumers 32/0 · reproduce 66/66 exit 0 · reachability 11/11
+release-battery ALL ARMS GREEN
+```
