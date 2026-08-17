@@ -128,6 +128,68 @@ class TestFold(unittest.TestCase):
                     ts="2026-07-05T00:00:00.000000+00:00")))
             self.assertEqual(claims["tr-00000001"]["status"], "live", kind)
 
+    def test_invalidation_is_confluent_under_permutation(self):
+        """CHARACTERIZATION (Reproduce-on-Read step 2.5). The existing
+        confluence arms permute VERDICTS only -- `test_retracted_absorbs_
+        in_any_order` and `test_verdict_precedence_is_confluent` both build
+        their permutation sets from verdict records. No arm has ever folded
+        an `invalidation` record under permutation, and that is precisely
+        the record kind step 2.5 removes from the fold.
+
+        So this pins TODAY's algebra before it is changed, in every physical
+        order a union merge can produce. It is a characterization test, not
+        a specification: when 2.5 lands, this arm is EXPECTED to move, and
+        the diff on it is the visible record of what the algebra change did.
+        An arm that quietly kept passing across that change would mean the
+        change did nothing.
+
+        The ledger carries 1971 such records. They stay readable forever
+        (append-only history is never rewritten), so whatever 2.5 folds
+        them to, it must fold them to it in EVERY order."""
+        import itertools
+        claim = rec("claim", claim_p())
+        agree = rec("verdict", {"claim": "tr-00000001", "verdict": "agree",
+                                "basis": "verified"}, rid="tr-0000001a",
+                    ts="2026-07-05T00:00:00.000000+00:00")
+        inval = rec("invalidation", {"claim": "tr-00000001",
+                                     "commit": "abc1234", "reason": "paths changed",
+                                     "touched": ["f.txt"]}, rid="tr-0000001b",
+                    ts="2026-07-08T00:00:00.000000+00:00")  # LATER than agree
+        seen = set()
+        for perm in itertools.permutations([claim, agree, inval]):
+            claims, _ = tm.fold(events(*perm))
+            seen.add(claims["tr-00000001"]["status"])
+        self.assertEqual(
+            seen, {"stale"},
+            "an invalidation later than the agree must fold to ONE status in "
+            "every physical order -- if this set has more than one member, "
+            "union-merge confluence is broken for the invalidation path")
+
+    def test_legacy_invalidation_records_stay_readable(self):
+        """BACKWARD READ (step 2.5/2.6). The write path for `invalidation`
+        is being retired, but 1971 of them are already in this ledger and
+        append-only history is never rewritten. The fold must keep PARSING
+        them -- whatever status it derives -- and must never raise.
+
+        This arm survives step 2.5 unchanged, because it asserts readability
+        rather than a particular status. That is the difference between
+        retiring a writer and breaking a reader."""
+        claims, _ = tm.fold(events(
+            rec("claim", claim_p()),
+            rec("invalidation", {"claim": "tr-00000001", "commit": "abc1234",
+                                 "reason": "paths changed",
+                                 "touched": ["a.txt", "b.txt"]},
+                rid="tr-0000001c")))
+        self.assertIn("tr-00000001", claims)
+        self.assertIn(claims["tr-00000001"]["status"], tm.STATUSES)
+        # a legacy record naming a claim the ledger does not carry must be
+        # ignored, not crash the fold: union merge can deliver one branch's
+        # invalidation without the other branch's claim
+        claims, _ = tm.fold(events(
+            rec("invalidation", {"claim": "tr-000000ff", "commit": "abc1234",
+                                 "reason": "orphan"}, rid="tr-0000001d")))
+        self.assertNotIn("tr-000000ff", claims)
+
     def test_retracted_absorbs_in_any_order(self):
         """ADR-020: retracted wins whether earlier or later than another
         verdict and independent of physical order -- set_status short-
