@@ -613,6 +613,76 @@ def capsule_stale_shape(entry, touched_ahead, touched_buried,
             "watched_touched": ahead, "watched_buried": buried,
             "watched_dirty": dirty}
 
+def selector_screen(paths, changed):
+    """FAZA 3 step 3.3: split a set of changed files by WHO watched them.
+
+    Returns (settled, contested).
+
+      settled    files matched by at least one SELECTOR-FREE target. A
+                 plain path watch means "any byte in this file", so the
+                 touch is the answer and nothing needs reading.
+      contested  {file: [selector target, ...]} -- files matched ONLY by
+                 targets naming a sub-tree. A touch here is not yet an
+                 answer: it says the file moved, and the claim watches a
+                 part of it. Deciding needs the bytes at two revisions,
+                 which is the shell's job (shellio.structural_hash) and
+                 structural_moved's to judge.
+
+    THE ASYMMETRY IS THE FEATURE. Settled is decided by matching alone,
+    so a repo that uses no selectors pays nothing: contested is empty and
+    every caller behaves exactly as it did before this function existed.
+    Only a selector-bearing claim ever costs a file read, and only for
+    the files its own watch set matched.
+
+    A file matched by BOTH a plain and a selector target is settled --
+    the plain watch already said "any byte", and no sub-tree digest can
+    withdraw a broader claim the same author also filed. Pure."""
+    plain = [p for p in paths if not split_selector_target(p)[1]]
+    sel = [p for p in paths if split_selector_target(p)[1]]
+    settled, contested = [], {}
+    for f in changed:
+        if match_paths(f, plain):
+            settled.append(f)
+            continue
+        watchers = [t for t in sel if match_paths(f, [t])]
+        if watchers:
+            contested[f] = watchers
+    return settled, contested
+
+def structural_moved(contested, digests):
+    """Which contested files actually moved, given two digests per target.
+
+    `digests` maps a target to (before, after, err); `err` is None or the
+    (kind, detail) pair shellio.structural_hash returns for a revision it
+    could not reduce. Returns (moved, undecided):
+
+      moved      files where some watching target's sub-tree digest
+                 differs between the two revisions. THE ONE THING THIS
+                 FEATURE PROMISES: a file whose every watching selector
+                 hashes identically is absent from this list, so a
+                 dependency bump three keys over stops being an event.
+      undecided  [(file, target, reason)] -- a target whose digest could
+                 not be computed at one end.
+
+    UNDECIDED IS NOT SILENCE, and the direction matters. A caller must
+    treat an undecided file as MOVED: "I could not read the sub-tree" is
+    not evidence that the fact held, and a feature whose failure mode is
+    to quietly suppress drift would be worse than the noise it replaces.
+    The reasons ride along so the report can say which files it could not
+    judge and why -- an unparseable file and an unchanged one must never
+    render as the same line. Pure."""
+    moved, undecided = set(), []
+    for f in sorted(contested):
+        for t in contested[f]:
+            before, after, err = digests.get(
+                t, (None, None, ("not-probed", "no digest was gathered")))
+            if err:
+                undecided.append((f, t, err))
+                moved.add(f)      # fail toward reporting, never toward silence
+            elif before != after:
+                moved.add(f)
+    return sorted(moved), undecided
+
 # previously_agreed and reaffirm_triage were REMOVED in refactor step 2.6
 # together with the `truth reaffirm` verb they served. Their
 # subject no longer exists: reaffirm operated on stale claims, and after

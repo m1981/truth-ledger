@@ -97,7 +97,26 @@ def _gate_paths_budget(ctx):
     would decay a judgment nobody needed to make."""
     paths, basis = ctx["paths"], ctx.get("paths_basis")
     policy = ctx.get("watch_policy")
-    over = len(paths) > MAX_FREEHAND_WATCH_PATHS
+    # STRUCTURAL EXEMPTION (step 3.1). The budget counts targets that
+    # were picked FREEHAND; a `#selector` target is not one of those, and
+    # the difference is not a favour granted to a new feature.
+    #
+    # The budget exists because 75 claims held 60 distinct watch sets --
+    # sets accumulated rather than chosen. You cannot accumulate
+    # `/dependencies/stripe` by accident: the author had to name an exact
+    # key path or heading, and INV-M has already read the file and
+    # confirmed it resolves. That is a narrower review than --paths-ok
+    # asks for, performed mechanically, one target at a time.
+    #
+    # And the cost the budget is denominated in does not apply. Each extra
+    # freehand path costs a whisper line on every edit AND a false
+    # "capsule-stale" whenever any byte of the file moves; a selector
+    # target costs the whisper line but not the false stale, because
+    # `truth reproduce` hashes the sub-tree (step 3.3). Charging both at
+    # the same rate would price precision like breadth and push authors
+    # back to the wide glob this file exists to discourage.
+    freehand = [p for p in paths if not split_selector_target(p)[1]]
+    over = len(freehand) > MAX_FREEHAND_WATCH_PATHS
     if basis and policy:
         return ("truth: --paths-ok beside --watch-policy -- the named "
                 "policy already carries the review this basis would "
@@ -113,7 +132,7 @@ def _gate_paths_budget(ctx):
                 "nothing to excuse is schema noise; drop the flag).")
     if not over or policy or basis:
         return None
-    return (f"truth: {len(paths)} watched paths picked by hand -- the "
+    return (f"truth: {len(freehand)} watched paths picked by hand -- the "
             f"freehand budget is {MAX_FREEHAND_WATCH_PATHS} "
             f"({WATCH_POLICIES_REL}). Measured on this ledger, 75 claims "
             "with a watch set held 60 DISTINCT sets: almost every set was "
@@ -123,6 +142,8 @@ def _gate_paths_budget(ctx):
             f"  --watch-policy <name>   a reviewed set from {WATCH_POLICIES_REL}\n"
             "  --paths-ok \"<sentence>\"  why THIS set is right (stored, "
             "decays at 30 days, counted)\n"
+            "  path.json#/a/b          watch the SUB-TREE the recipe "
+            "reads; selector targets are outside this budget\n"
             "Nothing was filed.")
 
 def _gate_scope_decay(ctx):
@@ -190,6 +211,58 @@ def _gate_inv_m(ctx):
                 "normalized diff path, so it is a dead tripwire despite "
                 "the glob exemption. Use a reachable repo-relative "
                 "pattern like 'dir/**' or 'dir/*.py'.")
+    # --- step 3.1: the same INV-M question, asked of the SELECTOR ------
+    # A `#selector` is a second way to build a tripwire that cannot fire,
+    # and all three arms below are refused for the one reason the older
+    # arms are: the author is standing here now, and in a week the claim
+    # will look filed and healthy while watching nothing.
+    on_glob = selector_on_glob_paths(paths)
+    if on_glob:
+        return ("truth: --paths entry puts a '#selector' on a GLOB "
+                f"(INV-M): {on_glob!r} -- a selector names a sub-tree of "
+                "ONE document, so there is no single file for the digest "
+                "to be of. Worse than dead: the matcher reads the file "
+                "half, so this would silently watch the whole glob while "
+                "reading as if it were precise. Name the file, or drop "
+                "the selector and watch the glob you actually mean.")
+    unsupported = unsupported_selector_paths(paths)
+    if unsupported:
+        exts = ", ".join(sorted(SUPPORTED_STRUCTURED_EXTENSIONS))
+        shown = [f"{t} ({e})" for t, e in unsupported]
+        return ("truth: --paths entry selects a sub-tree of a format that "
+                f"has none (INV-M): {shown!r} -- sub-tree selectors are "
+                f"supported for: {exts}. For any other file the unit is "
+                "the whole file, so drop the '#...' and watch the path "
+                "(a selector here would raise on first read, days from "
+                "now, on a claim that already looks filed).")
+    # The LIVE arm: a selector that is well-formed and well-placed can
+    # still name nothing in the document as it stands today, which is
+    # dead_literal_paths' failure one level down. This is the only INV-M
+    # arm that reads file CONTENT, and it costs one read per selector
+    # target -- paid by selector-bearing claims only.
+    for t in paths:
+        if not split_selector_target(t)[1]:
+            continue
+        _digest, err = structural_hash(t)
+        if not err:
+            continue
+        kind, detail = err
+        if kind == "missing":
+            continue        # dead_literal_paths already owns absent files
+        if kind == "unsupported":
+            # unsupported_selector_paths screens by EXTENSION and passed
+            # this one, so the format is in the grammar and the parser is
+            # missing HERE -- .toml on a pre-3.11 interpreter. A different
+            # fact from a dead selector and it gets its own sentence: the
+            # target may be perfectly correct on a colleague's machine.
+            return (f"truth: --paths selector cannot be read on this "
+                    f"interpreter (INV-M): {t!r} -- {detail}")
+        return (f"truth: --paths selector resolves to nothing (INV-M): "
+                f"{t!r} -- {detail}. A selector that names no sub-tree in "
+                "the file as it stands is a dead tripwire from the moment "
+                "it is filed: the digest can never change, so the claim "
+                "would report 'unchanged' forever. Fix the key path or "
+                "heading, or watch the whole file.")
     return None
 
 def _gate_generated(ctx):
@@ -204,8 +277,17 @@ def _gate_generated(ctx):
     ctx["generated_source"] = source
     if source != "file":
         return None
+    # Step 3.1: the FILE half is the subject. match_paths strips the
+    # selector from its PATTERNS, but here evidence_paths are the thing
+    # being matched and the generated globs are the patterns, so the
+    # strip has to happen on this side too -- and the `p == g` equality
+    # arm never strips anything at all. Without this line, appending
+    # `#/a/b` to a generated path is a one-character bypass of ADR-037:
+    # the watch still restales on every regeneration (match_paths ignores
+    # the selector everywhere downstream) while this gate stops seeing it.
     hits = sorted(p for p in ctx["paths"]
-                  if any(match_paths(p, [g]) or p == g for g in globs))
+                  if any(match_paths(watch_target_path(p), [g])
+                         or watch_target_path(p) == g for g in globs))
     if not hits:
         return None
     if ctx["generated_basis"]:
@@ -310,6 +392,29 @@ def _gate_paths_churn(ctx):
     forecast = ctx.get("blast_forecast")
     if forecast is None or not ctx["paths"]:
         return None
+    # STRUCTURAL EXEMPTION (step 3.1): the refusal is decided over the
+    # SELECTOR-FREE subset, and ctx["blast_forecast"] is deliberately left
+    # alone -- ADR-039's advisory keeps reporting the file-level number.
+    #
+    # Two different questions, so two numbers. blast_forecast counts
+    # commits that touched the FILE. For `package.json#/dependencies/
+    # stripe` that is an upper bound so loose it is nearly noise: every
+    # dependency bump in the repo is in it, and approximately none of
+    # them move the sub-tree. Refusing on it would refuse precisely the
+    # mechanism that fixes churn -- the author narrows a hot glob to the
+    # key their recipe reads, and the gate that asked them to narrow it
+    # then refuses the narrowed version, because the file underneath is
+    # still hot. That is the gate teaching its own bypass (ADR-049), and
+    # the bypass it teaches is "go back to the wide glob".
+    #
+    # The advisory keeps the wide number because it is still TRUE as an
+    # upper bound, and a selector claim on a genuinely hot file is worth
+    # a line of prose. It is not worth a refusal.
+    plain = [p for p in ctx["paths"] if not split_selector_target(p)[1]]
+    if not plain:
+        return None
+    if plain != ctx["paths"]:
+        forecast = blast_forecast(plain, ctx.get("blast_history"))
     floor, source = effective_blast_floor(ctx["claims"],
                                           ctx.get("blast_history"))
     if forecast < floor:
@@ -332,6 +437,9 @@ def _gate_paths_churn(ctx):
             f"  --watch-policy <name>   a reviewed set from {WATCH_POLICIES_REL}\n"
             "  --paths-ok \"<sentence>\"  why this breadth is right "
             "(stored, decays at 30 days, counted)\n"
+            "  path.json#/a/b          watch the SUB-TREE, not the file: "
+            "a selector target is judged on whether ITS digest moved, so "
+            "it is outside this floor entirely\n"
             "  ...or narrow the globs to the files the recipe actually reads.\n"
             "Nothing was filed.")
 

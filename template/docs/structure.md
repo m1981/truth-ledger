@@ -60,6 +60,8 @@ flowchart TB
     end
 
     REG --> KER
+    SEL --> KER
+    SEL --> SIO
     KER --> EVI
     KER --> POL
     EVI --> REP

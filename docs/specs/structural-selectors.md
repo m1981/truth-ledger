@@ -1,7 +1,8 @@
 # Structural Selectors
 
-Status: implemented (`template/truthlib/structural.py`,
-`template/scripts/test-structural.py`)
+Status: implemented and **wired** (`template/truthlib/structural.py`,
+`template/scripts/test-structural.py`; integration in FAZA 3 step 3.1/3.3 —
+see §9)
 Applies to: truth-ledger Structural Policy Anchors
 
 A **structural selector** names a sub-tree of a file and reduces it to a stable
@@ -275,3 +276,70 @@ iterations on Python 3.14 / Apple Silicon:
 Cost is dominated by parsing, which is redone on every call — the module is
 stateless by design. Callers hashing many selectors against one large file
 should parse once and use `resolve_*` + `canonicalize` directly.
+
+`reproduce_sweep` keys a `hash_cache` on `(target, revision)` for exactly this
+reason: claims sharing a watch policy would otherwise re-read and re-parse the
+same `package.json` once per claim.
+
+---
+
+## 9. Integration (FAZA 3, step 3.1 / 3.3)
+
+The module was a leaf with no importers until FAZA 3. It is now reached through
+two seams and no others.
+
+**`kernel.watch_target_path`** — the file half of a target. `match_paths` strips
+the selector from each *pattern* before globbing, so every consumer of
+`evidence_paths` (the whisper, `impact --inverse`, the ADR-038 dirty-watch
+advisory, the ADR-039 churn forecast, the reproduce differ) is selector-correct
+without knowing selectors exist. Doing it in the matcher rather than at six call
+sites is deliberate: `#` is not a glob metacharacter, so an unstripped pattern
+would be `re.escape`d into something git can never emit — a dead tripwire of the
+exact INV-M shape, arrived at silently.
+
+**`shellio.structural_hash(target, rev=None)`** — the bytes-to-digest path, the
+only place a file is read for a selector. Returns `(digest, err)` where `err` is
+a `(kind, detail)` pair, `kind ∈ {missing, unsupported, malformed, not-found,
+selector-error}`. The kinds are kept apart because they mean different things: a
+`package.json` that no longer parses says *nothing* about
+`/dependencies/stripe`, and reporting it as drift would be a false alarm of the
+precise kind this feature exists to remove.
+
+### What changes for a claim
+
+| | whole-file watch | selector watch |
+|---|---|---|
+| pre-edit whisper | fires on any edit | fires on any edit *(unchanged — a pre-edit reader cannot hash a file that has not been written)* |
+| `truth reproduce` | any byte moves → `watched-moved` | only a moved **sub-tree digest** counts |
+| one-path budget (`MAX_FREEHAND_WATCH_PATHS`) | counted | **exempt** |
+| ADR-039 churn floor | refuses at the floor | **exempt**; the advisory still reports the file-level forecast |
+
+The two exemptions are not a courtesy to a new feature. The budget exists
+because watch sets were *accumulated* rather than chosen, and a selector cannot
+be accumulated by accident — the author names an exact key path or heading and
+INV-M reads the file to confirm it resolves. The churn floor is measured on the
+file, which for a selector target is an upper bound so loose it is nearly noise;
+refusing on it would refuse the very narrowing the gate asks for, which is a gate
+teaching its own bypass (ADR-049).
+
+### Intake refusals (INV-M, step 3.1)
+
+A selector is refused at filing — never at first read, days later, on a claim
+that already looks healthy — when it is:
+
+- **on a glob** (`template/**#/a/b`) — a selector names a sub-tree of *one*
+  document, so there is no single file for the digest to be of;
+- **on an unsupported format** (`gates.py#foo`) — see §7;
+- **resolving to nothing today** — the live arm calls `structural_hash` and
+  refuses a key path or heading that names no sub-tree in the file as it stands.
+
+An *absent file* is not refused here: `dead_literal_paths` already owns that.
+
+### Known limitation: commas
+
+`--paths` is comma-split, so a selector may not contain a comma. Markdown
+heading queries are the only selectors where this is reachable in practice; use
+the slug form (`#2-session-management`) rather than the literal title
+(`#2. Session, Management`). The split is ambiguous by construction — `a.md#X, b`
+could be one target or two — so this is a documented restriction, not a parser
+bug to fix later.

@@ -268,8 +268,16 @@ def malformed_path_list(paths):
     means the caller forgot a comma -- '--paths "a.sh b.sh"' stores as
     ONE literal ('a.sh b.sh') matching nothing, a dead invalidation
     tripwire from the moment it's filed (found by inspection in the
-    pilot ledger: tr-3591aae0)."""
-    return [p for p in paths if re.search(r"\s", p)]
+    pilot ledger: tr-3591aae0).
+
+    THE FILE HALF ONLY, since step 3.1. A Markdown selector is a heading
+    query and headings have spaces in them: `docs/spec.md#2. Session
+    Management` is the ordinary spelling, and the slug form is an
+    alternative the author may not know. Screening the whole target
+    would refuse the documented syntax (spec §2.2) as a missing comma --
+    the reverse of this check's purpose, which is to catch a token that
+    can never match, not to forbid one that reads oddly."""
+    return [p for p in paths if re.search(r"\s", watch_target_path(p))]
 
 def dead_literal_paths(paths, tracked):
     """INV-M: a literal path (no glob metacharacters) matching zero
@@ -277,10 +285,54 @@ def dead_literal_paths(paths, tracked):
     failure, reached a different way. Explicit globs ('*'/'?') are
     EXEMPT: watching a pattern that matches nothing yet is a legitimate
     intent (a not-yet-created file under a directory), unlike a plain
-    literal, which has nothing else it could mean."""
+    literal, which has nothing else it could mean.
+
+    Compared on the FILE half (step 3.1): `package.json#/dependencies/
+    stripe` is tracked as `package.json`, and comparing the whole target
+    against the tracked set would make every selector a dead literal --
+    refusing the feature at its own intake."""
     tracked_set = set(tracked)
     return [p for p in paths
-            if "*" not in p and "?" not in p and p not in tracked_set]
+            if "*" not in (q := watch_target_path(p)) and "?" not in q
+            and q not in tracked_set]
+
+def selector_on_glob_paths(paths):
+    """INV-M, step 3.1: a `#selector` on a GLOB is refused. A selector
+    resolves against one document -- `extract_structural_hash` takes the
+    bytes of a single file -- so `template/**#/a/b` names no fact: there
+    is no one sub-tree for the digest to be OF, and nothing downstream
+    could pick a file to read. Left unrefused it would be worse than
+    dead: match_paths strips the selector, so the target would quietly
+    behave as the bare glob and watch far more than the author wrote.
+
+    Sound and complete on its own terms -- a selector is present or it
+    is not, the pattern has a metacharacter or it does not."""
+    return [p for p in paths
+            if split_selector_target(p)[1]
+            and any(c in watch_target_path(p) for c in "*?")]
+
+def unsupported_selector_paths(paths):
+    """INV-M, step 3.1: a `#selector` on a file type with no sub-trees
+    (`.py`, `.ts`, `.sh`) is refused AT INTAKE rather than at first read.
+
+    extract_structural_hash raises UnsupportedFormatError for these, and
+    the raise would land in `truth reproduce` -- days later, on a claim
+    that already looks filed and healthy. The whole INV-M stance is that
+    a tripwire which cannot fire must be caught while the author is
+    still standing there, and this is the same defect with a new cause.
+
+    Returns [(target, ext), ...]; the caller names the supported set.
+    Pure: the decision is the extension, never the file."""
+    bad = []
+    for p in paths:
+        path, selector = split_selector_target(p)
+        if not selector:
+            continue
+        base = path.rsplit("/", 1)[-1]
+        ext = base.rsplit(".", 1)[-1].lower() if "." in base[1:] else ""
+        if ext not in SUPPORTED_STRUCTURED_EXTENSIONS:
+            bad.append((p, "." + ext if ext else "<none>"))
+    return bad
 
 def dead_glob_paths(paths):
     """INV-M / ADR-024 (H5 follow-up): a glob is EXEMPT from
@@ -298,14 +350,18 @@ def dead_glob_paths(paths):
     dead globs (e.g. a nested-submodule '.git') may still slip through;
     that is INV-M's residual class, not a boundary claim (cf. ADR-021)."""
     dead = []
-    for p in paths:
+    for target in paths:
+        # Step 3.1: the FILE half decides reachability -- git emits paths,
+        # never selectors -- but the ORIGINAL target is what gets reported,
+        # so the refusal quotes the string the author actually typed.
+        p = watch_target_path(target)
         if "*" not in p and "?" not in p:
             continue                       # a literal: dead_literal_paths owns it
         comps = p.split("/")
         if comps[0] == ".git":             # under the git dir -- never tracked
-            dead.append(p)
+            dead.append(target)
         elif any(c in ("", ".", "..") for c in comps):  # absolute, trailing
-            dead.append(p)                 # slash, '//', or a '.'/'..' component
+            dead.append(target)            # slash, '//', or a '.'/'..' component
     return dead
 
 def verified_intake_error(evidence_cmd, evidence_paths, ttl_days, head):

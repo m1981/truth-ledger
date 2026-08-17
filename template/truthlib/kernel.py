@@ -15,6 +15,14 @@ import re
 from datetime import datetime
 
 from truthlib.registry import *
+# FAZA 3 step 3.1: a watch target may carry a `#selector` suffix naming a
+# SUB-TREE of the file (`package.json#/dependencies/stripe`). structural is
+# a leaf of the pure core -- it imports nothing from truthlib and does no
+# I/O -- so kernel may take the edge without introducing a cycle, and
+# split_selector_target stays the ONE splitter (the F1/F5 rule: a second
+# copy of "where does the path end and the selector begin" would drift).
+from truthlib.structural import (SUPPORTED_STRUCTURED_EXTENSIONS,
+                                 split_selector_target)
 
 # ------------------------------------------------------------ primitives
 
@@ -68,8 +76,47 @@ def _glob_rx(pat):
             out.append(re.escape(pat[i])); i += 1
     return re.compile("^" + "".join(out) + "$")
 
+def watch_target_path(target):
+    """The FILE half of a watch target: `a.json#/b/c` -> `a.json`, and an
+    unselected target unchanged. One line, but it is the seam every
+    consumer of `evidence_paths` now goes through, so it is named."""
+    return split_selector_target(target)[0]
+
+def watch_target_paths(targets):
+    """`watch_target_path` over a watch set, order and duplicates kept --
+    callers hand this to git (`git log -- <paths>`) or to a tracked-file
+    check, where the selector is not a path component and must not go."""
+    return [watch_target_path(t) for t in targets]
+
 def match_paths(path, patterns):
+    """Does `path` (a repo-relative diff path) match any of `patterns`?
+
+    THE SELECTOR IS STRIPPED FROM EACH PATTERN, and that placement is the
+    load-bearing decision of step 3.1. A pattern like
+    `package.json#/dependencies/stripe` names a sub-tree of a file whose
+    PATH is `package.json`; git only ever emits `package.json`, and `#`
+    is not a glob metacharacter, so `_glob_rx` would escape it and the
+    pattern could never match anything git can produce -- a dead tripwire
+    of exactly the INV-M shape this repo refuses, arrived at silently.
+
+    Doing it HERE rather than at each call site is deliberate. There are
+    six independent readers of a claim's watch set (the whisper, the
+    dirty-watch advisory, the churn forecast, the scan's differ, the
+    reproduce sweep, citation scope) and "remember to strip first" is a
+    rule five of them would eventually forget. One matcher, one place --
+    the same F1/F5 argument impact_report's docstring already makes for
+    not writing a second matcher.
+
+    WHAT THIS DOES NOT DO: decide whether the sub-tree actually changed.
+    Selector-aware matching answers "could this edit touch the file the
+    selector lives in", which is what a PRE-edit reader (the whisper) and
+    a commit-range differ can honestly ask. Whether the named sub-tree
+    moved is a question about file CONTENT at two revisions, so it is
+    answered where the bytes are -- evidence.structural_drift, reached
+    through shellio. A matcher that pretended to answer it would have to
+    read files, and this module is pure."""
     for pat in patterns:
+        pat = watch_target_path(pat)
         if pat.endswith("/**"):
             base = pat[:-3]
             if path == base or path.startswith(base + "/"):

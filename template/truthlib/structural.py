@@ -29,8 +29,29 @@ import datetime as _dt
 import hashlib
 import json
 import re
-import tomllib
 from typing import Any, Final
+
+try:
+    import tomllib
+except ModuleNotFoundError:                       # Python < 3.11
+    # OPTIONAL, and it became optional the moment kernel imported this
+    # module (FAZA 3 step 3.1). Before that, `structural` was a leaf
+    # nothing reached and a hard `import tomllib` cost nothing; now it
+    # sits under `truth` itself, so a hard import would have raised the
+    # WHOLE CLI's Python floor from 3.9 to 3.11 -- for every consumer
+    # repo, to serve one of four supported formats.
+    #
+    # Caught by the canary's tracker arms, which run `truth ready` under
+    # PATH="/usr/bin:/bin" precisely to pin that the CLI works on a bare
+    # system interpreter (3.9 on macOS). Nine arms went from CAUGHT to
+    # MISSED on a raw ModuleNotFoundError traceback.
+    #
+    # JSON and Markdown selectors are unaffected. A TOML selector raises
+    # UnsupportedFormatError naming the interpreter, which INV-M turns
+    # into a refusal AT INTAKE -- so the failure is "this repo's Python
+    # cannot watch that", said once to the author, not a traceback days
+    # later inside a sweep.
+    tomllib = None
 
 __all__ = [
     "SelectorError",
@@ -75,6 +96,12 @@ class UnsupportedFormatError(SelectorError):
 
     Whole-file hashing works for every extension; only ``.json``, ``.toml`` and
     ``.md``/``.markdown`` support a ``#selector``.
+
+    Also raised when the format is supported by the grammar but has no parser
+    on *this* interpreter: ``.toml`` needs ``tomllib`` (Python 3.11+), which is
+    imported optionally so that a 3.9 consumer keeps a working CLI. Same class
+    because the caller's remedy is the same one -- drop the selector and watch
+    the whole file -- and the message says which of the two it is.
     """
 
 
@@ -479,6 +506,13 @@ def extract_structural_hash(
         return _digest(_VALUE_DOMAIN, canonicalize(resolve_json_pointer(document, selector)))
 
     if extension == "toml":
+        if tomllib is None:
+            raise UnsupportedFormatError(
+                "TOML sub-tree selectors need Python 3.11+ (tomllib) and "
+                "this interpreter has no tomllib. JSON and Markdown "
+                "selectors are unaffected; for TOML either run truth on a "
+                "3.11+ interpreter or omit the selector and watch the "
+                "whole file.")
         try:
             document = tomllib.loads(_decode(file_content_bytes, "TOML"))
         except tomllib.TOMLDecodeError as exc:

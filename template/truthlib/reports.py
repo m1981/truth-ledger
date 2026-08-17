@@ -770,8 +770,15 @@ def watched_path_kind(path):
     "specification" and which "implementation", and a shipped guess
     would be wrong in most repos. The suffix is the language-agnostic
     proxy the Estler reading needs (prose vs code) and it is derivable
-    from the record alone. Pure."""
-    base = path.rsplit("/", 1)[-1]
+    from the record alone. Pure.
+
+    A `#selector` is stripped first (step 3.1): the kind of
+    `docs/spec.md#§2-jwt` is `.md`, the suffix of the file the section
+    lives in. Reading the raw target would take the suffix of the LAST
+    selector segment -- `<none>` for `/dependencies/stripe`, `.ruff` for
+    `tool.ruff.lint` -- and quietly invent kinds out of key names, which
+    is the Estler split this report exists to measure being fed noise."""
+    base = watch_target_path(path).rsplit("/", 1)[-1]
     if "." in base[1:]:
         return "." + base.rsplit(".", 1)[-1].lower()
     return "<none>"

@@ -29,6 +29,14 @@ from datetime import datetime, timedelta, timezone
 
 from truthlib.registry import *
 from truthlib.kernel import *
+# FAZA 3 step 3.3: the sub-tree digest. structural is a pure leaf that
+# receives file BYTES as data and never opens a file -- reading the bytes
+# is this module's job by definition, so the split lands exactly on the
+# C5 edge. The names below are the error taxonomy; the refusal WORDING
+# that quotes them is the caller's (policy/gates), never a loader's.
+from truthlib.structural import (MalformedFileError, SelectorError,
+                                 SelectorNotFoundError, UnsupportedFormatError,
+                                 extract_structural_hash)
 
 # --- A3: the explicit substitution seam ----------------------------------
 # What this replaces: `scripts/truth` used to install a _MirrorModule whose
@@ -604,7 +612,24 @@ def load_watch_policies():
       * a name outside [a-z0-9][a-z0-9-]*, so `--watch-policy` arguments
         cannot collide with flags or need quoting;
       * a DUPLICATE name. Last-wins would mean a committed policy nobody
-        can see is silently shadowing the one they are reading."""
+        can see is silently shadowing the one they are reading.
+
+    STEP 3.1 NEEDED NO CHANGE HERE, and that is worth stating rather than
+    leaving for the next reader to re-derive. A glob may now carry a
+    `#selector`, and this parser already passes it through: `#` is a
+    comment marker only at the START of a stripped line, so
+    `stripe-deps -- package.json#/dependencies/stripe` splits on ' -- '
+    and on ',' exactly as before and hands the target on intact.
+
+    The selector is NOT validated here on purpose. A policy resolves to
+    a watch set and that set then goes through the whole gate table --
+    INV-M included -- so a policy shipping an unreachable selector is
+    refused at the FILING that uses it, by the same rows and the same
+    words as a hand-written --paths. Validating here as well would be a
+    second implementation of the INV-M question, which is the drift this
+    package refuses; and it would refuse at load time, breaking every
+    unrelated verb in a repo whose policy file mentions a file that
+    happens to have been renamed."""
     text = read_policy_file(WATCH_POLICIES_REL)
     if text is None:
         return {}, "absent", None
@@ -647,6 +672,83 @@ def load_watch_policies():
                     "pathspec magic is refused (SI-1)")
         policies[name] = globs
     return policies, ("file" if policies else "empty"), None
+
+def read_blob(rel, rev=None):
+    """Shell: the raw BYTES of a repo-relative path, from the working
+    tree (rev=None) or from a git revision. Returns (bytes, err).
+
+    BYTES, not text, because that is what extract_structural_hash takes:
+    a whole-file digest must equal `sha256sum` of the file, and decoding
+    to str and re-encoding would silently normalize nothing on UTF-8 and
+    everything on a file with a BOM or a lone surrogate. The decode, when
+    a format needs one, is structural's -- and it raises MalformedFileError
+    instead of crashing.
+
+    An absent path is an ERROR here, not None. Both callers already know
+    the path is tracked (INV-M refused it at intake otherwise), so
+    absence means the file was deleted or the revision predates it, which
+    is a fact the caller must report rather than treat as empty."""
+    if rev is None:
+        path = os.path.join(repo_root(), rel)
+        try:
+            with open(path, "rb") as f:
+                return f.read(), None
+        except OSError as e:
+            return None, f"cannot read {rel} ({e.strerror or e})"
+    try:
+        r = subprocess.run(["git", "show", f"{rev}:{rel}"],
+                           capture_output=True, cwd=repo_root())
+    except OSError as e:
+        return None, f"git show could not run ({e})"
+    if r.returncode != 0:
+        tail = r.stderr.decode("utf-8", "replace").strip().splitlines()
+        return None, (f"cannot read {rel} at {rev} -- "
+                      f"{tail[-1] if tail else 'git show failed'}")
+    return r.stdout, None
+
+def structural_hash(target, rev=None):
+    """Shell: the digest of the sub-tree `target` names, at `rev` or in
+    the working tree. `target` is a watch entry, with or without a
+    `#selector`. Returns (digest, err) -- exactly one is None.
+
+    THE WHOLE POINT OF THE FEATURE IS IN THE err STRINGS, so they name
+    the four distinct failures instead of one "bad selector":
+
+      missing        the file is not there at that revision;
+      unsupported    a selector on a format with no sub-trees, OR one
+                     whose parser is absent on this interpreter (.toml
+                     needs tomllib, 3.11+). INV-M refuses both at intake,
+                     so reaching this here means a watched path was
+                     RENAMED into an unsupported extension after filing
+                     -- a real event, and one the author must see rather
+                     than have swallowed;
+      malformed      the file no longer parses. NOT the same as "the
+                     sub-tree changed": a syntax error in package.json
+                     says nothing about /dependencies/stripe, and
+                     reporting it as drift would be a false alarm of the
+                     precise kind this feature exists to remove;
+      not-found      the selector names nothing NOW. Also not drift --
+                     it is a dead tripwire, the INV-M failure arriving
+                     late (the key was renamed or deleted).
+
+    Callers must not collapse these into "changed". `structural_moved`
+    is the one that decides what each means for a claim."""
+    path, selector = split_selector_target(target)
+    blob, err = read_blob(path, rev)
+    if err:
+        return None, ("missing", err)
+    ext = path.rsplit("/", 1)[-1]
+    ext = "." + ext.rsplit(".", 1)[-1] if "." in ext[1:] else ""
+    try:
+        return extract_structural_hash(blob, ext, selector), None
+    except UnsupportedFormatError as e:
+        return None, ("unsupported", str(e))
+    except MalformedFileError as e:
+        return None, ("malformed", str(e))
+    except SelectorNotFoundError as e:
+        return None, ("not-found", str(e))
+    except SelectorError as e:  # future subclasses: reported, never swallowed
+        return None, ("selector-error", str(e))
 
 def citation_grep(cid):
     """Shell: bare repo-wide `git grep -l -F <cid>` at the repo root

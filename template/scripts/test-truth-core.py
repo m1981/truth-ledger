@@ -5087,7 +5087,12 @@ class TestModulePurity(unittest.TestCase):
     # the import DAG, pure side: module -> truthlib modules it may import
     DAG = {"registry": set(),
            "structural": set(),
-           "kernel": {"registry"},
+           # FAZA 3 step 3.1: kernel takes the structural edge so
+           # match_paths and the INV-M predicates share ONE definition of
+           # where a path ends and a `#selector` begins. structural is
+           # still a leaf (it imports nothing from truthlib), so the graph
+           # stays acyclic and every module below keeps its own bound.
+           "kernel": {"registry", "structural"},
            "evidence": {"registry", "kernel"},
            "policy": {"registry", "kernel"},
            "reports": {"registry", "kernel", "evidence"},
@@ -6080,6 +6085,442 @@ class TestStructureDocMatchesDisk(unittest.TestCase):
             drawn_pure, set(TestModulePurity.PURE),
             "docs/structure.md draws a different PURE CORE than "
             "TestModulePurity enforces")
+
+
+class TestWatchTargetSplit(unittest.TestCase):
+    """FAZA 3 step 3.1: ONE definition of where a path ends and a
+    `#selector` begins, re-exported through kernel so every consumer of
+    evidence_paths shares it. A second copy of this rule is the F1/F5
+    drift the package refuses, so these cases pin the seam itself."""
+
+    def test_a_plain_target_is_unchanged(self):
+        self.assertEqual(tm.watch_target_path("a/b.json"), "a/b.json")
+
+    def test_the_selector_is_stripped(self):
+        self.assertEqual(
+            tm.watch_target_path("package.json#/dependencies/stripe"),
+            "package.json")
+
+    def test_an_empty_selector_means_whole_file(self):
+        # `a.json#` carries no sub-tree; it must behave as the bare path
+        # rather than as a selector naming "".
+        self.assertEqual(tm.watch_target_path("a.json#"), "a.json")
+
+    def test_only_the_FIRST_hash_splits(self):
+        """Markdown queries legitimately contain '#' (`spec.md##2-auth`,
+        a slug written with its heading marker). Splitting on the last
+        '#' would silently address a different section."""
+        self.assertEqual(tm.watch_target_path("spec.md##2-auth"), "spec.md")
+
+    def test_the_list_form_preserves_order_and_duplicates(self):
+        # It feeds git and tracked-file checks, where dropping or
+        # reordering entries would quietly change what was asked.
+        self.assertEqual(
+            tm.watch_target_paths(["b.json#/x", "a.md", "b.json#/y"]),
+            ["b.json", "a.md", "b.json"])
+
+
+class TestMatchPathsWithSelectors(unittest.TestCase):
+    """The matcher strips the selector from each PATTERN (step 3.1).
+
+    Placing it here rather than at the six call sites is the load-bearing
+    decision: '#' is not a glob metacharacter, so an unstripped pattern
+    is re.escape-d into something `git diff` can never emit -- a dead
+    tripwire of the INV-M shape, arrived at silently."""
+
+    def test_a_selector_pattern_matches_its_own_file(self):
+        self.assertTrue(
+            tm.match_paths("package.json", ["package.json#/dependencies/stripe"]))
+
+    def test_a_selector_pattern_does_not_match_a_neighbour(self):
+        self.assertFalse(
+            tm.match_paths("package-lock.json",
+                           ["package.json#/dependencies/stripe"]))
+
+    def test_the_slash_star_star_prefix_rule_survives_a_selector(self):
+        # The `/**` fast path reads the END of the pattern, so an
+        # unstripped selector would defeat it specifically.
+        self.assertTrue(tm.match_paths("docs/a/b.md", ["docs/**#§2"]))
+        self.assertTrue(tm.match_paths("docs", ["docs/**#§2"]))
+
+    def test_plain_patterns_are_unaffected(self):
+        self.assertTrue(tm.match_paths("docs/a.md", ["docs/*.md"]))
+        self.assertFalse(tm.match_paths("docs/a/b.md", ["docs/*.md"]))
+
+
+class TestSelectorInvMPredicates(unittest.TestCase):
+    """The INV-M predicates judge the FILE half -- and two new ones judge
+    the selector. Pure; no git, no filesystem."""
+
+    def test_a_markdown_selector_may_contain_spaces(self):
+        """The whitespace check catches a forgotten comma. A heading query
+        is the documented spelling (spec §2.2), so screening the whole
+        target would refuse the syntax the feature ships."""
+        self.assertEqual(
+            tm.malformed_path_list(["docs/spec.md#2. Session Management"]), [])
+
+    def test_a_forgotten_comma_is_still_caught(self):
+        self.assertEqual(tm.malformed_path_list(["a.sh b.sh"]), ["a.sh b.sh"])
+
+    def test_a_selector_target_is_tracked_by_its_file_half(self):
+        self.assertEqual(
+            tm.dead_literal_paths(["package.json#/dependencies/stripe"],
+                                  ["package.json"]),
+            [])
+
+    def test_a_selector_on_an_untracked_file_is_still_dead(self):
+        self.assertEqual(
+            tm.dead_literal_paths(["nope.json#/a"], ["package.json"]),
+            ["nope.json#/a"])
+
+    def test_the_dead_glob_scan_ignores_the_selector(self):
+        """A JSON Pointer contains '/' and can contain '.' segments, so
+        scanning the whole target would invent unreachable components
+        that are not path components at all."""
+        self.assertEqual(tm.dead_glob_paths(["docs/*.md#/a/./b"]), [])
+
+    def test_a_dead_glob_is_reported_as_the_author_typed_it(self):
+        self.assertEqual(tm.dead_glob_paths(["/etc/*.json#/a"]),
+                         ["/etc/*.json#/a"])
+
+    def test_a_selector_on_a_glob_is_refused(self):
+        for bad in ("template/**#/a/b", "docs/*.md#§2", "a?.json#/x"):
+            with self.subTest(target=bad):
+                self.assertEqual(tm.selector_on_glob_paths([bad]), [bad])
+
+    def test_a_selector_on_a_literal_is_fine(self):
+        self.assertEqual(tm.selector_on_glob_paths(["a.json#/x"]), [])
+
+    def test_a_glob_without_a_selector_is_fine(self):
+        self.assertEqual(tm.selector_on_glob_paths(["template/**"]), [])
+
+    def test_unsupported_formats_are_named_with_their_extension(self):
+        self.assertEqual(
+            tm.unsupported_selector_paths(["truthlib/gates.py#foo"]),
+            [("truthlib/gates.py#foo", ".py")])
+
+    def test_a_suffixless_basename_reports_none(self):
+        self.assertEqual(tm.unsupported_selector_paths(["Makefile#x"]),
+                         [("Makefile#x", "<none>")])
+
+    def test_every_supported_extension_passes(self):
+        for target in ("a.json#/x", "a.toml#x", "a.md#x", "a.markdown#x",
+                       "a.JSON#/x"):
+            with self.subTest(target=target):
+                self.assertEqual(tm.unsupported_selector_paths([target]), [])
+
+    def test_a_target_with_no_selector_is_never_judged_on_format(self):
+        # The whole file is the unit for every extension; only a
+        # SELECTOR needs sub-tree support.
+        self.assertEqual(tm.unsupported_selector_paths(["gates.py"]), [])
+        self.assertEqual(tm.unsupported_selector_paths(["gates.py#"]), [])
+
+
+class TestSelectorScreen(unittest.TestCase):
+    """Step 3.3: which changed files are decided by matching alone, and
+    which need two digests. Pure."""
+
+    def test_no_selectors_means_nothing_contested(self):
+        """The fast path, and the reason a repo using no selectors pays
+        nothing: not one byte is read."""
+        settled, contested = tm.selector_screen(["a.json"], ["a.json"])
+        self.assertEqual(settled, ["a.json"])
+        self.assertEqual(contested, {})
+
+    def test_a_selector_only_match_is_contested(self):
+        settled, contested = tm.selector_screen(["a.json#/x"], ["a.json"])
+        self.assertEqual(settled, [])
+        self.assertEqual(contested, {"a.json": ["a.json#/x"]})
+
+    def test_a_plain_watch_wins_over_a_selector_on_the_same_file(self):
+        """The author also filed 'any byte in this file'; no sub-tree
+        digest can withdraw the broader watch they wrote."""
+        settled, contested = tm.selector_screen(
+            ["a.json", "a.json#/x"], ["a.json"])
+        self.assertEqual(settled, ["a.json"])
+        self.assertEqual(contested, {})
+
+    def test_an_unwatched_file_appears_in_neither(self):
+        settled, contested = tm.selector_screen(["a.json#/x"], ["other.txt"])
+        self.assertEqual((settled, contested), ([], {}))
+
+    def test_every_watching_selector_is_collected(self):
+        settled, contested = tm.selector_screen(
+            ["a.json#/x", "a.json#/y"], ["a.json"])
+        self.assertEqual(contested, {"a.json": ["a.json#/x", "a.json#/y"]})
+
+
+class TestStructuralMoved(unittest.TestCase):
+    """Step 3.3's verdict: a contested file moved only if a watching
+    sub-tree digest moved. Pure -- the digests arrive as data."""
+
+    CONTESTED = {"a.json": ["a.json#/x"]}
+
+    def test_identical_digests_are_not_a_move(self):
+        """THE ONE THING THE FEATURE PROMISES: an edit three keys over
+        stops being an event."""
+        moved, undecided = tm.structural_moved(
+            self.CONTESTED, {"a.json#/x": ("sha256:aa", "sha256:aa", None)})
+        self.assertEqual((moved, undecided), ([], []))
+
+    def test_differing_digests_are_a_move(self):
+        moved, undecided = tm.structural_moved(
+            self.CONTESTED, {"a.json#/x": ("sha256:aa", "sha256:bb", None)})
+        self.assertEqual(moved, ["a.json"])
+        self.assertEqual(undecided, [])
+
+    def test_an_unreadable_end_counts_as_MOVED_and_is_recorded(self):
+        """Failing toward reporting, never toward silence: 'I could not
+        read the sub-tree' is not evidence that the fact held, and a
+        feature whose failure mode suppressed drift would be worse than
+        the noise it replaces."""
+        err = ("malformed", "invalid JSON: line 1")
+        moved, undecided = tm.structural_moved(
+            self.CONTESTED, {"a.json#/x": (None, None, err)})
+        self.assertEqual(moved, ["a.json"])
+        self.assertEqual(undecided, [("a.json", "a.json#/x", err)])
+
+    def test_a_target_nobody_probed_is_undecided_not_silently_unchanged(self):
+        moved, undecided = tm.structural_moved(self.CONTESTED, {})
+        self.assertEqual(moved, ["a.json"])
+        self.assertEqual(undecided[0][2][0], "not-probed")
+
+    def test_one_moved_watcher_is_enough(self):
+        moved, _ = tm.structural_moved(
+            {"a.json": ["a.json#/x", "a.json#/y"]},
+            {"a.json#/x": ("sha256:aa", "sha256:aa", None),
+             "a.json#/y": ("sha256:aa", "sha256:bb", None)})
+        self.assertEqual(moved, ["a.json"])
+
+    def test_a_file_is_reported_once_however_many_watchers_move(self):
+        moved, _ = tm.structural_moved(
+            {"a.json": ["a.json#/x", "a.json#/y"]},
+            {"a.json#/x": ("sha256:aa", "sha256:bb", None),
+             "a.json#/y": ("sha256:cc", "sha256:dd", None)})
+        self.assertEqual(moved, ["a.json"])
+
+
+class TestSelectorIntakeGate(unittest.TestCase):
+    """The three selector arms of paths-inv-m, reached THROUGH the table.
+
+    The first two are pure. The third READS THE FILE -- the only INV-M
+    arm that does -- so it runs against a temporary repo root through the
+    A3 seam, never against this checkout."""
+
+    GATE = staticmethod(GATE_FNS["paths-inv-m"])
+
+    def setUp(self):
+        self._dir = tempfile.TemporaryDirectory()
+        root = self._dir.name
+        with open(os.path.join(root, "package.json"), "w") as f:
+            f.write('{"dependencies": {"stripe": "^12.0.0"}}')
+        with open(os.path.join(root, "broken.json"), "w") as f:
+            f.write("{not json")
+        with open(os.path.join(root, "spec.md"), "w") as f:
+            f.write("# T\n\n## 2. JWT\n\nbody\n")
+        self._restore = tm.configure(
+            repo_root=lambda: root,
+            tracked_files=lambda: ["package.json", "broken.json", "spec.md"])
+
+    def tearDown(self):
+        self._restore()
+        self._dir.cleanup()
+
+    def test_a_resolving_selector_passes(self):
+        self.assertIsNone(
+            self.GATE(gate_ctx(paths=["package.json#/dependencies/stripe"])))
+
+    def test_a_markdown_heading_resolves_by_slug_and_by_title(self):
+        for sel in ("#2-jwt", "#2. JWT"):
+            with self.subTest(selector=sel):
+                self.assertIsNone(self.GATE(gate_ctx(paths=["spec.md" + sel])))
+
+    def test_a_selector_on_a_glob_is_refused_before_any_file_is_read(self):
+        err = self.GATE(gate_ctx(paths=["*.json#/dependencies/stripe"]))
+        self.assertIsNotNone(err)
+        self.assertIn("GLOB", err)
+
+    def test_a_selector_on_an_unsupported_format_is_refused(self):
+        # Tracked so dead_literal_paths cannot be the refusal instead.
+        r = tm.configure(tracked_files=lambda: ["a.py"])
+        try:
+            err = self.GATE(gate_ctx(paths=["a.py#foo"]))
+        finally:
+            r()
+        self.assertIsNotNone(err)
+        self.assertIn("has none", err)
+        self.assertIn(".py", err)
+
+    def test_a_selector_naming_nothing_is_refused_as_a_dead_tripwire(self):
+        err = self.GATE(gate_ctx(paths=["package.json#/dependencies/nope"]))
+        self.assertIsNotNone(err)
+        self.assertIn("resolves to nothing", err)
+        self.assertIn("dead tripwire", err)
+
+    def test_an_unparseable_file_is_refused_with_the_parser_error(self):
+        err = self.GATE(gate_ctx(paths=["broken.json#/a"]))
+        self.assertIsNotNone(err)
+        self.assertIn("resolves to nothing", err)
+
+    def test_a_plain_path_never_reaches_the_live_arm(self):
+        # No selector, no read: the fast path every existing claim takes.
+        self.assertIsNone(self.GATE(gate_ctx(paths=["package.json"])))
+
+
+class TestSelectorBudgetExemptions(unittest.TestCase):
+    """Step 3.1's two exemptions, and the property that keeps them honest:
+    a selector-free path in the SAME set is still judged."""
+
+    def _budget(self, **over):
+        return GATE_FNS["paths-budget-max"](gate_ctx(**over))
+
+    def _churn(self, forecast, history=None, **over):
+        ctx = gate_ctx(**over)
+        ctx["blast_forecast"] = forecast
+        ctx["blast_history"] = history
+        return GATE_FNS["paths-churn-budget"](ctx)
+
+    # -- the cardinality budget -------------------------------------------
+    def test_selector_targets_do_not_count_against_the_freehand_budget(self):
+        """You cannot accumulate '/dependencies/stripe' by accident: the
+        author named an exact key path and INV-M read the file to confirm
+        it resolves. Charging that like a freehand glob would price
+        precision as breadth."""
+        self.assertIsNone(self._budget(paths=["a.json#/x", "b.json#/y",
+                                              "c.md#§2"]))
+
+    def test_a_selector_free_path_in_the_set_is_still_counted(self):
+        err = self._budget(paths=["a.json#/x", "b.py", "c.py"])
+        self.assertIsNotNone(err, "two freehand paths must still be refused")
+        self.assertIn("2 watched paths picked by hand", err)
+
+    def test_the_refusal_teaches_the_selector_exit(self):
+        self.assertIn("#", self._budget(paths=["b.py", "c.py"]))
+
+    # -- the churn floor ---------------------------------------------------
+    def test_an_all_selector_set_abstains_from_the_churn_floor(self):
+        """The file-level forecast is an upper bound so loose it is nearly
+        noise for a sub-tree watch. Refusing on it would refuse the very
+        narrowing the gate asks for -- a gate teaching its own bypass."""
+        self.assertIsNone(self._churn(tm.BLAST_ADVISORY_FLOOR + 99,
+                                      paths=["a.json#/x"]))
+
+    def test_a_plain_path_over_the_floor_is_still_refused(self):
+        err = self._churn(tm.BLAST_ADVISORY_FLOOR, paths=["src/**"])
+        self.assertIsNotNone(err)
+        self.assertIn("churn floor", err)
+
+    def test_a_mixed_set_is_judged_on_its_selector_free_half(self):
+        """The recomputation is over `plain`, so the hot FILE under a
+        selector cannot drag a mixed set into a refusal, and a genuinely
+        hot glob beside a selector cannot hide behind it."""
+        hot = "src/f.py"
+        history = [(f"c{i}", frozenset({hot})) for i in
+                   range(tm.BLAST_ADVISORY_FLOOR + 5)]
+        self.assertIsNotNone(
+            self._churn(999, history=history, paths=["a.json#/x", "src/**"]))
+        self.assertIsNone(
+            self._churn(999, history=history, paths=["a.json#/x", "docs/**"]))
+
+    def test_the_advisory_forecast_is_left_alone(self):
+        """ADR-039's advisory keeps reporting the file-level number: it is
+        still TRUE as an upper bound, and a selector claim on a hot file
+        is worth a line of prose. It is not worth a refusal."""
+        ctx = gate_ctx(paths=["a.json#/x"])
+        ctx["blast_forecast"] = 999
+        ctx["blast_history"] = None
+        GATE_FNS["paths-churn-budget"](ctx)
+        self.assertEqual(ctx["blast_forecast"], 999)
+
+
+class TestGeneratedGateSelectorBypass(unittest.TestCase):
+    """ADR-037 regression: appending '#/a/b' to a generated path must not
+    become a one-character bypass.
+
+    It would have been one. match_paths ignores the selector everywhere
+    downstream, so the watch still restales on every regeneration -- only
+    this gate would have stopped seeing it."""
+
+    GATE = staticmethod(GATE_FNS["generated-paths-adr037"])
+
+    def setUp(self):
+        self._dir = tempfile.TemporaryDirectory()
+        root = self._dir.name
+        os.makedirs(os.path.join(root, ".truth"))
+        with open(os.path.join(root, tm.GENERATED_PATHS_REL), "w") as f:
+            f.write("dist/bundle.json\ngen/*.json\n")
+        self._restore = tm.configure(repo_root=lambda: root)
+
+    def tearDown(self):
+        self._restore()
+        self._dir.cleanup()
+
+    def test_the_equality_arm_sees_through_a_selector(self):
+        err = self.GATE(gate_ctx(paths=["dist/bundle.json#/version"]))
+        self.assertIsNotNone(err, "a selector must not bypass ADR-037")
+        self.assertIn("generated", err)
+
+    def test_the_glob_arm_sees_through_a_selector(self):
+        self.assertIsNotNone(self.GATE(gate_ctx(paths=["gen/a.json#/x"])))
+
+    def test_an_ungenerated_selector_target_still_passes(self):
+        self.assertIsNone(self.GATE(gate_ctx(paths=["src/a.json#/x"])))
+
+    def test_the_stated_basis_still_admits_it(self):
+        self.assertIsNone(self.GATE(gate_ctx(
+            paths=["dist/bundle.json#/version"],
+            generated_basis="the artifact itself is the fact")))
+
+
+class TestStructuralOptionalTomllib(unittest.TestCase):
+    """The CLI's Python floor, as a theorem rather than a hope.
+
+    kernel imports structural, so a hard `import tomllib` would raise the
+    WHOLE CLI's floor from 3.9 to 3.11 for every consumer repo -- to
+    serve one of four supported formats. The canary caught it (its
+    tracker arms run `truth ready` under PATH=/usr/bin:/bin, where macOS
+    ships 3.9): nine arms went CAUGHT -> MISSED on a raw
+    ModuleNotFoundError traceback.
+
+    Absence is SIMULATED rather than dispatched to a second interpreter,
+    so the case runs everywhere and costs nothing."""
+
+    # `tm` is the CLI entry's namespace (it star-imports the package), so
+    # the MODULE object -- the thing holding the optional binding -- comes
+    # from sys.modules, where `truth` left it.
+    MOD = staticmethod(lambda: sys.modules["truthlib.structural"])
+
+    def setUp(self):
+        self.mod = self.MOD()
+        self._saved = self.mod.tomllib
+        self.mod.tomllib = None          # simulate a pre-3.11 interpreter
+
+    def tearDown(self):
+        self.mod.tomllib = self._saved
+
+    def test_the_binding_exists_so_absence_is_representable(self):
+        """If `tomllib` were imported unconditionally there would be no
+        name to blank, and this whole class would be vacuously green."""
+        self.assertIsNotNone(self._saved,
+                             "this interpreter has tomllib; the guarded "
+                             "import must still leave the name bound")
+
+    def test_json_and_markdown_selectors_work_without_tomllib(self):
+        self.assertTrue(self.mod.extract_structural_hash(
+            b'{"a": {"b": 1}}', ".json", "/a/b").startswith("sha256:"))
+        self.assertTrue(self.mod.extract_structural_hash(
+            b"# T\n\n## S\n\nbody\n", ".md", "S").startswith("sha256:"))
+
+    def test_a_toml_selector_refuses_by_naming_the_interpreter(self):
+        with self.assertRaises(self.mod.UnsupportedFormatError) as cm:
+            self.mod.extract_structural_hash(b"x = 1", ".toml", "x")
+        self.assertIn("3.11", str(cm.exception))
+
+    def test_a_whole_file_toml_hash_never_needs_the_parser(self):
+        """No selector, no parse: the digest is plain sha256 of the bytes,
+        so a 3.9 consumer can still watch a .toml file wholesale."""
+        self.assertTrue(self.mod.extract_structural_hash(
+            b"x = 1", ".toml", None).startswith("sha256:"))
 
 
 if __name__ == "__main__":

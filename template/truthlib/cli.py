@@ -1188,13 +1188,33 @@ def cmd_staling(a):
           + (f" (+{report['pathless']} with no watched path)"
              if report["pathless"] else ""))
 
-def _capsule_stale_facts(entry, diff_cache, dirty_entries):
+def _capsule_stale_facts(entry, diff_cache, dirty_entries, hash_cache=None):
     """Gather (SHELL) what capsule_stale_shape decides on: the claim's own
     watched paths changed over effective-anchor..HEAD. Uses the scan's own
     differ and matcher -- changed_files_since + match_paths -- because a
     second differ is exactly the drift ADR-005 catalogued. The per-anchor
     cache matters: a sweep of a repo where many claims share one anchor
-    would otherwise fork one `git diff` per claim."""
+    would otherwise fork one `git diff` per claim.
+
+    STEP 3.3 adds the structural screen between the matcher and the
+    shape. A file matched only by `#selector` targets is not yet a touch:
+    the sub-tree is hashed at both ends of the window and the file
+    survives into `watched_touched` only if a digest actually moved. That
+    is where the false alarms this feature exists to remove are removed
+    -- and it is the ONLY place, because a pre-edit reader (the whisper)
+    cannot hash a file that has not been written yet.
+
+    `hash_cache` keys (target, rev) for the same reason diff_cache keys
+    (a, b): claims sharing an anchor and a policy would otherwise re-read
+    and re-parse the same package.json once per claim. It is a SEPARATE
+    dict rather than a namespaced key in diff_cache -- two caches with
+    two key shapes in one mapping is a lookup nobody can read.
+
+    A structural probe that FAILS at either end (the file was deleted,
+    the JSON no longer parses, the key was renamed) keeps the file in
+    `watched_touched` and records why in `structural_undecided`. Failing
+    toward reporting is deliberate: see evidence.structural_moved."""
+    hash_cache = {} if hash_cache is None else hash_cache
     cp = entry["claim"]["payload"]
     own = cp.get("anchor_commit")
     effective = entry.get("anchor") or own
@@ -1209,6 +1229,8 @@ def _capsule_stale_facts(entry, diff_cache, dirty_entries):
                                 "the claim carries no anchor to diff from"),
                 "watched_dirty": dirty}
 
+    undecided = []
+
     def window(a, b):
         if (a, b) not in diff_cache:
             diff_cache[(a, b)] = changed_files_between(a, b)
@@ -1216,12 +1238,39 @@ def _capsule_stale_facts(entry, diff_cache, dirty_entries):
         if changed is None:
             return None, (f"diff {_short_sha(a)}..{_short_sha(b)} failed: "
                           f"{(err or 'unknown')[:120]}")
-        return [f for f in changed if match_paths(f, paths)], None
+        hits = [f for f in changed if match_paths(f, paths)]
+        settled, contested = selector_screen(paths, hits)
+        if not contested:
+            # The no-selector repo, and the fast path for every claim that
+            # watches whole files: not one byte is read.
+            return sorted(set(settled)), None
+        digests = {}
+        for targets in contested.values():
+            for t in targets:
+                if t in digests:
+                    continue
+                for rev in (a, b):
+                    if (t, rev) not in hash_cache:
+                        hash_cache[(t, rev)] = structural_hash(t, rev)
+                before, berr = hash_cache[(t, a)]
+                after, aerr = hash_cache[(t, b)]
+                digests[t] = (before, after, berr or aerr)
+        moved, unsure = structural_moved(contested, digests)
+        undecided.extend((f, t, kind, detail) for f, t, (kind, detail) in unsure)
+        return sorted(set(settled) | set(moved)), None
+
+    def _out(d):
+        # One exit point for the extra field, so no early return can drop
+        # it: an undecided probe that vanished from the report would be
+        # the silent failure structural_moved refuses to be.
+        if undecided:
+            d["structural_undecided"] = undecided
+        return d
 
     ahead, err = window(effective, "HEAD")
     if err:
-        return {"shape": "uncommitted" if dirty else None,
-                "shape_error": err, "watched_dirty": dirty}
+        return _out({"shape": "uncommitted" if dirty else None,
+                     "shape_error": err, "watched_dirty": dirty})
     buried = []
     if own and own != effective:
         buried, err = window(own, effective)
@@ -1230,11 +1279,11 @@ def _capsule_stale_facts(entry, diff_cache, dirty_entries):
             # report nothing: the forward window already decides
             # watched-moved, and the remaining two shapes collapse to
             # "cannot tell" rather than to a wrong label.
-            return {"shape": ("uncommitted" if dirty
-                              else "watched-moved" if ahead else None),
-                    "shape_error": err, "watched_touched": ahead,
-                    "watched_buried": [], "watched_dirty": dirty}
-    return capsule_stale_shape(entry, ahead, buried, dirty)
+            return _out({"shape": ("uncommitted" if dirty
+                                   else "watched-moved" if ahead else None),
+                         "shape_error": err, "watched_touched": ahead,
+                         "watched_buried": [], "watched_dirty": dirty})
+    return _out(capsule_stale_shape(entry, ahead, buried, dirty))
 
 def reproduce_sweep(events, since=None):
     """The capsule sweep as a FUNCTION, extracted in FAZA 4 step 4.2 so
@@ -1263,7 +1312,10 @@ def reproduce_sweep(events, since=None):
     # report drift that is really the caller's cwd.
     root = repo_root()
     rows, counts = [], {arm: 0 for arm in REPRODUCE_ARMS}
-    shapes, diff_cache = {}, {}
+    # hash_cache spans the whole sweep, not one claim: step 3.3's cost is
+    # one read+parse per (selector target, revision), and claims sharing a
+    # watch policy share every one of those keys.
+    shapes, diff_cache, hash_cache = {}, {}, {}
     # Gathered ONCE, before the loop: the diff windows are
     # commit-to-commit, so without this an uncommitted edit to a watched
     # file lands in `unexplained` -- the arm that is supposed to mean
@@ -1293,7 +1345,7 @@ def reproduce_sweep(events, since=None):
                "command": (cp.get("evidence") or {}).get("command")}
         if d["arm"] == "capsule-stale":
             row.update(_capsule_stale_facts(entry, diff_cache,
-                                            dirty_entries))
+                                            dirty_entries, hash_cache))
             shapes[row.get("shape")] = shapes.get(row.get("shape"), 0) + 1
         counts[d["arm"]] += 1
         rows.append(row)
@@ -1676,7 +1728,16 @@ CLAIM_INTAKE_FLAGS = [
           choices=EVIDENCE_CLASSES),
     _flag("--evidence-cmd",
           help="re-runnable command whose output is the evidence"),
-    _flag("--paths", help="comma-separated globs the evidence depends on"),
+    _flag("--paths",
+          help="comma-separated globs the evidence depends on. An entry "
+               "may name a SUB-TREE instead of a whole file with "
+               "'<path>#<selector>' -- 'package.json#/dependencies/stripe', "
+               "'pyproject.toml#tool.ruff.lint', 'docs/spec.md#2-jwt' -- "
+               "for .json/.toml/.md only. A selector target is judged on "
+               "whether its own digest moved, so it is exempt from the "
+               "one-path and churn budgets. Selectors may not contain a "
+               "comma (this list is comma-split): use a heading's slug "
+               "form, '#2-session-management', not '#2. Session, Mgmt'"),
         _flag("--watch-policy", dest="watch_policy", metavar="NAME",
               help="take the watch set from a named policy in "
                    ".truth/watch-policies instead of --paths (FAZA 3): the "
