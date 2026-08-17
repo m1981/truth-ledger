@@ -1,0 +1,72 @@
+# Mutation testing config. Read by mutmut 2.5.1 (config_from_pyproject_toml in
+# mutmut/__init__.py:870); the keys are the names of `mutmut run`'s CLI options.
+# Run it through scripts/mutate.sh, which pins the interpreter mutmut itself
+# needs. There is no [project] table here on purpose -- this repo is a copier
+# template, not an installable distribution.
+#
+# WHY 2.5.1 AND NOT MUTMUT 3.x
+#
+# mutmut 3 assumes a flat, conventional package layout: source dir at the repo
+# root, tests importing it by its on-disk path. This repo deliberately has
+# neither, and that produced three separate failures, in order:
+#
+#   1. mutmut 3 copies the tree to mutants/ and runs pytest there. Nothing the
+#      suite needs is copied by default -- not template/scripts (which holds
+#      both the suite and the scripts/truth entry shim it SourceFileLoader's),
+#      not pytest.ini (whose python_files makes `test-*.py` collectable at
+#      all), not the .truth/ and docs/ trees the suite reads off disk.
+#      Fixable with also_copy.
+#
+#   2. Every mutated module opens with `from mutmut.mutation.trampoline import
+#      ...`, and that import loads mutmut's own config FROM THE CURRENT
+#      WORKING DIRECTORY. 29 tests shell out to the truth CLI with
+#      cwd=<temp sandbox>, which has no config, so the CLI died with rc=1 and
+#      empty stdout. Only fixable by dropping those 29 tests from the run.
+#
+#   3. Fatal: mutmut 3 derives mutant keys from the file path relative to cwd
+#      (template.truthlib.kernel.*), but the suite imports the same module as
+#      truthlib.kernel -- scripts/truth injects its own parent into sys.path
+#      (ADR-044 bootstrap) and pytest.ini adds `pythonpath = template`. The
+#      keys never meet and mutmut stops before running a mutant:
+#      "tests recorded trampoline hits but none match any mutant key".
+#      Unfixable by config. It needs mutmut run from template/, i.e. a
+#      template/pyproject.toml -- a file that would ship to every consumer
+#      repo copier generates. That is a repo-shape decision, not a tooling one.
+#
+# mutmut 2.5.1 mutates in place: no mutants/ tree, no trampoline, no key
+# derivation, so all three vanish and all 394 tests count toward the score.
+# The cost is real -- no per-mutant test selection, no forking, so the full
+# 9.7s suite runs once per mutant, sequentially. Budget by module, not by
+# package: contract.py (3.8 KB) is 39 mutants, so ~6 min at one suite each;
+# kernel.py is 11x larger. Consider --use-coverage, or split runs by module.
+# `--disable-mutation-types string` cuts a lot of low-value XXstringXX noise.
+
+[tool.mutmut]
+paths_to_mutate = "template/truthlib/"
+tests_dir = "template/scripts/"
+runner = "scripts/mutmut-runner.sh"
+use_coverage = true
+# Prose mutations are almost pure noise here: 13 of contract.py's original 15
+# survivors, and 73 of kernel.py's 107 -- all of them f-strings inside
+# `errors.append(f"line {n}: ...")`. Dropping them moves kernel.py from 76.3%
+# (344/451) to 91.4% (342/374) without changing a single verdict about logic;
+# the first number mostly measures how many error messages are asserted
+# verbatim, which is not what this suite is for.
+#
+# EXCEPTION -- contract.py. dispatch_text() promises a byte-exact envelope, so
+# there a mutated string IS a contract break worth catching. Score that module
+# with the prose mutations ON:
+#   ./scripts/mutate.sh run --paths-to-mutate template/truthlib/contract.py \
+#       --disable-mutation-types ""
+disable_mutation_types = "string,fstring"
+# "suspicious" is flagged at test_time_base + baseline*multiplier. mutmut_config
+# rescales baseline per selection (floor 2s), so without a base here a merely
+# wide selection gets flagged. 10 + 2*2 = 14s, still under the 20s hard kill.
+test_time_base = 10
+
+# Feeds two things: --use-coverage (which mutants to skip) and, via
+# dynamic_context, scripts/mutmut-select.py (which TESTS to run per mutant).
+# Regenerate with scripts/mutmut-coverage.sh whenever the suite changes.
+[tool.coverage.run]
+source = ["template/truthlib"]
+dynamic_context = "test_function"
