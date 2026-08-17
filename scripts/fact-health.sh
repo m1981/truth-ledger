@@ -34,6 +34,13 @@
 #    session records whose citations narrate what was live during that
 #    session ("successors tr-… and tr-…"). Flagged as an extension, not a
 #    ruling — drop the line to put them back in scope.
+#    docs/refactor/01-JOURNAL.md joins them on the SAME reasoning and is
+#    called out because it is the newest and the least obvious: it is an
+#    append-only record of a refactor, and it cites the ids it RETRACTED --
+#    naming them is the point, exactly as the field notes name theirs. Its
+#    sibling docs/refactor/00-RUNBOOK.md deliberately STAYS in scope: a
+#    runbook is an instruction a reader acts on today, so a dead citation
+#    in one is a real defect.
 #    Only prose that a reader is meant to ACT on today stays in scope.
 #
 # 2. FOREIGN ids are not ours to judge. A deployment (kuchnie) keeps its
@@ -55,7 +62,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-CLAIMS_JSON="$(python3 template/scripts/truth list --json)"
+# J-018: ledger-derived JSON travels by FILE, never by environment variable.
+# `truth list --json` crossed MAX_ARG_STRLEN -- 128 KiB on Linux (32 pages),
+# NOT the ~1 MB ARG_MAX the sibling comment in spec-health.sh used to cite --
+# at 223 claims / 4555 records. execve then refuses the WHOLE environment
+# with `Argument list too long` and the sweep is dead, not degraded. Only
+# fixed-size payloads (the vocabulary) may stay in the env.
+CLAIMS_FILE="$(mktemp)"
+trap 'rm -f "$CLAIMS_FILE"' EXIT
+python3 template/scripts/truth list --json > "$CLAIMS_FILE"
 # P2 contract layer: the blocking set is the CLI's own CITATION_BAD
 # (truth vocab --json), fetched at runtime -- never hand-copied (the R1
 # `disputed` drift class). Fail LOUD: sweeping with a guessed vocabulary
@@ -70,13 +85,15 @@ FILES="$(git ls-files 'README.md' 'AGENTS.md' 'docs/*.md' 'docs/**/*.md' \
   | grep -v '^docs/reviews/' \
   | grep -v '^docs/roadmap-v3\.md$' \
   | grep -v '^docs/field-notes' \
+  | grep -v '^docs/refactor/01-JOURNAL\.md$' \
   | sort -u)"
-export CLAIMS_JSON VOCAB_JSON FILES
+export CLAIMS_FILE VOCAB_JSON FILES
 
 python3 - <<'PY'
 import json, os, re, sys
 
-claims = {r["id"]: r for r in json.loads(os.environ["CLAIMS_JSON"])}
+with open(os.environ["CLAIMS_FILE"], encoding="utf-8") as _cf:
+    claims = {r["id"]: r for r in json.load(_cf)}
 # Sourced from the CLI's own CITATION_BAD (truth vocab --json), fetched
 # above -- one contract, consumed at runtime (P2 contract layer).
 BAD = set(json.loads(os.environ["VOCAB_JSON"])["citation_bad"])

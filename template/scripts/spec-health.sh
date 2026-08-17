@@ -9,14 +9,25 @@
 # spec is tripwired (non-goals included) — refer by title to opt out.
 # Zero-id specs WARN only (pre-convention legacy prose, wire when next touched).
 #
-# JSON travels via env vars — fine at current ledger size; revisit before the
-# ledger approaches ARG_MAX (~1MB on macOS).
+# Ledger-derived JSON travels by FILE (see the CLAIMS_FILE note below). It used
+# to travel by environment variable under a comment promising headroom until
+# "ARG_MAX (~1MB on macOS)" — the wrong constant. The binding limit is
+# MAX_ARG_STRLEN, 128 KiB on Linux, and this gate died at 142 KiB.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-CLAIMS_JSON="$(scripts/truth list --json)"
+# J-018: ledger-derived JSON travels by FILE, never by environment variable.
+# The header note above used to promise headroom until "ARG_MAX (~1MB on
+# macOS)" and that measured the WRONG CONSTANT: the binding limit is
+# MAX_ARG_STRLEN, 128 KiB on Linux (32 pages), 16x smaller. This gate died
+# with `Argument list too long` at 223 claims / 4555 records -- loudly, but
+# dead. Only fixed-size payloads (the vocabulary) may stay in the env.
+CLAIMS_FILE="$(mktemp)"
+ISSUES_FILE="$(mktemp)"
+trap 'rm -f "$CLAIMS_FILE" "$ISSUES_FILE"' EXIT
+scripts/truth list --json > "$CLAIMS_FILE"
 # P2 contract layer: the citation-blocking set comes from the CLI at
 # runtime (CITATION_BAD via `truth vocab`), never hand-copied -- the R1
 # `disputed` drift class is structurally impossible. Fail LOUD: a sweep
@@ -25,20 +36,22 @@ if ! VOCAB_JSON="$(scripts/truth vocab --json)"; then
   echo "spec-health: 'truth vocab --json' failed -- the citation-blocking set is unavailable; refusing to sweep with a guessed vocabulary (exit 2: environment, not governance)" >&2
   exit 2
 fi
-if ! ISSUES_JSON="$(scripts/truth issues --json 2>/dev/null)"; then
+if ! scripts/truth issues --json > "$ISSUES_FILE" 2>/dev/null; then
   echo "spec-health: 'truth issues --json' failed; treating issue records as absent (wk- ids will report missing)" >&2
-  ISSUES_JSON='[]'
+  printf '[]' > "$ISSUES_FILE"
 fi
 SPEC_FILES="$(find . \( -path ./attic -o -path "*/node_modules" -o -path "*/.venv" -o -name archive \) -prune \
                    -o -type f -path "*docs/specs/*.md" -print | sort)"
 
-export CLAIMS_JSON VOCAB_JSON ISSUES_JSON SPEC_FILES
+export CLAIMS_FILE VOCAB_JSON ISSUES_FILE SPEC_FILES
 
 python3 - <<'PY'
 import json, os, re, sys
 
-claims = {r["id"]: r for r in json.loads(os.environ["CLAIMS_JSON"])}
-issues = {r["id"]: r for r in json.loads(os.environ["ISSUES_JSON"])}
+with open(os.environ["CLAIMS_FILE"], encoding="utf-8") as _cf:
+    claims = {r["id"]: r for r in json.load(_cf)}
+with open(os.environ["ISSUES_FILE"], encoding="utf-8") as _if:
+    issues = {r["id"]: r for r in json.load(_if)}
 
 # Sourced from the CLI's own CITATION_BAD (truth vocab --json), fetched
 # above -- one contract, consumed at runtime (P2 contract layer).

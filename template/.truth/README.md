@@ -3,7 +3,7 @@
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
 A plain-JSONL truth layer that lives beside a work tracker (e.g. Beads;
-optional — the ledger works standalone, see docs/adr/truth/001). Work
+optional — the ledger works standalone, see docs/ARCHITECTURE.md §3). Work
 records
 answer *what to do*; this ledger answers *what is known and how*.
 
@@ -26,7 +26,7 @@ durable, fixes glob path-matching to respect `/`, and closes a
 duplicate-claim-id resurrection path. v0.5.3 closes the analogous
 issue-side path (duplicate `wk-` ids are first-wins, ADR-006). v0.5.4/
 v0.5.5 harden intake (see Record kinds & fold semantics below). See
-docs/adr/truth/001 for the readiness-join semantics.
+docs/ARCHITECTURE.md §3 for the readiness-join semantics.
 
 ## Record kinds & fold semantics (the CLI contract)
 
@@ -190,7 +190,7 @@ their own: this warning's trip is their proxy).
     scripts/truth-canary.sh            seeded-fault suite (run weekly; it
                                        prints its own count — all CAUGHT, or stop)
     prompts/truth-verifier.md          fixed verifier prompt (use `truth dispatch`)
-    docs/adr/truth/                    decision records: 001 premise validity,
+    docs/ARCHITECTURE.md               the behavioural contract: data model,
                                        002 work kernel, 003 satellite placement,
                                        004 tracker seam, 005 pre-edit whisper
                                        (accepted in trial), 006 issue-fold
@@ -258,7 +258,7 @@ back when prompted; headless,
 External trackers still work through the seam (`TRUTH_TRACKER_CMD`,
 `--stdin`); `truth issues --ready-json` emits the same contract, so you
 can run both and diff. Full semantics:
-`docs/adr/truth/002-native-work-kernel.md`.
+`docs/ARCHITECTURE.md` §3.
 
 **Acceptance oracles (ADR-014, v0.7).** `issue --accept-cmd "<cmd>"
 [--accept-kind verification|validation]` declares an executable finish
@@ -315,7 +315,7 @@ and on any regex listed in the optional `scripts/doc-health.patterns`
 (one per line — put your project's dead names there; no file, no name
 check). Backtick path shorthand is deliberately not checked — endemic and
 legitimate; links are the load-bearing references. Cite rename ADRs from
-live docs by wildcarding the filename (`docs/adr/truth/NNN-*.md`) so the dead
+live docs by wildcarding the filename (`docs/**/NNN-*.md`) so the dead
 name never appears. Canary FAULT D1–D3 cover the semantics. Pairs well
 with a standing claim whose evidence is the gate itself (see Claim
 discipline below).

@@ -228,10 +228,26 @@ def screen_evidence_command(cmd, allowlist, allow_rel=EVIDENCE_ALLOW_REL,
     redir = None  # 'in' | 'out' when the next token is a redirection target
     for tok in toks:
         if redir:
-            if redir == "out" and tok != "/dev/null" and not tok.isdigit():
+            # SEC-1: a plain '>' and an fd dup '>&' used to share this
+            # branch, so `tok.isdigit()` -- present to admit the '1' of
+            # '2>&1' -- also admitted `cat f >2`, which /bin/sh executes
+            # as a WRITE to a file literally named '2'. Proven in a
+            # sandbox: '>2' and '>22' created files, '>2a' and '>.git/x'
+            # were refused. Bounded (digit-only names in cwd) but real,
+            # and ADR-040 already listed "digit redirect targets" among
+            # the SHELL channels no allowlist can close. The lexer keeps
+            # the two apart -- '>2' -> ['>', '2'] but '2>&1' -> ['2',
+            # '>&', '1'] -- so the screen can too.
+            if redir == "out" and tok != "/dev/null":
                 return (f"output redirection to {tok!r} is refused -- "
                         "evidence commands must be read-only; '/dev/null' "
-                        "and fd dups ('2>&1') are the only allowed sinks "
+                        "is the only allowed sink, and a digit is a valid "
+                        "target only after an fd dup ('2>&1'), never after "
+                        "a plain '>' (ADR-009)")
+            if redir == "dup" and not (tok.isdigit() or tok == "-"):
+                return (f"fd duplication to {tok!r} is refused -- '>&' "
+                        "duplicates a file descriptor, so its target is a "
+                        "digit or '-' (close); anything else is a write "
                         "(ADR-009)")
             redir = None
             continue
@@ -242,8 +258,10 @@ def screen_evidence_command(cmd, allowlist, allow_rel=EVIDENCE_ALLOW_REL,
         if tok and set(tok) <= _SCREEN_PUNCT:
             if tok.startswith("<"):
                 redir = "in"    # reads are fine, any source
+            elif tok.startswith(">") and tok.endswith("&"):
+                redir = "dup"   # '>&' -- duplicates an fd, never a write
             elif tok.startswith(">"):
-                redir = "out"   # writes only to /dev/null or an fd
+                redir = "out"   # a real write: '/dev/null' only (SEC-1)
             else:
                 return f"unscreenable shell construct {tok!r} (ADR-009)"
             continue

@@ -1,3 +1,20 @@
 #!/usr/bin/env bash
-# Solo/trunk: every commit can invalidate facts; there are no merges to hook.
-python3 scripts/truth invalidate-scan
+# Reproduce-on-Read (step 2.4): this hook no longer writes to the ledger.
+#
+# It used to run `truth invalidate-scan`, which asks a SYNTACTIC question --
+# did git touch a watched path -- and appends an `invalidation` record for
+# every yes. Measured on this ledger: 1971 such records against 70 actual
+# evidence divergences. Positive predictive value 3.6%; at least 65% were
+# provably empty (the mechanical `reaffirm` arm re-ran the recipe and got a
+# byte-identical result). The absorbing machinery that made that bearable --
+# reaffirm plus the `reaffirm_cleared` field -- had itself grown to 28% of
+# the ledger, read by nothing.
+#
+# The direct measurement costs ~8ms per capsule (0.53s for the whole live
+# ledger), so the proxy was an optimisation for an operation that is free at
+# this scale. `truth reproduce` is now the authority and runs as an arm of
+# the release battery at pre-push, where it blocks on exit 7 and on exit 8.
+#
+# Nothing replaces the write here on purpose: a green sweep should leave no
+# record, because there is no stored state left to advance.
+exit 0

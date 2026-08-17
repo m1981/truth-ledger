@@ -3,7 +3,7 @@
 > Reader: anyone being introduced to the truth ledger (presentation audience, new collaborator) | Enables: understanding the machinery well enough to trust its gates and file claims/issues correctly | Update-trigger: a consumed template version changes fold semantics, gates, or verbs
 
 Presentation-friendly diagrams of how the truth ledger works. Source of
-truth for semantics: `.truth/README.md` and the ADRs in `docs/adr/truth/`.
+truth for semantics: `.truth/README.md` and `docs/ARCHITECTURE.md`.
 GitHub renders these natively; for slides, paste each block into any
 mermaid renderer (e.g. mermaid.live).
 
