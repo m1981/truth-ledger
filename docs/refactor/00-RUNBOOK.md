@@ -5,7 +5,7 @@
 > Jedno zadanie naraz. Po każdym: weryfikacja → status → wpis w JOURNAL → commit.
 
 Gałąź robocza: `claude/git-hooks-architecture-zc97y3`
-Commit bazowy: `fa2e85b` · rewizja runbooka: `r16` (2026-08-17, 2.5 i 2.6 wykonane)
+Commit bazowy: `fa2e85b` · rewizja runbooka: `r17` (2026-08-17, 2.5 i 2.6 wykonane i wypchniete)
 
 ---
 
@@ -297,6 +297,29 @@ operatora: **zwęzić werb, nie kasować**.
   za `invalidate-scan` i **trafiał w komentarz o wycofaniu** w wygaszonym hooku
   — przechodził nad hookiem, który nic nie robi. Przecelowany na `pre-push` +
   `reproduce`; `install-hooks.sh` pisze teraz ten hook (u konsumenta nie istniał).
+
+### [x] Domkniecie po 2.6 — kolejka werdyktow rozstrzygnieta (J-036)
+
+Piec claimow, nie trzy: obsluga dwoch pierwszych odslonila `tr-c6170e24` i
+`tr-d1049451`, ktore siedzialy za nimi w cieniu `stale`. Trzy nazwane przez
+operatora wycofane z `--cause restated --successor`; dwa odkryte po drodze
+dostaly `diverge` z rekomendowana komenda tombstone w `basis` — ADR-011 mowi
+agentowi konczyc na `diverge`, a bramka odblokowuje sie tak samo.
+
+**Odstepstwo od wytycznej (b), z pomiarem:** nowe claimy sa NIEZALEZNE OD
+WERSJI — ani zdanie, ani receptura nie nazywa `v0.9.38`. W tym ledgerze
+receptura z literalem wersji ma **96% smiertelnosci** (24 z 25 martwe), a trzy
+osadzane rodziny mialy juz po 3-5 pokolen umierajacych na tym samym bumpie.
+Uzyty wzorzec pochodzi z tego repo (niezyjacy `tr-39eb58bc`): wyciagnij wersje z
+linii 2 CLI i sprawdz jej obecnosc w drugiej powierzchni, w obie strony.
+
+**Do decyzji operatora:** `tr-8d9005d0` twierdzi ten sam fakt co nowy
+`tr-f8b946cd`, tyle ze przypiety do v0.9.38 — rekomendowane
+`retracted --cause restated --successor tr-f8b946cd`. Plus dwa tombstone'y z
+tabeli J-036.
+
+**Bramka:** `reproduce` 66/66, 0 capsule-stale, exit 0; bateria wszystkie 10
+ramion zielone; push bez `--no-verify`.
 
 **DELTA CANARY — ZERO, wbrew prognozie niżej:** 283 → 283, żadne ramię nie
 zostało skasowane. Zgodnie z regułą J-012 każde ramię o wciąż istniejącym

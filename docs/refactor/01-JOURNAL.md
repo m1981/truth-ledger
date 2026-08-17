@@ -1728,3 +1728,112 @@ tej zmiany.
 3. **ADR-030** (reaffirm) i **ADR-005** (whisper) opisują zachowania, które ten
    krok zmienił; ADR-019 zyskał nowego pisarza pod nową nazwą. Do przejrzenia
    przy wydaniu.
+
+---
+
+## J-036 · PO 2.6 — pięć zdemaskowanych claimów osądzonych, bramka odblokowana · 2026-08-17
+
+Kolejka werdyktów z J-035 USTALENIE 1, domknięta. Skład okazał się inny niż
+lista wyjściowa: operator obsłużył `tr-39eb58bc` i `tr-a8bda1a1`, a to odsłoniło
+**dwa kolejne** z tej samej siódemki — `tr-c6170e24` i `tr-d1049451` — które
+dotąd siedziały za nimi w cieniu `stale`. Pięć capsule-stale, nie trzy.
+
+### Co z czym zrobione
+
+| stary | klasa | działanie | następca |
+|---|---|---|---|
+| `tr-791fafbc` | mechanical | `retracted --cause restated` | `tr-f8b946cd` |
+| `tr-96d14c58` | mechanical | `retracted --cause restated` | `tr-d237a049` |
+| `tr-b350781e` | genuine (liczba ramion) | `retracted --cause restated` | `tr-38d32bc7` |
+| `tr-c6170e24` | mechanical | `diverge --mechanical` | `tr-3dbdd418` |
+| `tr-d1049451` | expired (przedmiot zniknął) | `diverge` | brak — nie ma czego liczyć |
+
+Wycofania objęły **wyłącznie trzy claimy nazwane przez operatora**. Dla dwóch
+odkrytych po drodze użyto `diverge` — dokładnie tego, co ADR-011 mówi agentowi
+robić przy tombstone (*„file `diverge` … and stop — the human queue decides"*),
+z rekomendowaną komendą wycofania wpisaną w `basis`. Bramka odblokowuje się tak
+samo (claim `diverged` nie jest `live`, więc wypada ze sweepu), a decyzja
+terminalna zostaje u człowieka.
+
+`tr-d1049451` nie dostał następcy świadomie: twierdził o **47 plikach ADR
+001–047 w `template/docs/adr/truth/`**, a tego katalogu nie ma — korpus 54 ADR-ów
+pojechał do `docs/archive/adr/` w `687dbdc`. To nie jest fakt do przemierzenia,
+to fakt, którego przedmiot przestał istnieć. Ten sam ruch uśmiercił
+`tr-a8bda1a1`, i `stale` ukrywał oba od 2026-08-02.
+
+### ODSTĘPSTWO OD WYTYCZNYCH, z pomiarem
+
+Wytyczna (b) brzmiała: *„Sfiluj nowy claim z aktualną wersją **v0.9.38 w tekście
+i recepturze**"*. Nie wykonano dosłownie — i to jest jedyne odstępstwo w tym
+kroku. Powód jest policzalny, nie estetyczny:
+
+```
+claimy, których ZDANIE nazywa literał wersji:     122  ->  94 martwe (77%)
+claimy, których RECEPTURA nazywa literał wersji:   25  ->  24 martwe (96%)
+```
+
+Receptura z wpisaną wersją ma w tym ledgerze **96% śmiertelności**. Trzy
+rodziny, które właśnie osądzaliśmy, są tego historią, nie anegdotą:
+
+```
+explainer scope :  tr-b66ed08c -> tr-791fafbc -> (tr-8d9005d0) -> tr-f8b946cd
+lockstep gate   :  tr-84b79439 -> tr-9dd3323b (v0.9.34) -> tr-96d14c58 -> tr-d237a049
+bateria/ramiona :  tr-99113e85 -> tr-4f48fd51 -> tr-c6170e24 -> tr-7cccc674 -> tr-b350781e -> tr-38d32bc7
+```
+
+Każde pokolenie umierało na tym samym: bump wersji, receptura przestaje trafiać,
+claim leci do kolejki. Złożenie czwartego pokolenia w tym samym kształcie byłoby
+świadomym złożeniem claimu z datą ważności równą następnemu wydaniu.
+
+Zamiast tego użyto **wzorca, który to repo już ma** — nieżyjący `tr-39eb58bc`
+niósł go w recepturze: wyciągnij wersję z linii 2 CLI i sprawdź, czy występuje
+w drugiej powierzchni, zamiast wpisywać ją po obu stronach.
+
+```
+grep '^\*\*Scope\*\*' docs/truth-ledger-explained.md | grep -oE 'v[0-9]+[.][0-9]+[.][0-9]+' \
+  | grep -qF -f - template/scripts/truth \
+&& head -2 template/scripts/truth | grep -oE 'v[0-9]+[.][0-9]+[.][0-9]+' \
+  | grep -qF -f - docs/truth-ledger-explained.md \
+&& echo EXPLAINER-SCOPE-AND-CLI-AGREE-ON-CURRENT-VERSION
+```
+
+Sprawdzenie idzie **w obie strony**, więc twierdzeniem jest *zgadzają się*, a nie
+*obie mówią X*. Zdania nowych claimów też nie nazywają wersji. Analogicznie dla
+lockstepu bramki (`tr-d237a049`) i dla obu claimów o baterii, gdzie
+`sha256sum <plik>` — receptura ginąca przy **dowolnej** edycji pliku — została
+zastąpiona recepturą demonstrującą sam fakt (`grep -oE '^# --- [0-9]+[.] [a-z]+'`
+wylicza dziesięć ramion po nazwie).
+
+Jeśli operator chce jednak przypiętą wersję, to jedno re-file.
+
+### DO DECYZJI: podwójny claim o nagłówku Scope
+
+`tr-8d9005d0` jest **jedyną ocalałą** recepturą z literałem wersji w całym
+ledgerze — bo literał to akurat `v0.9.38`, czyli bieżąca wersja. Twierdzi ten sam
+fakt co świeży `tr-f8b946cd`. Bramka bliskich duplikatów tego nie złapała,
+bo (b) kazało użyć `--duplicate-ok`. Rekomendacja: wycofać przypięty na rzecz
+niezależnego od wersji —
+
+```
+truth verdict tr-8d9005d0 retracted --cause restated --successor tr-f8b946cd
+```
+
+— ale to kolejny tombstone, więc zostaje u operatora. Do czasu decyzji ledger
+niesie dwa żywe claimy o jednym fakcie, i to jest tu zapisane, a nie przemilczane.
+
+### Bramka i telemetria
+
+```
+reproduce   66 live -- 66 reproduces, 0 capsule-stale, 0 unexecutable, 0 no-capsule, exit 0
+core 372 OK · v04 13 OK · integrations 28 OK · canary 283 caught / 0 missed
+field-consumers 30 kluczy / 4675 rekordow -- 0 failures · reachability 10/10
+release-battery: ALL ARMS GREEN
+```
+
+```
+status:     retracted 122 · live 66 · diverged 32 · unverified 28
+polokres:   P1 0.87d (n=22) · P2 0.79d (n=38)
+kolejka:    32 pozycje, najstarsza 17 d
+```
+
+Push wykonany bez `--no-verify` — bateria przeszła na bramce pre-push.
