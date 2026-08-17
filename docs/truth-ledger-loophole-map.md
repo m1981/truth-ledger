@@ -1,99 +1,216 @@
 # The Loophole Map — Six Agent Events, Simulated
 
-**Reader:** Anyone assessing what the truth ledger can and cannot enforce against autonomous agent behavior.  
-**Scope:** CLI v0.9.38 · Living Specification (`template/docs/ARCHITECTURE.md`)  
-**Update-trigger:** a gate ships or a residual closes (current: CLI v0.9.38 — this stamp is pinned in lockstep with the CLI docstring by `TestCrossSurfaceVersions`, ADR-026; the scope note above moves only on a real content re-sync).  
-**Core Threat Model:** **Drift and omission, not motivated cryptographic adversaries.** Bypasses cost visible, attributable records in Git history.
+> Reader: anyone assessing what the truth ledger can and cannot enforce against agent behavior | Enables: knowing, per event type, which gates are CLI refusals and which residuals are behavioral — and what the worst case actually is | Update-trigger: a gate ships or a residual closes (current: CLI v0.9.38 — content re-synced at v0.9.13 on 2026-07-20, ADR-032/033 override-decay content added 2026-07-21, Event F spec-coverage added 2026-07-26, V&V blank sections added 2026-07-27; v0.9.20/ADR-034 re-plumbs intake into a staged gate table and folds post-append notices into one `truth: advisory:` block — refusal semantics unchanged, no loophole moved; v0.9.22/ADR-036 closes the retract-first ordering hazard: the tombstone verbs refuse while scope-covered files cite the id (consumer scope policy, ledger structurally excluded), with `truth citations` as the ceremony-free preflight; v0.9.23/ADR-037 mechanizes the recipe-hygiene prose -- line-number, version- and date-literal recipes warn at the moment they apply, and generated-artifact watches are refused via the consumer's `.truth/generated-paths` list; v0.9.24/ADR-038 makes restale-at-birth visible at filing (the dirty-watch advisory, structural dirtiness incl. merge conflicts); v0.9.25/ADR-039 prices watch breadth -- the blast forecast stamps an upper bound on stalings at filing and the stats blast section turns churn into a report (the refusal-gate question stays deferred to measured data); v0.9.26/ADR-040 moves no loophole but narrows one surface and names three residual classes: the shipped allowlist drops rg/file/date (audited exec/write channels), doctor's grey zone gains them as the half that propagates to existing consumers, and R1-R4 record what the evidence screen still accepts -- long-option abbreviations and glued/clustered short options of a denied flag, an output POSITIONAL no flag table can see, and three SHELL-level channels (glob expansion after screening, `<>` read-write open, digit redirect targets) whose closure is ADR-041, not an allowlist; v0.9.27/ADR-043 moves no loophole: the status vocabulary and the satellites' citation-blocking set become one exported contract (`truth vocab --json`, registry constants), spec-health/fact-health consume it at runtime so the R1 hand-copy drift class is structurally closed, `done` gains `--json` (SI-3 at claim-at-death) and refuses a missing basis/invalid transition BEFORE the tombstone ceremony (cmd_verdict's order) — refusal strings byte-identical; v0.9.28/ADR-044 moves no loophole: the single-file CLI becomes the `truthlib/` package behind the same thin `scripts/truth` entry — pure file moves, every refusal byte and exit code identical (the unchanged 243-arm canary is the equivalence proof), and the PURE-CORE banner becomes a theorem (TestModulePurity: an AST walk refuses subprocess/env/clock/open in the pure modules and pins the import DAG); v0.9.29/ADR-045 closes two same-machine residuals: every write verb now holds an exclusive flock around its whole load→gates→append critical section (the R10 intake-gate TOCTOU class — G8 duplicate screen, contradicts, issue-event transitions — is gate-coherent on one machine; multi-machine unchanged, §8 item 4 stands), and install-hooks.sh wires `pre-merge-commit` so the merge-auto-commit class the union-merge sync produces is gated by the same check-truth body (doctor WARNs when pre-commit is wired locally without it; CI-arm repos exempt); v0.9.30/ADR-046 moves no loophole but REMOVES instrument surface (the migration's one deliberate behavior change): the stats separation/overrides/blast/concerns sections, doctor's verifier-separation check, `--concern` on claim/list, and the stored `blast_forecast` stamp all leave the template — the reports live on as meta-repo Tier C instruments (instruments/*.py over `truth ... --json` + the raw ledger, gated by scripts/test-instruments.sh), the envelope gains the admission rule (a payload field is admitted only if the fold or a blocking gate reads it; concerns/blast_forecast legacy-admitted, closed to new records), and every refusal byte and gate stays identical; v0.9.31/ADR-047 moves no loophole (docs-only): every Tier B gate now carries an adoption metric and review date in the meta-repo gate-metric registry, docs/governance/gate-metrics.md; v0.9.32 moves no loophole and adds no decision: input hygiene under ADR-036 and ADR-013 -- `truth citations` refuses an arg that is not a ledger id (tr-hex8/wk-hex8) before it sweeps anything, instead of grepping the literal token across the corpus and reporting it clean (found in an operator transcript: `citations '#'`), and `truth premise` refuses a malformed claim/--supersedes ref BEFORE appending -- intake was weaker than the validate mirror, so a normal verb could write a record `truth validate` then rejects on an append-only file; header pinned in lockstep by TestCrossSurfaceVersions since v0.9.13)
 
----
+Provenance: adapted from a second-deployment session walkthrough
+(repo `temporal-go-agent-sdk`, 2026-07 — the same session behind
+`docs/field-notes-sdk-session.md`; pre-v0.6 knowledge in places);
+corrected against CLI v0.6.3 and the paper v2 on 2026-07-12;
+content re-synced against CLI v0.9.13, `template/CHANGELOG.md`, and
+the paper v3 on 2026-07-20. Session-specific references generalized
+to their paper citations. Semantics source of truth:
+`.truth/README.md`, the ADRs, and
+[the paper](truth-ledger-paper-v3.md) — this document is a walkthrough,
+not a second home for any contract.
 
-## The Six Agent Events
+## A. Fresh Agent Arrives (Bootstrap / Discovery)
 
+```mermaid
+flowchart TD
+    S["Fresh agent starts a task"] --> Q{"Loads an instruction<br/>file (AGENTS.md/CLAUDE.md)?"}
+    Q -->|yes| R["Reads the discovery snippet → runs<br/>truth ready / queue / impact"] --> SAFE["Operates inside the regime ✅"]
+    Q -->|"NO — never loads it"| BYPASS["Bypasses the whole layer ☠"]
+    BYPASS -.->|"mitigation, edit path"| PE["pre-edit whisper (ADR-005):<br/>truth impact fires at edit intent<br/>IF the harness hook is wired"]
+    BYPASS -.->|"mitigation, read path"| DG["session-start digest (FS-4, v0.6):<br/>queue + top live claims injected<br/>at session birth IF the hook is wired"]
+    PE --> SAFE
+    DG --> SAFE
 ```
-  [A. BOOTSTRAP]  ──► Agent arrives: reads AGENTS.md or bypasses silently
-  [B. ASSERT]     ──► Agent files fact: INTAKE_GATES enforce syntax, quantifiers & churn
-  [C. WORK]       ──► Agent executes task: truth ready blocks on dead premises; done runs oracle
-  [D. VERIFY]     ──► Independent check: ADR-010 enforces session separation; ADR-051 gates refresh
-  [E. CONCURRENT] ──► Merging branches: Total order (ts, id, canon) guarantees union confluence
-  [F. CITE]       ──► Living prose: fact-health & spec-health tripwire dead citations
+
+**Loophole:** the one real structural hole — an agent that never reads
+an instruction file and runs in a hook-less harness skips everything.
+Known and documented (paper §8 item 5). Mitigated on three fronts, not
+eliminated: doctor's G2 discovery check (plus the v0.6.3 work-kernel
+discovery warn, which catches the half-documented case — facts named,
+work verbs not), the ADR-005 whisper at edit intent, and the FS-4
+digest at session birth. Hook-capable harnesses now have both session
+entry points covered structurally; the hook-less harness remains the
+ledger's outer boundary, by design. **Status at v0.9.13: unchanged —
+still open, still the outer boundary.**
+
+---
+
+## B. Agent Asserts a Fact (Truth Claim)
+
+```mermaid
+flowchart TD
+    C["Agent wants to assert<br/>'X is true'"] --> G1{"Files via truth claim?"}
+    G1 -->|"NO — states it in prose"| L1["Unverified assertion ☠<br/>(behavioral gap)"]
+    G1 -->|yes| G2{"Intake gates"}
+    G2 --> E1{"empty / near-dup?<br/>(metric pinned: ADR-018)"} -->|caught| REF["REFUSED"]
+    G2 --> E2{"quantifier vs<br/>scope mismatch? (ADR-007)"} -->|caught| REF
+    G2 --> E3{"evidence screen refuses?<br/>(ADR-009 allowlist; ADR-021<br/>control chars; ADR-022 deny<br/>baseline — gates execution, ADR-029)"} -->|caught| REF
+    G2 --> E4{"paths match 0 files, or<br/>dead glob? (INV-M; ADR-024)"} -->|caught| REF
+    E1 & E2 & E3 & E4 -->|all pass| LIVE["Filed (born unverified) ✅<br/>double-run hashed at intake"]
 ```
 
----
+**Loophole:** only B's top branch — an agent can talk without filing
+(behavioral, paper §1). Once it uses the CLI, the intake gates are
+refusals, not warnings — the quantifier–scope gate targets the paper's
+dominant real failure shape (both pilot divergences, paper §2). The
+gates drawn are the agent-relevant subset; the full refusal list (G1
+anchor — floored since v0.9.9/ADR-027, G6 determinism, INFERRED basis,
+…) is in §1 of the paper. Since the v0.6.4 sync the gates got strictly
+tighter: the screen refuses ASCII control characters except tab
+(v0.9.6/ADR-021 — closing a live newline-smuggling bypass, see D), a
+template-owned deny baseline refuses shells and generic executors even
+when a consumer accidentally allowlists one (v0.9.7/ADR-022,
+evidence screen only), statically dead globs over unreachable
+namespaces are refused at intake (v0.9.8/ADR-024; a dormant glob over a
+*reachable* namespace legitimately passes, ADR-023), and a
+`--duplicate-ok` override now stamps `overridden_duplicates` into the
+record — attackable ledger content instead of a traceless bypass
+(v0.9.2).
 
-### Event A · Fresh Agent Arrives (Bootstrap & Discovery)
-* **The Scenario:** An AI agent starts a session in the repository.
-* **The Enforcement:**
-  * `truth-session-digest.py` (SessionStart hook) injects the triage queue and active P0/P1 claims directly into context.
-  * `truth-whisper.py` (PreToolUse hook) intercepts file edit intents, whispering impacted claims before changes occur.
-* **The Loophole (Behavioral Boundary):** An agent running in a harness without hooks that never reads `AGENTS.md` bypasses the tool entirely.
-* **Worst-Case Failure Mode:** **Omission, never corruption.** An oblivious agent creates no ledger records; the existing ledger remains 100% valid.
+**Also closed since v0.9.14 — scope-ok rot.** E2's `--scope-ok`
+override, once filed, used to sit live forever with nothing re-asking
+whether the scope judgment still held. ADR-032 stamps a default 30-day
+TTL on any `--scope-ok` filed without an explicit `--ttl-days`; on
+expiry ADR-030 arm 1 routes it to re-file, re-firing E2 rather than
+trusting the sentence permanently. ADR-033 gives the adoption gate its
+instrument: the override-velocity report (since v0.9.30/ADR-046 the
+meta-repo's `instruments/override-velocity.py`, formerly a `truth
+stats` section) counts filings and
+decay expiries, and non-blockingly flags a justification re-filed with
+an identical token set after its prior died — evadable by a single
+word edit, so the raw counters, not the advisory, are what an audit
+actually reads (paper §8 item 8).
 
----
+One narrow residual *inside* the protection metadata remains open
+(found in the meta-repo, 2026-07-13; named the undecidable residual by
+ADR-024): INV-M checks that a literal path matches a tracked file, but
+a tracked **symlink** passes and can never fire — git sees only the
+unchanging link, not the target. Watch real paths.
 
-### Event B · Agent Asserts a Fact (`truth claim`)
-* **The Scenario:** An agent files an assertion (`VERIFIED`, `INFERRED`, or `UNVERIFIED`).
-* **The Enforcement (Hard Technical Refusals):**
-  * **Near-Duplicates (G8):** Jaccard token overlap $\ge 0.6$ is refused unless `--duplicate-ok` stamps the bypassed IDs.
-  * **Quantifier-Scope (ADR-007):** Universal claims (*"nowhere in repo"*) over scoped commands are refused unless `--scope-ok "<basis>"` is supplied (auto-decays after 30 days under ADR-032).
-  * **Watch Breadth & Churn (Phase 3):** Freehand watches $>1$ path or exceeding the churn floor (P90 / 15 commits in 30d) are refused unless bound to `.truth/watch-policies` or excused via `--paths-ok "<basis>"`.
-  * **Command Safety (ADR-009/021/040):** Shells and execution wrappers in `.truth/evidence-deny` are hard-blocked.
-  * **Hollow Claims (ADR-035):** Positive sentences with failing commands (Exit $\neq 0$) are refused.
-* **The Loophole:** 78% of recipes check structure (`grep -c`), not semantic value (`cat` / `sha256sum`). A claim can verify that a line exists without proving the line is correct.
-
----
-
-### Event C · Agent Starts & Finishes Work (`truth ready` → `start` → `done`)
-* **The Scenario:** An agent picks an issue (`wk-xxxx`), works on it, and marks it finished.
-* **The Enforcement:**
-  * **Readiness Gate (`truth ready`):** An issue is marked `HELD` if any premise claim is `stale`, `diverged`, `disputed`, `retracted`, or `missing`.
-  * **Acceptance Oracles (ADR-014):** If `--accept-cmd "<cmd>"` was declared at birth, `truth done` executes the test suite from root and **refuses close on non-zero exit**.
-  * **Tombstone Authority (ADR-017):** Redirecting a `retracted` premise requires human authority (`TRUTH_HUMAN=1`).
-* **The Loophole:** `truth start` does not lock the file system; an agent ignoring `truth ready` can still attempt work on a `HELD` item.
-
----
-
-### Event D · Agent Verifies a Claim (`truth dispatch` → `verdict`)
-* **The Scenario:** An agent is dispatched to verify a colleague's claim.
-* **The Enforcement:**
-  * **ADR-010 session separation:** `verdict agree` is hard-refused if `TRUTH_SESSION_filer == TRUTH_SESSION_verifier`.
-  * **Capsule Coherence (ADR-051):** If the command's output shifted, `agree` is refused unless accompanied by `--refresh-evidence "<basis>"`, updating the anchor and capsule hash together.
-  * **Reproduce-on-Read:** All live claims are re-tested at `pre-push`.
-* **The Loophole:** `TRUTH_SESSION` is self-attested via environment variables. An agent forging a new session ID can self-verify (visible in Git log).
-
----
-
-### Event E · Concurrent Sessions Write the Ledger
-* **The Scenario:** Multiple agents commit ledger records concurrently across Git branches.
-* **The Enforcement:**
-  * **Single-Machine Lock (ADR-045):** `fcntl.flock` on `.git/truth-ledger.lock` serializes read-gate-append operations.
-  * **Confluence Algebra (ADR-016):** Total fold order `(ts, id, canon)` guarantees that `git merge=union` derives identical state regardless of merge direction.
-  * **Unified Duplicate Rule (ADR-031):** Any duplicate ID with differing content is refused at commit.
-* **The Loophole:** Multi-machine clock skew beyond 300s is flagged as a warning, not a hard rejection (to allow legitimate offline merges).
-
----
-
-### Event F · Agent Cites Facts in Living Prose
-* **The Scenario:** Markdown documentation or feature specifications cite ledger IDs (`tr-xxxxxxxx`).
-* **The Enforcement:**
-  * **Citation Tripwires (`fact-health.sh` & `spec-health.sh`):** Scans all active Markdown docs; fails CI if any cited ID is `stale`, `diverged`, `disputed`, `retracted`, or `missing`.
-  * **Tombstone Citation Gate (ADR-036):** Retracting a claim that is actively cited in live docs is refused (Exit 6).
-* **The Loophole:** Citation of an unverified fact emits a warning, not a hard build failure (low-friction tradeoff).
+**The hollow VERIFIED — CLOSED for the decidable slice since
+v0.9.21 (ADR-035)** (two real instances, field-notes-batch-m; a third
+escaped to a pilot verifier as QB-011): `claim --class VERIFIED`
+files on *determinism* (the double-run hash-matches), not on exit 0.
+v0.9.11 narrowed it with a non-blocking warning; v0.9.21 converts
+the exactly-decidable slice into an intake REFUSAL — a sentence with
+no NEGATION_TOKENS token plus a non-zero recorded exit demonstrates
+nothing it asserts and is refused naming ADR-035, with
+`--evidence-exit-ok "<basis>"` as the stored, counted override.
+Absence proofs (a negation token in the text — grep proving absence
+exits 1, and that exit IS the demonstration) keep the advisory path.
+Named residuals, owned in ADR-035: the token test reads the
+SENTENCE's polarity, not the recipe's — an inverted recipe (`! grep`)
+exits 0 and passes silently; a differential proof (`diff` exiting 1)
+pays a basis; mixed sentences with a negation token ride the
+advisory path even when their positive half is undemonstrated. Also documented, not a hole (ADR-029): the
+`--evidence-unsafe-ok` escape hatch bypasses the *whole* screen at
+intake — including the deny baseline — but the command runs in the
+author's own session (no new capability), lands `screened: false`, and
+recheck refuses it forever after.
 
 ---
 
-## Summary Matrix of Loopholes and Guarantees
+## C. Agent Starts & Finishes Work (Ready → Start → Done)
 
-| Event | Mechanism | Enforcement Level | Worst-Case Failure Mode |
-| :--- | :--- | :--- | :--- |
-| **A. Bootstrap** | `truth-whisper.py`, `truth-session-digest.py` | Behavioral (Harness Hooks) | **Omission:** Ledger is ignored, never corrupted. |
-| **B. Assert** | `INTAKE_GATES` table (G8, ADR-007, Churn, ADR-035) | **Hard Technical Refusal** | Storing a shallow count recipe (`grep -c`). |
-| **C. Work** | `truth ready` (ADR-001), Oracles (ADR-014) | **Hard Gate at Close** | Working on a `HELD` item without checking. |
-| **D. Verify** | ADR-010 Separation, ADR-051 Refresh, Reproduce | **Hard Pre-Push Gate** | Forging `TRUTH_SESSION` export in transcript. |
-| **E. Concurrency**| `flock`, `merge=union`, `(ts, id, canon)` fold | **Mathematical Confluence** | Backdated fresh-ID timestamp (warned at commit).|
-| **F. Cite** | `fact-health.sh`, `spec-health.sh`, ADR-036 | **Hard CI & Retract Gate** | Spec citing an `unverified` claim (warned). |
+```mermaid
+flowchart TD
+    W["Agent picks work"] --> RD{"truth ready shows it?"}
+    RD -->|"HELD (stale/diverged premise)"| H["Named dead fact →<br/>re-verify first"]
+    RD -->|"not shown (closed/blocked)"| X["not startable"]
+    RD -->|READY| ST["truth start → do work"]
+    ST --> DN{"truth done --claim"}
+    DN --> AC{"issue declared an<br/>--accept-cmd oracle? (ADR-014, v0.7.0)"}
+    AC -->|"yes — oracle runs, non-zero exit"| REF2["close REFUSED"]
+    AC -->|"yes — oracle passes / no — agent's word"| T1{"completion claim filed<br/>BEFORE its shipping commit?"}
+    T1 -->|yes| TRIP["its own path tripwire<br/>stales it — self-correcting"]
+    T1 -->|"commit first"| OK["closed + fact filed, atomic ✅"]
+    ST -.->|"agent IGNORES the HELD<br/>and works anyway"| RISK["works on a dead premise ⚠<br/>(ready is advisory, not a lock)"]
+```
 
+**Loophole:** `ready` is a policy join, not a lock — `truth start`
+checks only the status transition, never premise validity, so a
+determined agent can work a HELD item (C's dashed path). But the
+premise gate makes the risk visible with the dead fact named, and
+`done` still files a checkable claim.
 
-***
+**`--accept-cmd` is no longer proposed-next — it shipped (v0.7.0,
+ADR-014, closing upstream truth-ledger#1):** an issue may declare an
+executable finish line at birth, and `done` runs it from the repo root
+and refuses the close on non-zero exit — "done" stops being the
+agent's word. The oracle is screened against its own committed
+allowlist (`.truth/accept-allow`; exact repo-relative path entries
+allowed since v0.7.2), never the read-only evidence list. What remains
+is the honest residual in its new, narrower shape: the oracle is
+**opt-in per issue** — an issue filed without `--accept-cmd` still
+closes on the agent's word — and `--accept-unsafe-ok` at `done` closes
+without executing an oracle that *cannot* run (unscreened /
+unscreenable), stamped `executed: false` on the event; it never
+overrides an oracle that ran and failed. Also closed since the sync
+(v0.9.9, ADR-028): a raw-appended *future-dated* issue record used to
+let `done`/`--cancel` report a transition the fold silently dropped —
+now refused honestly at intake and caught at the gate; a lone
+future-dated issue record still commits but is inert-and-visibly-so
+(disclosed residual — `validate` is clock-free by design).
+
+**The HELD dead-end has an exit since v0.6.4 (ADR-013):**
+`truth premise <issue> <new-tr> --supersedes <old-tr>` redirects a
+genuinely dead premise to its corrected claim — refused while the old
+premise is live or unverified (the states needing no rescue), judged by
+the same ADR-001 matrix after.
+The **inherited residual** here has since been *narrowed* (v0.9.3,
+ADR-017): superseding a **retracted** premise now requires the ADR-011
+human gate (TRUTH_HUMAN + typed-id ack), so an agent can no longer
+spend a human retraction at the readiness layer — the independent
+review's C3 finding, confirmed live and closed. What remains: for the
+*mechanical* dead states (stale / diverged / cannot_verify / missing —
+no human decided those, so they stay ungated), a fresh *unverified*
+replacement still passes the matrix with only a warning, so a drifting
+agent could free its own HELD work by filing a plausible unverified
+"correction." This is ADR-001's unverified-passes trade surfacing
+through one more door, not a new hole — and the redirect record
+permanently names who opened it, with the replacement claim sitting in
+the ledger for any verifier to attack.
+
+---
+
+## D. Agent Verifies a Claim (Dispatch → Verdict)
+
+```mermaid
+flowchart TD
+    V["Claim needs verification"] --> D1{"Same session that<br/>authored it?"}
+    D1 -->|"yes, self-agree"| SV["REFUSED by the CLI<br/>(ADR-010 session separation)"]
+    SV -.->|"session id is self-attested:<br/>one env export forges it, visibly"| WEAK["F4-class residual ⚠ —<br/>refusal + auditable bypass ritual,<br/>not identity"]
+    D1 -->|"fresh session"| REC{"deterministic recheck first"}
+    REC -->|"hash mismatch"| DIV["diverge (auto-filed)"]
+    REC -->|"cmd not found (exit 127)"| CV["cannot_verify"]
+    REC -->|"screened=false record"| NX["recheck declines to execute<br/>(ADR-009/029) — manual verdict only"]
+    REC -->|"match"| JUDGE["independently judge<br/>text vs evidence → agree/diverge"]
+    JUDGE --> LIVE2["live, or diverged ✅"]
+```
+
+**Loophole:** since v0.6 (ADR-010), same-session `agree` is a CLI
+*refusal* (canary V-faults), not a convention — the earlier framing
+"the ledger cannot enforce it" is outdated. What remains behavioral is
+*identity*: `session` is env-derived and self-attested, so a bypass
+costs one visible, attributable env export (`TRUTH_SELF_VERDICT=1`) —
+F4's trust class, adopted knowingly (defense against drift, not
+adversaries). Asymmetric by design: self-`diverge` and
+self-`cannot_verify` stay allowed — self-incrimination runs against
+interest. The recheck half is enforced mechanically, including the
+ADR-009 refusal to execute unscreened evidence in a verifier session —
+and that refusal's screen was itself hardened since the sync: an
+independent code review found a **live bypass** (v0.9.6, ADR-021 —
+the screen tokenized with shlex, the executor ran /bin/sh, and a
+newline smuggled an unscreened command into a verifier's recheck),
+closed by refusing ASCII control characters so the screen's token
+stream soundly over-approximates the shell's; the same review moved
+the stated security boundary to the bare-name **allowlist** (a deny
+table cannot bound a VCS), and v0.9.7's ADR-022 deny baseline now
+stops a verifier from executing an accidentally-allowlisted shell.
 
 **Second hazard — the scribe (ADR-010 amendment, 2026-07-13):** the
 gate keys on the *record's* session, so a courier scribing another
