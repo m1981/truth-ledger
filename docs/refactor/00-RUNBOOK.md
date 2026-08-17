@@ -5,7 +5,7 @@
 > Jedno zadanie naraz. Po każdym: weryfikacja → status → wpis w JOURNAL → commit.
 
 Gałąź robocza: `claude/git-hooks-architecture-zc97y3`
-Commit bazowy: `fa2e85b` · rewizja runbooka: `r13` (2026-08-16, 2.2 i 2.3 zrobione)
+Commit bazowy: `fa2e85b` · rewizja runbooka: `r14` (2026-08-16, 2.4 zrobiony)
 
 ---
 
@@ -258,7 +258,7 @@ przechodziłby przez bramkę po cichu.
 
 **Weryfikacja:** `bash .githooks/pre-push` w sandboxie; czas < 2 s.
 
-### [ ] 2.4 Wyłączenie `invalidate-scan` z post-merge
+### [x] 2.4 Wygaszenie `invalidate-scan` — **ZROBIONE**, dwa hooki nie jeden (J-033)
 
 ### [ ] 2.5 Usunięcie stanu `stale` z folda
 Stan wyliczany z logu: `unverified` → `live` → `diverged`/`retracted`.

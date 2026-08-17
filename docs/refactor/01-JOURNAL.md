@@ -1344,3 +1344,53 @@ fact-health 0 failure(s) · reproduce rc=0
 
 Warunek SEC-1 z werdyktu GO (J-017) był zamknięty w SEC-0 (J-021) **przed** tym
 krokiem, zgodnie z porządkiem, który ten werdykt narzucał.
+
+---
+
+## J-033 · KROK 2.4 — ścieżka zapisu wygaszona w DWÓCH hookach, nie jednym · 2026-08-16
+
+**Runbook nazywał tylko `post-merge`. Pomiar pokazał dwa:**
+
+```
+.githooks/post-commit  → python3 scripts/truth invalidate-scan
+.githooks/post-merge   → python3 scripts/truth invalidate-scan
+```
+
+Oba z tym samym komentarzem *„Solo/trunk: every commit can invalidate facts;
+there are no merges to hook"* — czyli w tym repo **pracował `post-commit`**,
+a `post-merge` był kopią na wypadek scaleń. To `post-commit` odpalał się po
+każdym commicie tej sesji i to on wyprodukował wszystkie zestalenia, które
+musiałem rozstrzygać.
+
+Gdybym wykonał instrukcję dosłownie, wygasiłbym hook, który w praktyce nie
+strzelał, i zostawił ten, który strzela. **Trzeci raz w tej sesji instrukcja
+nazywała jeden obiekt, a pomiar znalazł więcej** (J-008: 0 vs 14 claimów,
+J-022: 1 vs 2 operacje, teraz 1 vs 2 hooki).
+
+### Wykonane
+
+Oba hooki meta-repo → `exit 0` z uzasadnieniem w nagłówku (plik zostaje, bo
+jest rootem dla `gate-reachability`; znika wyłącznie zapis).
+`template/scripts/install-hooks.sh` → generuje `post-merge` bez zapisu,
+komunikat dla `core.hooksPath` i wskazówka CI przepisane na `truth reproduce`
+z kontraktem exit 7 / exit 8.
+
+### Weryfikacja
+
+```
+realne wywołania invalidate-scan poza komentarzami → BRAK
+gate-reachability: examined 10 check(s), 10 reachable, 0 unreachable
+core 396 OK · integrations 28 OK · canary 283 caught, 0 missed
+```
+
+**`10/10 reachable` jest tu istotne**: odcięcie dwóch hooków nie osierociło
+żadnej kontroli — nic nie było do nich podpięte poza skanem. Gdyby coś było,
+ten sweep by to zgłosił, zamiast pozwolić kontroli zniknąć po cichu.
+
+### Otwarte okno, o którym uprzedzałem
+
+`reaffirm` nadal istnieje i nadal jest jedynym mechanizmem wchłaniającym
+zestalenia — ale **nic już nowych zestaleń nie produkuje**. Stare pozostają
+w ledgerze jako historia. Okno „każde zestalenie wymaga osądu" **nie otworzyło
+się**, bo źródło wyschło przed usunięciem absorbera. To był powód, dla którego
+kolejność 2.4 → 2.5 → 2.6 jest lepsza od 2.4 → 2.6 → 2.5.
