@@ -3126,12 +3126,28 @@ git add -A && git commit -qm "bf: init" --no-verify -q
 for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do
   echo "w$i" >> w.txt && git commit -aqm "bf: touch $i" --no-verify -q
 done
-BF1=$($T claim "w.txt keeps accumulating its numbered lines" --class VERIFIED \
-      --evidence-cmd "grep w0 w.txt" --paths w.txt 2>&1 >/dev/null)
-if printf '%s\n' "$BF1" | grep -q "blast: watch matched 1[0-9] commits"; then
-  ok "BF1: a hot watch (>=floor commits/30d) voices the upper-bound advisory"
+# Step 3.2 LAYERED this arm rather than replacing it. The ADR-039
+# forecast now drives BOTH a refusal and the advisory, at one threshold,
+# and which one you get says something: an UN-EXCUSED hot watch is
+# refused, an ACCEPTED one is filed and told what it costs. So BF1 is two
+# arms now -- the refusal must fire, and the advisory must still voice
+# for the claim that took an exit. Either half going silent is the
+# regression this pair exists to catch.
+BF1R=$($T claim "w.txt keeps accumulating its numbered lines" --class VERIFIED \
+       --evidence-cmd "grep w0 w.txt" --paths w.txt 2>&1 >/dev/null)
+if printf '%s\n' "$BF1R" | grep -q "at or above the churn floor"; then
+  ok "BF1a: an un-excused hot watch (>=floor commits/30d) is REFUSED"
 else
-  miss "BF1: hot watch stayed silent"
+  miss "BF1a: hot watch filed with no refusal and no basis"
+fi
+BF1=$($T claim "w.txt keeps accumulating its numbered lines" --class VERIFIED \
+      --evidence-cmd "grep w0 w.txt" --paths w.txt \
+      --paths-ok "the claim is ABOUT this file accumulating, so the hot watch is the subject" \
+      2>&1 >/dev/null)
+if printf '%s\n' "$BF1" | grep -q "blast: watch matched 1[0-9] commits"; then
+  ok "BF1b: an ACCEPTED hot watch still voices the upper-bound advisory"
+else
+  miss "BF1b: hot watch stayed silent"
 fi
 # BF4 FLIPPED by ADR-046 (the item-2 red-proof arm): the forecast is
 # computed on read and NEVER stamped -- the payload must NOT carry

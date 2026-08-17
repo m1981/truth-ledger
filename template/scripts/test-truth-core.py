@@ -3482,12 +3482,20 @@ class TestAdvisoryAssembler(unittest.TestCase):
         # paths-inv-m -- both judge the same field, neither depends on the
         # other's outcome, and it must precede scope-decay because a
         # --paths-ok basis is one of the three things that row decays.
+        # FAZA 3 step 3.2 ships TWO path budgets and their order is
+        # measured, not stylistic: every freehand claim at or above the
+        # ADR-039 churn floor on this ledger also exceeds the cardinality
+        # budget, so count-first would leave the churn row unable to fire.
+        # Breadth first means it fires and the author is told the useful
+        # thing. blast-forecast-adr039 rides up with it as its fact source.
         self.assertEqual(names, ["text-nonempty", "near-duplicate-g8",
                                  "quantifier-scope-adr007",
-                                 "paths-inv-m", "paths-budget-max",
+                                 "paths-inv-m",
+                                 "blast-forecast-adr039",
+                                 "paths-churn-budget",
+                                 "paths-budget-max",
                                  "generated-paths-adr037",
                                  "scope-decay-adr032",
-                                 "blast-forecast-adr039",
                                  "class-precheck"])
 
     def test_stats_consumers_folded_parity(self):
@@ -5386,10 +5394,74 @@ class TestPathsBudgetGate(unittest.TestCase):
         err = self._run(paths=["a.py"], paths_basis="why not")
         self.assertIn("nothing to excuse", err)
 
+    def test_a_basis_excusing_BREADTH_on_one_path_is_not_called_noise(self):
+        """REGRESSION (caught by canary BF1b). The two path budgets share
+        one flag, so the 'nothing to excuse' check cannot look at path
+        count alone: a SINGLE path over the churn floor legitimately needs
+        --paths-ok, and the first cut refused exactly that -- telling the
+        author their basis was pointless while the other arm was the thing
+        demanding it. The churn row flags ctx['churn_over'] before its
+        exits clear it, and this arm reads that flag."""
+        self.assertIsNone(self._run(paths=["src/**"],
+                                    paths_basis="this breadth is the subject",
+                                    churn_over=True))
+        # ...and with neither arm objecting it is still noise.
+        self.assertIn("nothing to excuse",
+                      self._run(paths=["src/**"], paths_basis="why not"))
+
     def test_basis_beside_a_policy_is_refused(self):
         err = self._run(paths=["a.py", "b.py"], watch_policy="core-suite",
                         paths_basis="why not")
         self.assertIn("--paths-ok beside --watch-policy", err)
+
+class TestPathsChurnGate(unittest.TestCase):
+    """The SECOND arm of step 3.2: breadth, measured by ADR-039's forecast
+    against its self-calibrating floor.
+
+    The arm exists because entry count predicts attention badly, and its
+    ORDER exists because of a measurement: every freehand claim at or
+    above the churn floor on this ledger also exceeds the cardinality
+    budget, so count-first would have left this row unable to fire at
+    all. These cases pin that it CAN fire on one path -- the property
+    that makes it more than a second spelling of paths-budget-max."""
+
+    GATE = "paths-churn-budget"
+
+    def _run(self, forecast, **over):
+        ctx = gate_ctx(**over)
+        ctx["blast_forecast"] = forecast
+        ctx["blast_history"] = None      # -> BLAST_ADVISORY_FLOOR fallback
+        return GATE_FNS[self.GATE](ctx)
+
+    def test_a_single_broad_glob_can_be_refused(self):
+        """The property the arm is FOR: one path, refused on breadth."""
+        err = self._run(tm.BLAST_ADVISORY_FLOOR, paths=["src/**"])
+        self.assertIsNotNone(err, "one hot glob must be refusable")
+        self.assertIn("--watch-policy", err)
+        self.assertIn("--paths-ok", err)
+        self.assertIn("narrow the globs", err)
+
+    def test_below_the_floor_passes(self):
+        self.assertIsNone(
+            self._run(tm.BLAST_ADVISORY_FLOOR - 1, paths=["src/**"]))
+
+    def test_both_exits_clear_it(self):
+        self.assertIsNone(self._run(tm.BLAST_ADVISORY_FLOOR,
+                                    paths=["src/**"],
+                                    watch_policy="core-suite"))
+        self.assertIsNone(self._run(tm.BLAST_ADVISORY_FLOOR,
+                                    paths=["src/**"],
+                                    paths_basis="this breadth is the point"))
+
+    def test_absent_forecast_abstains(self):
+        """Shallow or unavailable history computes nothing, and a floor is
+        not a bound (ADR-039). Refusing on a truncated log would point the
+        wrong way -- the quietly-cold number that ADR forbids."""
+        ctx = gate_ctx(paths=["src/**"])
+        self.assertIsNone(GATE_FNS[self.GATE](ctx))
+
+    def test_no_paths_abstains(self):
+        self.assertIsNone(self._run(999, paths=[]))
 
 class TestPathsBasisDecay(unittest.TestCase):
     """ADR-032 extended to --paths-ok (step 3.2). 'This wide watch set is

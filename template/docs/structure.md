@@ -69,6 +69,7 @@ flowchart TB
     KER --> SIO
     REG --> SIO
     POL --> GAT
+    REP --> GAT
     EVI --> GAT
     SIO --> GAT
     ADV --> CLI

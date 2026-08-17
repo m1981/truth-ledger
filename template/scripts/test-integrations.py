@@ -594,8 +594,13 @@ class TestTierCInstruments(unittest.TestCase):
             for i in range(16):
                 sb.write_file("w.txt", f"line {i}\n")
                 sb.git_commit(f"w {i}")
+            # Step 3.2: a hot watch is refused unless the breadth is
+            # accepted. This instrument test is about blast-report.py
+            # computing the forecast ON READ, not about the gate, so the
+            # fixture states the basis and moves on.
             res = sb.run_truth("claim", "w.txt keeps growing", "--class", "VERIFIED",
-                               "--evidence-cmd", "cat w.txt", "--paths", "w.txt", "--tier", "P2")
+                               "--evidence-cmd", "cat w.txt", "--paths", "w.txt", "--tier", "P2",
+                               "--paths-ok", "the claim is about this file growing; the hot watch is its subject")
             cid = res.stdout.strip()
 
             # Assert blast_forecast is NOT stored in claims.jsonl

@@ -2113,3 +2113,77 @@ bramkowana człowiekiem**. 46 claimów = ~138 nowych rekordów i **46 ceremonii
 tombstone**, żeby zmienić pole metadanych w faktach, które są prawdziwe i
 poprawnie obserwowane. Decyzja o zakresie należy do operatora — pytanie w
 raporcie sesji.
+
+---
+
+## J-039 · KROK 3.2, drugie ramię — budżet szerokości i korekta własnej tezy · 2026-08-17
+
+### KOREKTA POMIARU, który uzasadniał to ramię
+
+Zaproponowałem `churn_budget` argumentem: „trzy z sześciu najgłośniejszych
+claimów mają JEDNĄ ścieżkę (`template/truthlib/**`, 74 linie) i przechodzą przez
+`max_paths=1`". Zdanie było prawdziwe **dla okna 200 commitów**, w którym
+liczyłem. ADR-039 mierzy w oknie **30 dni**, a tam te same globy dają **24** przy
+skalibrowanym progu **54** — czyli spokojnie legalne.
+
+**To ramię nie łapie przypadku, który je umotywował.** Zapisuję to, bo zostawienie
+fałszywego uzasadnienia w pliku jest gorsze niż samo ramię. Co łapie naprawdę:
+każdy zbiór, który jest gorący **teraz**, a najwyższa prognoza jedno-ścieżkowa na
+ledgerze (48) leży na tyle blisko progu, że jeden `**` by go przekroczył — więc
+pilnuje przypadku osiągalnego, nie hipotetycznego.
+
+### DRUGIE USTALENIE: kolejność decydowała o tym, czy ramię w ogóle żyje
+
+```
+freehand claimow na/powyzej progu churn: 17 z 78
+  ...z nich majacych JEDNA sciezke:       0
+najwyzsza prognoza jedno-sciezkowa:      48   (prog 54)
+```
+
+Wszystkie 17 ma ≥2 ścieżki, więc przy kolejności „liczba, potem szerokość"
+ramię churn **nigdy by nie odpaliło** — martwy wiersz udający pokrycie, czyli
+dokładnie ta ciemna bramka, której to repo zabrania. Odwrócone: odpala na
+wszystkich 17, a autor dostaje komunikat **działający** („zawęź globy") zamiast
+tylko prawdziwego („masz cztery ścieżki”). `blast-forecast-adr039` przesunięty
+razem z nim jako jego źródło faktu; żadne filowanie nie płaci nowego `git`,
+bo `paths-inv-m` wiersz wyżej już płaci `git ls-files`.
+
+### TRZECIE: doradca i odmowa dzieliły próg — rozwarstwione, nie skasowane
+
+Canary `BF1` padł: arm oczekiwał **advisory** ADR-039, a dostał odmowę, bo
+podniesienie doradcy do bramki uczyniło jego populację pustą. Rozwiązanie nadaje
+obu ról zamiast wybierać jedną:
+
+* **nieusprawiedliwiona** szerokość → **odmowa**;
+* **zaakceptowana** (polityka albo `--paths-ok`) → filowane i doradca mówi, ile
+  to kosztuje.
+
+`BF1` jest teraz dwoma ramionami (`BF1a` odmowa, `BF1b` advisory), więc ucichnięcie
+którejkolwiek połowy jest łapane. Canary 283 → **284**.
+
+### BŁĄD WŁASNY, złapany przez BF1b
+
+Kontrola „podstawa, która niczego nie usprawiedliwia" patrzyła wyłącznie na
+liczbę ścieżek. Po dodaniu drugiego ramienia **jedna** ścieżka może legalnie
+potrzebować `--paths-ok` — żeby usprawiedliwić szerokość. Pierwsza wersja
+odrzucała dokładnie ten przypadek, mówiąc autorowi, że jego podstawa jest zbędna,
+podczas gdy to drugie ramię jej żądało. Naprawione: ramię churn ustawia
+`ctx["churn_over"]` **zanim** wyjścia je wyczyszczą, a ramię liczności ten
+znacznik czyta. Regresja przypięta testem.
+
+### Krawędź w DAG-u: `gates -> reports`
+
+Próg (`effective_blast_floor`) ma jedną implementację i mieszka w `reports.py`.
+Alternatywą było przepisanie percentyla w drugie miejsce, czyli dryf F1/F5.
+Krawędź jest acykliczna (`reports` importuje tylko registry/kernel/evidence i
+nigdy `gates`), dorysowana w `template/docs/structure.md` — którego test
+porównuje strzałki z realnymi krawędziami AST, więc niezaktualizowany diagram
+by to wywalił.
+
+### Weryfikacja
+
+```
+core 441 (18 nowych na 3.2 lacznie) · canary 284/0 · integrations 28 OK
+v04 13 OK · field-consumers 32 klucze 0 failures · reproduce 66/66 exit 0
+release-battery ALL ARMS GREEN
+```

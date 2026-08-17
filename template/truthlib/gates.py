@@ -13,6 +13,14 @@ from truthlib.registry import *
 from truthlib.kernel import *
 from truthlib.evidence import *
 from truthlib.policy import *
+# FAZA 3 step 3.2: the churn arm refuses at ADR-039's SELF-CALIBRATING
+# floor, and effective_blast_floor is that floor's one implementation.
+# Importing it is the alternative to copying a percentile into a second
+# place, which is the F1/F5 drift this package keeps refusing. The edge
+# is acyclic -- reports imports registry/kernel/evidence only, and never
+# gates -- and it is drawn in docs/structure.md, whose diagram test
+# compares the arrows against the real AST edges.
+from truthlib.reports import *
 from truthlib.shellio import *
 
 # --- ADR-034: the staged intake gate table --------------------------------
@@ -95,11 +103,14 @@ def _gate_paths_budget(ctx):
                 "policy already carries the review this basis would "
                 "state, so the basis excuses nothing and would decay a "
                 "judgment nobody needed to make (ADR-032). Drop it.")
-    if basis and not over:
-        return (f"truth: --paths-ok with {len(paths)} watched path(s) -- "
-                f"the freehand budget is {MAX_FREEHAND_WATCH_PATHS}, so "
-                "there is nothing to excuse (a basis with nothing to "
-                "excuse is schema noise; drop the flag).")
+    if basis and not over and not ctx.get("churn_over"):
+        # NEITHER arm needed it. The churn row runs first and flags itself
+        # when it would have refused, so a single-path claim excusing
+        # BREADTH is not mistaken for a pointless basis.
+        return (f"truth: --paths-ok with {len(paths)} watched path(s) and a "
+                "watch set below the churn floor -- neither path budget "
+                "objects, so there is nothing to excuse (a basis with "
+                "nothing to excuse is schema noise; drop the flag).")
     if not over or policy or basis:
         return None
     return (f"truth: {len(paths)} watched paths picked by hand -- the "
@@ -247,15 +258,104 @@ def _gate_blast(ctx):
         ctx["blast_forecast"] = blast_forecast(ctx["paths"], history)
     return None
 
+def _gate_paths_churn(ctx):
+    """FAZA 3 step 3.2, SECOND ARM: the churn budget. `paths-budget-max`
+    counts ENTRIES; this one measures BREADTH, and the measurement is why
+    it exists.
+
+    Ten of this repo's freehand claims produced 35% of all whisper lines,
+    and entry count predicts that badly: the loudest carries eight paths,
+    but a single `template/truthlib/**` glob outranked most two-path sets.
+    A budget that counts commas measures the wrong thing.
+
+    THE MOTIVATING NUMBERS WERE CORRECTED WHILE BUILDING THIS, and the
+    correction is recorded because it changed the row's design. The three
+    single-path globs that first argued for this arm scored 74 whisper
+    lines each -- over 200 COMMITS. ADR-039's window is 30 DAYS, where the
+    same globs score 24 against a calibrated floor of 54, comfortably
+    legal. So this row does NOT catch the case that motivated it; what it
+    catches is every broad set that is genuinely hot right now, and the
+    highest single-path forecast on the ledger (48) sits close enough
+    under the floor that one `**` would clear it. The arm guards a
+    reachable case, not a hypothetical one -- but it is not the arm the
+    first sketch promised, and pretending otherwise would leave a false
+    rationale in the file.
+
+    ADR-039 already measures the right thing and has since v0.9.25:
+    blast_forecast is how many commits in the last BLAST_WINDOW_DAYS
+    touched this watch set, and effective_blast_floor is the P90 of that
+    over live path-claims (BLAST_ADVISORY_FLOOR is the cold-start
+    fallback). Until now it only advised. This row raises it to a refusal
+    with the SAME two exits the cardinality arm offers, so there is one
+    bargain to learn rather than two.
+
+    IT RUNS AFTER blast-forecast-adr039, not inside it. That row is a
+    fact-gatherer whose docstring promises it never refuses, and a gate
+    that quietly grew a refusal inside a row documented as advisory is the
+    drift this table exists to prevent. Facts there, decision here.
+
+    A SELF-TIGHTENING THRESHOLD, stated rather than discovered later: the
+    floor is a PERCENTILE of the live population, so as broad watch sets
+    are narrowed the floor falls and the bar rises. That is deliberate
+    (ADR-039 chose a self-calibrating floor precisely so a constant could
+    not go quietly cold), but it does mean a set that is legal today can
+    be refused next month with no code change. The two exits are what
+    keep that survivable: a reviewed policy is never re-litigated, and a
+    stated basis is re-asked on the ADR-032 clock rather than at random.
+
+    Abstains when the forecast is absent -- shallow or unavailable git
+    history computes nothing, and a floor is not a bound (ADR-039). A
+    refusal built on a truncated log would be the quietly-cold number
+    that ADR forbids, pointing the wrong way."""
+    forecast = ctx.get("blast_forecast")
+    if forecast is None or not ctx["paths"]:
+        return None
+    floor, source = effective_blast_floor(ctx["claims"],
+                                          ctx.get("blast_history"))
+    if forecast < floor:
+        return None
+    # Record that this arm WOULD have refused, before the exits clear it.
+    # paths-budget-max runs next and owns the "a basis with nothing to
+    # excuse is schema noise" check; without this flag it cannot tell a
+    # pointless --paths-ok from one that is excusing BREADTH on a single
+    # path -- and it refused exactly that legitimate case until this line
+    # existed (caught by canary BF1b).
+    ctx["churn_over"] = True
+    if ctx.get("watch_policy") or ctx.get("paths_basis"):
+        return None
+    return (f"truth: this watch set matched {forecast} commits in the last "
+            f"{BLAST_WINDOW_DAYS}d, at or above the churn floor of {floor} "
+            f"({source}) -- ADR-039. Breadth, not entry count, is what "
+            "costs attention: the pre-edit whisper names this claim on "
+            "every one of those commits, and on this ledger ten claims "
+            "produced 35% of all whisper lines. Either:\n"
+            f"  --watch-policy <name>   a reviewed set from {WATCH_POLICIES_REL}\n"
+            "  --paths-ok \"<sentence>\"  why this breadth is right "
+            "(stored, decays at 30 days, counted)\n"
+            "  ...or narrow the globs to the files the recipe actually reads.\n"
+            "Nothing was filed.")
+
 INTAKE_GATES = (
     ("pre-execution", "text-nonempty", _gate_text_nonempty),
     ("pre-execution", "near-duplicate-g8", _gate_duplicate),
     ("pre-execution", "quantifier-scope-adr007", _gate_quantifier_scope),
     ("pre-execution", "paths-inv-m", _gate_inv_m),
+    # BREADTH BEFORE COUNT, and the order is load-bearing. Measured on
+    # this ledger: all 17 freehand claims at or above the ADR-039 churn
+    # floor carry 2+ paths, so with the cardinality row first the churn
+    # row could never fire -- a gate whose population is empty by
+    # construction, which is the dark-gate defect this repo refuses.
+    # Reversed, the churn row fires on all 17 and the author gets the
+    # ACTIONABLE message ("narrow these globs") instead of the merely
+    # true one ("you have four paths"). blast-forecast-adr039 moves up
+    # with it because it is the fact-gatherer the churn row reads; it
+    # costs one `git log`, and paths-inv-m already pays a `git ls-files`
+    # one row earlier, so no filing newly pays git that did not before.
+    ("pre-execution", "blast-forecast-adr039", _gate_blast),
+    ("pre-execution", "paths-churn-budget", _gate_paths_churn),
     ("pre-execution", "paths-budget-max", _gate_paths_budget),
     ("pre-execution", "generated-paths-adr037", _gate_generated),
     ("pre-execution", "scope-decay-adr032", _gate_scope_decay),
-    ("pre-execution", "blast-forecast-adr039", _gate_blast),
     ("pre-execution", "class-precheck", _gate_class_precheck),
     ("post-execution", "evidence-exit-adr035", _gate_evidence_exit),
     # further post-execution rows land with the linter and blast ADRs
