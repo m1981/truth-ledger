@@ -466,14 +466,31 @@ operatora.
 
 # FAZA 4 — `truth health` (defekt D-B)
 
-### [ ] 4.1 Model odczytu — jedna projekcja nad `fold()`
-### [ ] 4.2 Werb `truth health [--json]`
-### [ ] 4.3 Zwinięcie 5 instrumentów Tier C + **odwrócenie ADR-046**
+### [x] 4.1 Model odczytu — jedna projekcja nad `fold()` — **ZROBIONE** (J-041)
+### [x] 4.2 Werb `truth health [--json]` — **ZROBIONE** (J-041)
+### [x] 4.3 Zwinięcie 5 instrumentów Tier C + **odwrócenie ADR-046** — **ZROBIONE** (J-042)
 
 > **Obiekcja O4:** `truth health` **ships do konsumenta**, a zwijane instrumenty
 > są celowo meta-repo-only. To odwrócenie podziału tierów — uzasadnione
 > (`structure.md` nazywa tę asymetrię „największym pojedynczym ryzykiem
 > systemu"), ale **musi być zapisane jako decyzja.**
+
+**Rozstrzygnięte (J-041/J-042).** Odwrócenie zapisane w
+`template/docs/ARCHITECTURE.md` rozdz. 4, bez nowych ADR-ów (r18), wraz z
+powodem: `instruments/` **nie jest szablonowane**, więc konsument nie widział
+pięciu pomiarów **wcale** — ani prędkości nadużyć, ani separacji weryfikatora,
+ani churnu, ani przyczyn retrakcji, ani rozbicia zestaleń.
+
+Pomiar zmienił kształt kroku 4.3: cztery z pięciu instrumentów **już wołały te
+same czyste funkcje**, które komponuje `health_report()`, więc duplikacji logiki
+nigdy nie było — zwinięcie dostarczył 4.2. Pliki **zostały**, oznaczone
+nagłówkiem („widok meta-repo na sekcję, którą `health` wysyła; obie ścieżki
+wołają tę samą funkcję"), bo ich skasowanie to zamiatanie governance'u:
+`docs/governance/gate-metrics.md` deklaruje je jako ŹRÓDŁO metryk adopcji
+ADR-047, a przepisanie tego rejestru należy do jego właściciela.
+
+Granica nazwana: `field-consumers.py` i `arm-index.py` **zostają na zawsze** —
+skanują kod źródłowy, nie ledger.
 >
 > **Gdzie zapisać** (decyzja 2026-08-17): bezpośrednio w
 > `template/docs/ARCHITECTURE.md`, rozdział 4, oraz w `01-JOURNAL.md`.
