@@ -2804,3 +2804,194 @@ zastane, nie mój zakres, zapisane żeby nie zginęło.
   obserwacji **z receptury** (statycznie, z argumentów `grep`/`cat`/`sha256sum`)
   czyni dryf strukturalnie niemożliwym, zamiast tylko wykrywalnym. To większy
   temat niż FAZA 3 i nie należy go doklejać do tej gałęzi.
+
+---
+
+## J-045 · REJESTR DECYZJI REAKTYWOWANY (R1) + ADR-054 · 2026-08-18
+
+### Co się stało i dlaczego to nie jest cofnięcie kroku 1.3
+
+Krok 1.3 wyprowadził 54 ADR-y z `template/` do `docs/archive/adr/`. **Ta część
+była słuszna i zostaje**: `template/` to produkt wysyłany copierem, a rekordy
+decyzyjne o rozwoju maszynerii nie są dokumentacją konsumenta.
+
+Skutek uboczny nie był decyzją, tylko konsekwencją opakowania: skoro
+`docs/archive/` jest zamrożone (`AGENTS.md`, `.githooks/pre-commit`), po
+przeniesieniu **nie było gdzie napisać nowego rekordu**, więc runbook zakazał
+nowych plików ADR. Skleiły się dwie ortogonalne rzeczy: *nie należy do produktu*
+i *przestaje być żywą praktyką*.
+
+Przyczyna źródłowa: **brakująca kategoria w taksonomii zasięgu.** Repo ma dwie
+klasy — żywą prozę (sądzoną dziś) i frozen reference (nigdy nie sądzoną). Rejestr
+decyzji jest trzecią: jego sekcje Context legalnie cytują id żywe *wtedy*, ale
+linia statusu i graf nowelizacji wiążą *dziś*. Mając dwa kubełki, J-027 wybrał
+poprawnie w ramach tego, co miał. **Dodajemy brakującą pozycję, nie cofamy ruchu.**
+
+### Zmierzone koszty, które to uzasadniły (2026-08-18)
+
+* Seria stała na **053**; od tego czasu decyzje niosło 44 wpisów `J-0XX`.
+* Obiekcja **O4** żądała wprost ADR-a odwracającego ADR-046 dla kroku 4.3.
+  Krok wykonano (J-042). Takiego ADR-a nie ma — grep zwracał zero.
+* Meta-decyzja „nie tworzymy nowych ADR-ów" sama nie ma ADR-a.
+* **51 różnych `ADR-0NN` cytowanych 1139 razy** z wykonującego się kodu —
+  bez ścieżki nowelizacji.
+
+### R1 — co powstało
+
+`docs/decisions/` (meta-repo, **poza `template/`**, więc copier tego nie wozi).
+Numeracja od **054**; przenumerowanie wykluczone — cytowania w ledgerze są
+niezmienne, a `docs/archive/adr/README.md` opisuje realną kolizję u konsumenta,
+która to ustaliła. `README.md` rejestru niesie **indeks odwrotny**: zamrożony ADR
+nie może dostać linii `Superseded by:`, więc krawędź archiwum→żywe jest zapisana
+w tabeli, a dopisanie wiersza jest obowiązkowe w tym samym commicie.
+
+### ADR-054 — i to, czego dowiodła implementacja
+
+Pierwszy wpis rejestru nowelizuje ADR-025. Teza wyjściowa brzmiała: doctor
+fałszywie FAIL-uje hook delegujący. Implementacja pokazała, że to **połowa**
+defektu.
+
+Jedna reguła zastąpiła grep po całym pliku: **needle musi wystąpić w pozycji
+wywołania** — w linii niekomentarzowej hooka albo pliku, do którego hook oddaje
+sterowanie, jeden skok. Z tego wypadły dwa przeciwstawne naprawienia:
+
+* fałszywy **FAIL**: `.githooks/pre-push` kończy `exec bash
+  scripts/release-battery.sh`, bateria woła werb i blokuje na exit 7 — bramka
+  uzbrojona, raportowana jako nieobecna;
+* fałszywy **PASS**, znaleziony dopiero przez patch: `.githooks/pre-merge-commit`
+  przechodziło na słowie `check-truth` **w komentarzu** opisującym delegację.
+  Hook jest realnie uzbrojony — tylko nie tak, jak sądził sprawdzian.
+
+To jest **trzecie** wystąpienie „bramki przechodzącej na własnym nekrologu"
+w tym repo. Dwa błędy są jednym błędem: sprawdzian, który nie odróżnia wywołania
+od wzmianki, na tym samym okablowaniu raz zgłosi żywą bramkę jako martwą, raz
+martwą jako żywą — o kierunku decyduje przypadek, gdzie akurat leży słowo.
+
+Dwie bazy rozwiązywania, bo hooki delegują dwiema drogami: repo-relative
+(`scripts/release-battery.sh`) względem drzewa roboczego i siostrzana
+(`exec "$(dirname "$0")/pre-commit"`, tak ADR-045 dzieli ciało pre-commit)
+względem katalogu hooka. Wzorce podniesione z `scripts/gate-reachability.sh`
+`invokes()`/`token_paths()`, nie wymyślone od nowa — dwa instrumenty odpowiadające
+na jedno pytanie nie mogą odpowiadać wedle różnych reguł.
+
+**Residuum zapisane, nie zaklejone:** na liściu to nadal test podciągu, więc
+use/mention pozostaje nierozróżnialne — dokładnie to, co sweep osiągalności mówi
+o własnych krawędziach. Mereologia poszła o poziom w górę; semantyka nie.
+
+### Odrzucone
+
+* **Znacznik komentarzem** w `pre-push` (`# reproduce via release-battery.sh`).
+  Jedna linia, natychmiastowa zieleń. Odrzucone: dziś obecność tokenu koreluje
+  z uzbrojeniem bramki — fałszywie ujemnie, ale niezerowo; po tej edycji token
+  jest obecny bezwarunkowo, korelacja spada do zera, a usunięcie `exec`
+  zostawiłoby sprawdzian zielonym. Świadome powtórzenie incydentu.
+* **Zapis jako znane odstępstwo.** Sprawdzian, którego dziedzina wyklucza repo,
+  w którym działa, powinien mówić *nie dotyczy*, a nie FAIL — to i tak zmiana
+  w kodzie, więc opcja nic nie kupuje, a zostawia czerwoną linię do omijania.
+
+### Dowód
+
+Cztery nowe testy w `TestCommitGateBanner` (hook delegujący / sam komentarz na
+obu poziomach / usunięcie `exec` wraca na FAIL / delegacja siostrzana).
+**Widziane czerwone**: po tymczasowym przywróceniu starego predykatu wszystkie
+cztery padły, po przywróceniu patcha przeszły — reguła `wk-71694410`.
+
+    core 509 · integracje 28 · v04 13 · structural 116 · canary 284-0
+    make health 0 · make test 0 · make battery 0 (all arms green, 11 ramion)
+    truth doctor: 0 failure(s), 1 warning(s)   (było: 1 FAIL)
+
+### Otwarte, celowo nie w tym kroku
+
+* **R2** — `docs/decisions/` pod obserwację + ramię baterii parsujące graf
+  `Amends:`/`Supersedes:`; FAIL, gdy kod cytuje znowelizowany ADR bez wskazania
+  nowelizacji. Dziś niemierzone na 1139 miejscach.
+* **R4** (odroczone, z wyzwalaczem) — trzecia klasa zasięgu „rejestr normatywny"
+  i powrót korpusu do `docs/decisions/`. Uruchomić dopiero, gdy zajdzie potrzeba
+  znowelizowania statusu archiwalnego ADR-a w sposób, którego indeks odwrotny
+  nie obsłuży. R3 w czystej postaci odrzucone — pomiar J-027 stoi.
+* **10 osieroconych `diverged`** o martwej ścieżce `docs/adr/truth/` (1/3
+  wszystkich diverged). Recepta: runbook linia 182, `--cause expired`. Osobno,
+  żeby nie mieszać z kodem shipowanym.
+
+---
+
+## J-045 · WYPROWADZANIE ZBIORU OBSERWACJI Z RECEPTURY — pomiar obalił propozycję · 2026-08-18
+
+Pozycja #19 z listy otwartych po J-044, ta, którą sam oznaczyłem jako
+**„największa wartość"**. Zgodnie z regułą repo policzyłem liczbę uzasadniającą
+PRZED budową. Liczba nie wyszła i propozycja upada w swojej mocnej postaci.
+
+### Teza, która miała być budowana
+
+> „Zbiór obserwacji jest jednocześnie bytem i narzędziem poznawczym,
+> deklarowanym dwa razy niezależnie, więc dryfuje w obie strony. Wyprowadzanie
+> go **z receptury** czyni dryf strukturalnie niemożliwym."
+
+Poparta obserwacją, że **63 różne zbiory na 76 claimów** to skutek dwoistości,
+nie niechlujstwa.
+
+### Pomiar
+
+```
+python3 instruments/watch-derivation.py
+
+watch-derivation: 75 active claim(s) with a recipe and a watch set
+  exact                 70  (93%)
+  watch-too-wide         4  ( 5%)
+  derives-nothing        1  ( 1%)
+```
+
+**`watch-too-narrow`: 0. `drift-both-ways`: 0.**
+
+### Wniosek: teza jest fałszywa, i wiem dlaczego się pomyliłem
+
+Dryf, który propozycja miała uczynić niemożliwym, jest dziś **w 93% nieobecny**,
+a jego groźny kierunek — receptura czyta coś, czego nikt nie obserwuje — **nie
+występuje ani razu**. Budowanie derywacji naprawiałoby defekt, którego nie ma,
+kosztem zastąpienia działającej praktyki.
+
+Pomyłka jest nazywalna: **policzyłem RÓŻNORODNOŚĆ i nazwałem ją
+NIEPOPRAWNOŚCIĄ.** „63 różne zbiory na 76 claimów" mierzy brak *współdzielenia*,
+a nie brak *trafności*. To są dwie różne wielkości i sklejenie ich było błędem
+wnioskowania, nie błędem pomiaru — liczba 63/76 jest prawdziwa i nadal uzasadnia
+polityki obserwacji (współdzielenie), ale nie uzasadnia derywacji (trafność).
+
+J-022 znalazł 5 claimów dryfujących w obie strony i to była prawda **wtedy**;
+migracje FAZ 1 i 3 je naprawiły. Cytowałem ustalenie z zamkniętego już stanu.
+
+### Cztery „za szeroko" to w większości NIE są defekty
+
+I to jest drugie, ważniejsze znalezisko — wyszło z mechanizacji reguły:
+
+| claim | deklaruje bez pokrycia | ocena |
+|---|---|---|
+| `tr-75538ed6` | — (`derives-nothing`) | **artefakt metody**: receptura ma glob `template/truthlib/*.py`, deklaracja jest poprawna |
+| `tr-58707dac` | `copier.yml`, `template/AGENTS.md` | **receptura za wąska**, nie obserwacja za szeroka — zdanie mówi o obu plikach, grep ich nie sprawdza |
+| `tr-3357082d` | `template/scripts/truth` | obserwuje **podmiot zdania**: dokument opisuje to CLI, więc zmiana CLI może zdanie obalić, choć grep go nie otwiera |
+| `tr-b1472ca1` | `template/scripts/truth` | jak wyżej |
+| `tr-6c6506fb` | `template/truthlib/cli.py` | **jedyny realny kandydat** do przeglądu (możliwa pozostałość po podziale pakietu) |
+
+Czyli realny wskaźnik defektu to **1 na 75**, a nie 5%.
+
+### Napięcie w regule, którego nikt nie zapisał
+
+J-022 ustanowił niezmiennik: **„obserwuj dokładnie to, co czyta receptura"**.
+Trzy powyższe claimy łamią go świadomie i mają rację: obserwują **podmiot
+zdania**, nie **wejścia receptury**. Dokument opisujący CLI może zostać obalony
+przez zmianę CLI, której jego własny grep nigdy nie otworzy.
+
+Niezmiennik jest więc węższy niż praktyka, którą opisuje. Nie poprawiam go tu —
+to ustalenie, nie decyzja — ale gdyby ktokolwiek zmechanizował J-022 jako
+bramkę, odrzuciłby trzy poprawne claimy. Dlatego `watch-derivation.py` jest
+RAPORTEM i jego docstring tego zakazuje.
+
+### Co zostało zbudowane zamiast propozycji
+
+`instruments/watch-derivation.py` — pomiar, nie mechanizm. Powód zachowania:
+następna osoba z tym samym (dobrym) pomysłem dostaje liczbę w trzydzieści
+sekund, zamiast odtwarzać argumentację. Derywacja jest **sound, not complete**:
+token liczy się jako ścieżka tylko wtedy, gdy git go już śledzi, więc nic nie
+jest zmyślane, ale receptura z globem nie wyprowadza nic.
+
+**Żaden ADR nie powstał.** Rekord decyzji dla decyzji, której dowody nie
+popierają, byłby dokładnie tym, przed czym `docs/decisions/` stoi.
