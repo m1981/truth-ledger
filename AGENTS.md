@@ -175,5 +175,17 @@ Meta-repo conventions, on top of the standard layer:
   understanding, which is why it survives review. If you cannot follow such
   a sentence with a path, a number, or a command, delete it instead of
   shipping it as insight.
+- A doc review may VETO, and its off-scope findings outlive the session. The
+  reviewer's verdict is a gate, not an opinion: on FAIL the change comes out,
+  and it comes out before anything is built on it — `template/docs/**` is
+  overwritten by `copier update` and appears in no `_skip_if_exists`, so a
+  wrong sentence there is re-imposed on every consumer forever. On 2026-08-18
+  the reviewer failed a header sentence whose own first clause was a countable
+  falsehood ("the four sections" — there are five, `## Where the arguments
+  went` being the fifth), read past twice by the author who had run the
+  heading list himself; reverted in `e770fc0`. File the review's OFF-SCOPE
+  findings as issues in the same sitting — that review surfaced three defects
+  older than the change under review (wk-8437672f, wk-4f60611d, wk-1e579b90),
+  and an unfiled finding dies with the session that found it.
 
 See `template/.truth/README.md` for the layer's full documentation.
