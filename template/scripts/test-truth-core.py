@@ -4636,6 +4636,90 @@ class TestCommitGateBanner(unittest.TestCase):
             self.assertIsNone(tm.find_gate_hook(hooks, ("pre-commit",),
                                                 "reproduce"))
 
+    # ------------------------------------------------ ADR-054: delegation
+
+    def _wire(self, d, hook_body, script_rel=None, script_body=None):
+        """A work tree with hooks/ and an optional repo-relative script."""
+        hooks = os.path.join(d, "hooks")
+        os.makedirs(hooks, exist_ok=True)
+        hp = os.path.join(hooks, "pre-push")
+        with open(hp, "w") as f:
+            f.write(hook_body)
+        os.chmod(hp, 0o755)
+        if script_rel:
+            sp = os.path.join(d, script_rel)
+            os.makedirs(os.path.dirname(sp), exist_ok=True)
+            with open(sp, "w") as f:
+                f.write(script_body)
+        return hooks, hp
+
+    def test_delegating_hook_is_the_gate(self):
+        """ADR-054: the gate is hook + runner + verb, not the hook file."""
+        with tempfile.TemporaryDirectory() as d:
+            hooks, hp = self._wire(
+                d, '#!/bin/sh\nexec bash scripts/release-battery.sh\n',
+                "scripts/release-battery.sh",
+                '#!/bin/sh\npython3 scripts/truth reproduce\n')
+            self.assertEqual(
+                tm.find_gate_hook(hooks, ("pre-push",), "reproduce", d), hp)
+            self.assertEqual(
+                [os.path.relpath(x, d)
+                 for x in tm.gate_hook_chain(hp, "reproduce", d)],
+                ["hooks/pre-push", "scripts/release-battery.sh"])
+
+    def test_needle_in_a_comment_is_not_an_invocation(self):
+        """The invalidate-scan incident, refused at both levels: a hook that
+        only NAMES the verb in prose is not the gate, and neither is one
+        whose delegate only names it in prose."""
+        with tempfile.TemporaryDirectory() as d:
+            hooks, _ = self._wire(
+                d, '#!/bin/sh\n# reproduce via release-battery.sh\nexit 0\n')
+            self.assertIsNone(
+                tm.find_gate_hook(hooks, ("pre-push",), "reproduce", d))
+        with tempfile.TemporaryDirectory() as d:
+            hooks, _ = self._wire(
+                d, '#!/bin/sh\nexec bash scripts/release-battery.sh\n',
+                "scripts/release-battery.sh",
+                '#!/bin/sh\n# reproduce runs elsewhere\nexit 0\n')
+            self.assertIsNone(
+                tm.find_gate_hook(hooks, ("pre-push",), "reproduce", d))
+
+    def test_removing_the_delegation_returns_the_check_to_fail(self):
+        """The property the marker-comment alternative would have destroyed:
+        delete the invocation and the check must go red again."""
+        with tempfile.TemporaryDirectory() as d:
+            hooks, hp = self._wire(
+                d, '#!/bin/sh\nexec bash scripts/release-battery.sh\n',
+                "scripts/release-battery.sh",
+                '#!/bin/sh\npython3 scripts/truth reproduce\n')
+            self.assertIsNotNone(
+                tm.find_gate_hook(hooks, ("pre-push",), "reproduce", d))
+            with open(hp, "w") as f:
+                f.write('#!/bin/sh\n# reproduce via release-battery.sh\n'
+                        'exit 0\n')
+            self.assertIsNone(
+                tm.find_gate_hook(hooks, ("pre-push",), "reproduce", d))
+
+    def test_sibling_hook_delegation_resolves(self):
+        """ADR-045's pre-merge-commit shares the pre-commit body via
+        `exec "$(dirname "$0")/pre-commit"`; that is a delegation too, and
+        before ADR-054 it passed only because the word rode in a comment."""
+        with tempfile.TemporaryDirectory() as d:
+            hooks = os.path.join(d, "hooks")
+            os.makedirs(hooks)
+            pc = os.path.join(hooks, "pre-commit")
+            with open(pc, "w") as f:
+                f.write('#!/bin/sh\nexec bash scripts/check-truth.sh\n')
+            os.chmod(pc, 0o755)
+            pmc = os.path.join(hooks, "pre-merge-commit")
+            with open(pmc, "w") as f:
+                f.write('#!/bin/sh\n# same gate, by delegation\n'
+                        'exec "$(dirname "$0")/pre-commit"\n')
+            os.chmod(pmc, 0o755)
+            self.assertEqual(
+                tm.find_gate_hook(hooks, ("pre-merge-commit",),
+                                  "check-truth", d), pmc)
+
     def test_banner_on_write_verb_when_unwired(self):
         with tempfile.TemporaryDirectory() as d:
             _mk_sandbox(d)
@@ -6351,6 +6435,10 @@ class TestSelectorIntakeGate(unittest.TestCase):
         self.assertIsNotNone(err)
         self.assertIn("has none", err)
         self.assertIn(".py", err)
+        # The refusal has to NAME the supported set, or it strands the
+        # author with "not this one" and no idea what IS one.
+        for ext in tm.SUPPORTED_STRUCTURED_EXTENSIONS:
+            self.assertIn(ext, err)
 
     def test_a_selector_naming_nothing_is_refused_as_a_dead_tripwire(self):
         err = self.GATE(gate_ctx(paths=["package.json#/dependencies/nope"]))
@@ -6366,6 +6454,22 @@ class TestSelectorIntakeGate(unittest.TestCase):
     def test_a_plain_path_never_reaches_the_live_arm(self):
         # No selector, no read: the fast path every existing claim takes.
         self.assertIsNone(self.GATE(gate_ctx(paths=["package.json"])))
+
+    def test_a_bad_selector_is_found_AFTER_a_selector_free_path(self):
+        """The live arm SCANS the watch set; it does not stop at the first
+        entry it has nothing to say about. `continue` vs `break` is one
+        character and the difference is a claim filed with a dead
+        tripwire in position two."""
+        err = self.GATE(gate_ctx(paths=["package.json",
+                                        "package.json#/dependencies/nope"]))
+        self.assertIsNotNone(err)
+        self.assertIn("resolves to nothing", err)
+
+    def test_a_bad_selector_is_found_AFTER_a_resolving_one(self):
+        err = self.GATE(gate_ctx(paths=["package.json#/dependencies/stripe",
+                                        "spec.md#no-such-heading"]))
+        self.assertIsNotNone(err)
+        self.assertIn("resolves to nothing", err)
 
 
 class TestSelectorBudgetExemptions(unittest.TestCase):
@@ -6422,6 +6526,21 @@ class TestSelectorBudgetExemptions(unittest.TestCase):
             self._churn(999, history=history, paths=["a.json#/x", "src/**"]))
         self.assertIsNone(
             self._churn(999, history=history, paths=["a.json#/x", "docs/**"]))
+
+    def test_the_churn_row_stamps_churn_over_before_its_exits_clear_it(self):
+        """paths-budget-max reads this flag to tell a --paths-ok that is
+        excusing BREADTH from one that excuses nothing. If the churn row
+        stamped anything falsy, the budget row would call a legitimate
+        basis 'schema noise' -- the exact regression canary BF1b caught.
+        Asserted on the ctx the row actually writes, not on a hand-set
+        value, so the two rows are pinned as a pair."""
+        ctx = gate_ctx(paths=["src/**"], paths_basis="this breadth is the point")
+        ctx["blast_forecast"] = tm.BLAST_ADVISORY_FLOOR
+        ctx["blast_history"] = None
+        self.assertIsNone(GATE_FNS["paths-churn-budget"](ctx))
+        self.assertIs(ctx.get("churn_over"), True)
+        # ...and the budget row, reading it, accepts the basis.
+        self.assertIsNone(GATE_FNS["paths-budget-max"](ctx))
 
     def test_the_advisory_forecast_is_left_alone(self):
         """ADR-039's advisory keeps reporting the file-level number: it is

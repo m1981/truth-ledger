@@ -162,20 +162,27 @@ def _gate_scope_decay(ctx):
     # Step 3.2 joins --paths-ok to the same decay, for the same reason
     # ADR-037 joined --generated-ok: "this wide watch set is the right one"
     # rots exactly as "this scope is covered" does, and the re-ask is the
-    # point. Precedence in the flag label is filing order; only one of the
-    # three can be the reason a given claim decays, and the notice must
-    # name the flag the author actually passed.
-    gen_stored = ctx.get("payload_generated_basis")
-    paths_basis = ctx.get("paths_basis")
-    if ctx["scope_basis"]:
-        flag = "--scope-ok"
-    elif paths_basis:
-        flag = "--paths-ok"
-    else:
-        flag = "--generated-ok"
+    # point.
+    #
+    # THE `flag=` LABEL IS NOT PASSED HERE, and the omission is the fix
+    # for a rule that lived in two places with one copy dead. `flag` only
+    # ever reaches override_decay's THIRD return value -- the notice --
+    # and this row discards it (`_`), because the notice is voiced
+    # post-append by the CC-1 advisory block. So the five lines that used
+    # to select "--scope-ok" / "--paths-ok" / "--generated-ok" right here
+    # could not change one observable byte: advisory.intake_advisories
+    # recomputes the same selection from the PAYLOAD, which is the copy
+    # that is read and tested.
+    #
+    # Found by mutation testing: three mutants blanking each branch of
+    # that if/elif/else all SURVIVED, and no test could have killed them
+    # -- nothing can observe a value that is computed and thrown away.
+    # A surviving mutant is usually a missing test; here it was dead code
+    # wearing a test's clothes, and the honest repair is deletion.
     ctx["ttl_days"], ctx["ttl_default"], _ = \
-        override_decay(ctx["scope_basis"] or paths_basis or gen_stored,
-                       ctx["ttl_days"], flag=flag)
+        override_decay(ctx["scope_basis"] or ctx.get("paths_basis")
+                       or ctx.get("payload_generated_basis"),
+                       ctx["ttl_days"])
     return None
 
 def _gate_inv_m(ctx):

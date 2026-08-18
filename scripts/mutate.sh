@@ -19,6 +19,16 @@
 #
 # `mutmut run` exits non-zero when mutants survive, which is a finding, not a
 # failure of this script -- so no `set -e` around the exec.
+#
+# RUN scripts/mutmut-coverage.sh FIRST, or the survivor list lies. mutmut 2.x
+# picks which tests to run per mutant from recorded context coverage; if that
+# data predates your edit, mutants are scored against the wrong tests. Measured
+# 2026-08-18 on gates.py: three consecutive runs over the SAME tree reported 86,
+# 42 and 80 mutants, and one "survivor" (`or` -> `and` in _gate_scope_decay's
+# override_decay argument) was killed FOUR times over when applied by hand.
+# `make mutate` regenerates coverage first and is the safe entry point; calling
+# this script directly is not. Ground truth for any survivor is
+# `./scripts/mutate.sh apply <id>` followed by running the suite yourself.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 exec uvx --python 3.11 --with coverage mutmut==2.5.1 "${@:-run}"
