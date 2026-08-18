@@ -24,8 +24,24 @@
 >    jest defektem. Sweep złapał dokładnie to, przy tym zamknięciu, po raz
 >    drugi w tym refaktorze.
 
-Gałąź robocza: `claude/git-hooks-architecture-zc97y3`
-Commit bazowy: `fa2e85b` · rewizja runbooka: **`r19` (2026-08-17) — REFAKTOR ZAMKNIĘTY, fazy 0–4 wykonane**
+> ## ➕ INKREMENT PO ZAMKNIĘCIU — kotwice strukturalne, 2026-08-18
+>
+> Refaktor pozostaje zamknięty; to **nie jest jego wznowienie**. `structural.py`
+> (496 linii, 116 testów) był liściem bez importerów — J-043 zostawił go jawnie
+> jako „pracę w toku, nieobjętą tym commitem". Został wpięty: selektory
+> `ścieżka#poddrzewo` w politykach, `--paths`, bramkach INV-M i `reproduce`.
+>
+> Cztery znaleziska po drodze, w tym jedno zastane: **sprostowanie metryki
+> hałasu z J-040 nigdy nie dotarło do kodu** — cztery żywe powierzchnie, w tym
+> tekst odmowy drukowany autorowi, cytowały wycofane `2329/6,8` zamiast
+> `1670/22,6`. Poprawione. Szczegóły i surowe wyniki: **J-044**.
+>
+> **Otwarte:** trzy retrakcje pilota czekają na terminal człowieka (G12 odmawia
+> agentom); pozostałe ~21 migracji to decyzja operatora. Wiersze `S.1`–`S.7`
+> w tabeli statusów.
+
+Gałąź robocza: `faza3-structural-anchors` (inkrement) · wcześniej `claude/git-hooks-architecture-zc97y3`
+Commit bazowy: `fa2e85b` · rewizja runbooka: **`r20` (2026-08-18) — inkrement „kotwice strukturalne" ponad zamkniętym refaktorem**
 
 ---
 
@@ -564,3 +580,11 @@ skanują kod źródłowy, nie ledger.
 | 4.1 — model odczytu, jedna projekcja nad `fold()` | **[x]** (J-041) | `0131a92` |
 | 4.2 — werb `truth health [--json]` | **[x]** (J-041) | `0131a92` |
 | 4.3 — inwariant w ARCHITECTURE + odwrócenie ADR-046 | **[x]** (J-042) | `7f7ffbd` |
+| **INKREMENT po zamknięciu — kotwice strukturalne** | **[~] CZĘŚCIOWO** (J-044) | `be0b4da`, `a10aa79`, `7874bba` |
+| S.1 — składnia `ścieżka#selektor` w politykach i `--paths` | **[x] ZROBIONE** (J-044) | `be0b4da` |
+| S.2 — trzy ramiona INV-M + dwa zwolnienia z budżetów | **[x] ZROBIONE** (J-044) | `be0b4da` |
+| S.3 — `reproduce` liczy digest poddrzewa (ekran selektorów) | **[x] ZROBIONE** (J-044) | `be0b4da` |
+| S.4 — dokumentacja `kiedy NIE` w szablonie polityk | **[x] ZROBIONE** (J-044) | `a10aa79` |
+| S.5 — pilot migracji: 3 claimy na nazwane polityki | **[x] ZROBIONE** (J-044) | `7874bba` |
+| S.6 — retrakcje 3 poprzedników | **[ ] BLOKADA: G12, wymaga terminala człowieka** | — |
+| S.7 — pozostałe ~21 claimów o dokładnym dopasowaniu | **[ ] DECYZJA OPERATORA** | — |

@@ -5370,8 +5370,9 @@ class TestPathsBudgetGate(unittest.TestCase):
     The budget is a REFUSAL, not an advisory, and the reason is a
     measurement rather than a preference: 75 active claims carrying a
     watch set held 60 DISTINCT sets, and the surviving cost of a wide set
-    is attention -- the whisper names 6.8 claims per touch of a watched
-    file. An advisory over that population is more lines nobody reads."""
+    is attention -- the whisper names 22.6 claims per edit (J-040's
+    recount, which replaced a per-FILE sum that read 6.8). An advisory
+    over that population is more lines nobody reads."""
 
     GATE = "paths-budget-max"
 

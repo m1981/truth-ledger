@@ -27,9 +27,14 @@
 # The surviving cost of that is ATTENTION, not false stalings: since the
 # step-2.5 double-invalidation rule a path touch stales nothing, but the
 # whisper still fires on every watched path. Measured over the last 200
-# commits: 340 touches of watched files producing 2329 whisper lines,
-# a mean of 6.8 claims named per edit -- and 31 for a single touch of
-# truth-canary.sh.
+# commits: 1670 whisper lines, a mean of 22.6 claims named per edit.
+#
+# CORRECTED 2026-08-18 (J-040 recounted; the correction had never reached
+# this file). The first pass summed per FILE and reported 2329 lines /
+# 6.8 claims per edit, but the whisper emits ONE line per CLAIM: both
+# terms were inflated and the ratio came out over three times too low.
+# The conclusion is unchanged and stronger, which is why nothing below
+# was re-argued.
 #
 # The policies below are NOT invented. Each is a watch set that recurring
 # claims already share, named after the SURFACE its evidence reads. Step

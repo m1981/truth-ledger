@@ -65,9 +65,11 @@ WATCH_POLICY_NAME_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
 # survived the recount on different evidence: 75 active claims carrying a
 # watch set held 60 DISTINCT sets -- reuse of essentially zero -- and the
 # surviving cost is attention, since the pre-edit whisper still fires on
-# every watched path. Measured over 200 commits: 340 touches of watched
-# files producing 2329 whisper lines, a mean of 6.8 claims named per edit
-# and 31 for a single touch of the busiest file. An advisory on that
+# every watched path. Measured over 200 commits: 1670 whisper lines, a
+# mean of 22.6 claims named per edit (J-040's recount; the first pass
+# summed per FILE and read 2329/6.8, but the whisper emits one line per
+# CLAIM -- both terms were inflated and the ratio came out over three
+# times too low). An advisory on that
 # population is 44 more lines nobody reads; the refusal is what makes the
 # author choose a reviewed set or say why not.
 MAX_FREEHAND_WATCH_PATHS = 1

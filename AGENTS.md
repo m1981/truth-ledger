@@ -96,5 +96,32 @@ Meta-repo conventions, on top of the standard layer:
   shape and the same reason: `bash scripts/test-release-battery.sh`, six
   arms, each one verified red against a mutated copy of the battery
   before being committed. Do not add an arm you have not seen fail.
+- Retracting a claim is HUMAN-ONLY (G12) and no agent flag opens it.
+  `TRUTH_HUMAN` exists for the ADR-011 ack ceremony; reaching for it to
+  get past a tombstone refusal is exactly the judgment laundering the
+  gate is there to refuse. So migrating a claim onto a named watch
+  policy is a TWO-PERSON ceremony: an agent files the successor and the
+  independent verdict, a human runs the retraction. The order is forced
+  opposite to how it reads — `--cause restated` REQUIRES an existing
+  `--successor`, so the successor is born while its predecessor is still
+  live and trips the G8 near-duplicate gate every single time.
+  `--duplicate-ok` is therefore the ceremony, not a workaround: its
+  `overridden_duplicates` stamp records the exact predecessor id, which
+  is the provenance the migration wanted written down anyway. Until the
+  human half runs, the ledger legitimately holds live duplicate pairs —
+  visible cost of the gate, not a defect (FAZA 3 step 3.3 pilot).
+- No module under `template/truthlib/` may import a stdlib module newer
+  than the CLI's Python floor AT MODULE SCOPE. `structural.py` imported
+  `tomllib` (3.11+) while it was a leaf nothing reached, which cost
+  nothing; the moment `kernel` imported it, the floor of the WHOLE CLI
+  rose from 3.9 to 3.11 for every consumer repo — to serve one of four
+  supported formats. Unit tests are structurally blind to this: they run
+  on whichever interpreter you invoke them with. The canary is not, and
+  caught it — its tracker arms run `truth ready` under
+  `PATH="/usr/bin:/bin"`, where macOS ships 3.9, and nine arms went
+  CAUGHT -> MISSED on a raw ModuleNotFoundError traceback. Guard such an
+  import with `try/except ModuleNotFoundError` and degrade to a refusal
+  that names the interpreter, so the failure is a sentence at intake
+  rather than a traceback inside a sweep.
 
 See `template/.truth/README.md` for the layer's full documentation.

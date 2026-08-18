@@ -2596,3 +2596,211 @@ folda.** Zapisane po stronie odczytu.
 w siedmiu plikach `template/truthlib/` — moduł `structural` i selektory
 `#/sciezka` na celach obserwacji (stąd „structural suite: 116 tests" w baterii).
 To nie jest część tego refaktoru i nie została tu zacommitowana.
+
+---
+
+## J-044 · KOTWICE STRUKTURALNE — wpięcie liścia, i cztery znaleziska po drodze · 2026-08-18
+
+Podjęcie wątku, który J-043 zostawił jawnie otwarty („praca w toku, nieobjęta
+tym commitem"). Refaktor był zamknięty; to jest **inkrement ponad FAZĄ 3**, nie
+jej wznowienie — dlatego tabela statusów dostaje osobne wiersze, a nie zmianę
+istniejących.
+
+### Punkt wyjścia: moduł, którego nic nie dosięgało
+
+```
+grep -rn "structural" template/truthlib/*.py | grep import   → (brak)
+wc -l template/truthlib/structural.py                        → 496
+python3 template/scripts/test-structural.py                  → Ran 116 tests  OK
+```
+
+496 linii i 116 testów **bez ani jednego importera**. Suite był zielony, bo
+testował moduł bezpośrednio. To jest dokładnie stan, którego bateria nie widzi:
+ramię „structural suite" świeciło się na zielono dla kodu, którego CLI nie
+uruchamiało ani razu.
+
+### Co wpięto — dwa szwy, świadomie nie więcej
+
+`kernel.watch_target_path` (połowa plikowa) oraz `shellio.structural_hash`
+(jedyne miejsce, gdzie plik jest czytany pod selektor).
+
+Decyzja nośna: **selektor obcinany jest we wzorcu wewnątrz `match_paths`**, a nie
+w sześciu miejscach wywołania. Powód jest mechaniczny, nie estetyczny — `#` nie
+jest metaznakiem globa, więc nieobcięty wzorzec przechodzi przez `re.escape`
+i staje się regexem, którego `git diff` nie może wyprodukować **nigdy**. To
+martwa pułapka kształtu INV-M, osiągnięta po cichu.
+
+### Dowód, że to działa — eksperyment na sandboxie
+
+Claim obserwujący `package.json#/dependencies/stripe`. Commit zmieniający
+formatowanie, kolejność kluczy, dodający `license` i podbijający `left-pad`:
+
+```
+shape          : unexplained
+watched_touched: []
+```
+
+Ten sam scenariusz z podbiciem SAMEGO stripe'a, obok claimu kontrolnego
+obserwującego cały plik:
+
+```
+tr-122f0611  watched-moved  touched=['package.json']   (obserwuje CAŁY plik)
+tr-b1ae8846  watched-moved  touched=['package.json']   (obserwuje #/dependencies/stripe)
+```
+
+Efekt uboczny cenniejszy niż wyciszenie: w pierwszym przypadku etykieta to
+`unexplained`, nie `watched-moved`. To jest **lepsza diagnoza**, bo `unexplained`
+znaczy „receptura czyta coś spoza własnego zbioru obserwacji" — i tak właśnie
+było (`wc -l package.json` czyta cały plik).
+
+### ZNALEZISKO 1 — próg Pythona podniesiony przez jeden import
+
+```
+PRZED poprawką:  canary result: 275 caught, 9 missed
+                 ModuleNotFoundError: No module named 'tomllib'
+PO poprawce:     canary result: 284 caught, 0 missed
+```
+
+`structural.py` importował `tomllib` (3.11+). Dopóki był liściem, kosztowało to
+zero. W chwili gdy `kernel` go zaimportował, **próg całego CLI podskoczył z 3.9
+na 3.11 dla każdego repozytorium konsumenckiego** — żeby obsłużyć jeden z
+czterech formatów.
+
+Testy jednostkowe są na to strukturalnie ślepe: uruchamiają się na tym
+interpreterze, którym się je wywoła. Canary nie jest — jego ramiona trackera
+puszczają `truth ready` pod `PATH="/usr/bin:/bin"`, gdzie macOS ma 3.9. **Poziom
+2 złapał defekt, którego poziom 1 nie mógł zobaczyć.** Import jest teraz
+opcjonalny, a selektor TOML odmawia przy intake'u, nazywając interpreter.
+
+Nie istniał żaden test przypinający próg Pythona. Dopisany.
+
+### ZNALEZISKO 2 — selektor był jednoznakowym obejściem ADR-037
+
+`_gate_generated` dopasowywał `evidence_paths` jako PODMIOT, a ramię równości
+(`p == g`) nie obcinało niczego. Dopisanie `#/a/b` do ścieżki artefaktu
+generowanego wystarczało, żeby bramka przestała ją widzieć — podczas gdy
+obserwacja dalej restalowała przy każdej regeneracji, bo `match_paths` selektor
+ignoruje. Zamknięte, z testem regresyjnym.
+
+### ZNALEZISKO 3 — funkcja poprawna, dziedzina prawie pusta
+
+Pomiar przed migracją, na aktywnej populacji:
+
+```
+active claims with a watch set: 76
+distinct watch sets: 63
+already on a named policy: 1
+watched path kinds: {'.py': 50, '.sh': 38, '.md': 27, '<none>': 18, '.json': 7, ...}
+```
+
+34 ścieżki są formalnie kwalifikowalne pod selektor. Ale receptury wyglądają tak:
+
+```
+grep -qF 'INV-O' docs/truth-ledger-paper-v3.md && grep -qF 'INV-P' ... && grep -qF 'INV-Q' ...
+```
+
+**One czytają cały dokument.** Zakotwiczenie takiego claimu w jednej sekcji
+uczyniłoby zbiór obserwacji WĘŻSZYM niż dowód — ten sam dryf co J-022, tylko w
+drugą stronę. Nie znalazłem ani jednego czystego kandydata wśród żywych claimów.
+
+Wniosek zapisany, bo jest niewygodny: **wprowadziliśmy ontologię, dla której to
+repo nie ma desygnatów.** Narzędzie jest poprawne; jego zwrot przyjdzie w
+repozytoriach konsumenckich, które mają `package.json`. Zamiast forsować
+migrację pod tezę, reguła „kiedy NIE" trafiła do `template/.truth/watch-policies`.
+
+### ZNALEZISKO 4 — sprostowanie z J-040 nigdy nie dotarło do kodu
+
+```
+template/truthlib/registry.py:69   2329 whisper lines, a mean of 6.8 claims named per edit
+template/truthlib/gates.py:140     "a whisper line on every edit (6.8 claims named per touch of "
+template/scripts/test-truth-core.py:5373  the whisper names 6.8 claims per touch
+.truth/watch-policies:30           340 touches ... 2329 whisper lines ... 6.8 claims
+```
+
+J-040 wycofał te liczby (poprawnie: **1670 linii, 22,6 claimu na edycję**), ale
+sprostowanie zostało w prozie — DZIENNIK, RUNBOOK, DOSSIER. Cztery **żywe**
+powierzchnie cytowały je dalej, w tym `gates.py:140`, czyli tekst **drukowany
+autorowi w momencie odmowy**. System odmawiał, argumentując liczbą, którą sam
+wcześniej wycofał.
+
+To jest dokładnie awaria, przed którą broni reguła „one home per fact": fakt
+przepisany w pięciu miejscach, poprawiony w jednym. Wszystkie cztery poprawione,
+każda z jawnym cytatem tego, co było błędne.
+
+### Pilot migracji 3.3 — trzy claimy, i ściana G12
+
+Trzy claimy o zbiorze obserwacji **dokładnie** równym istniejącej polityce:
+
+| poprzednik | następca | polityka |
+|---|---|---|
+| `tr-f9318142` | `tr-99d9b476` | `canary-suite` |
+| `tr-7c4966ad` | `tr-bc8bb5c8` | `both-suites` |
+| `tr-66b04399` | `tr-a3a63432` | `cli-behaviour` |
+
+Kolejność jest wymuszona odwrotnie do intuicji: `--cause restated` WYMAGA
+istniejącego `--successor`, więc następca rodzi się przy żywym poprzedniku i
+trafia na G8 za każdym razem. `--duplicate-ok` jest tu ceremonią, nie obejściem
+— stempel `overridden_duplicates` zapisuje dokładnie id poprzednika.
+
+Retrakcje **nie zostały wykonane**:
+
+```
+truth: claim retraction is a human tombstone decision (G12). If you are an agent:
+file `diverge` ... and stop -- the human queue decides.
+```
+
+`TRUTH_HUMAN` przeszedłby tę bramkę. Nieużyty świadomie: to byłoby dokładnie to
+pranie osądu, przed którym bramka stoi. Ledger trzyma trzy żywe pary duplikatów
+do czasu, aż człowiek dopnie swoją połowę — widoczny koszt bramki, nie defekt.
+
+Weryfikacja niezależna (ADR-010): filowanie z `s-migrate-33`, werdykty z
+`s-verify-33`. Każdy dostał najpierw `--recheck` (wszystkie trzy: hash zgodny,
+**nic nie filowane** — ADR-030 trzyma potwierdzenie mechaniczne i osąd osobno),
+potem `agree` z podstawą cytującą suite, który faktycznie dowodzi zdania, a nie
+grep, który tylko na nie wskazuje.
+
+Adopcja polityk: **1 → 4** z 79 aktywnych claimów ze zbiorem obserwacji.
+
+### Błędy własne, wszystkie zapisane
+
+* **Delegacja zniszczyła drzewo.** Sub-agent od testów nadpisał
+  `test-truth-core.py` w całości (−784 linie), usunął szew A3 `tracked_files`
+  z `shellio.py` i skasował `docs/diagnosis-2026-08/`. Odzyskane z gita;
+  55 testów i przebieg mutacyjny zrobiłem sam. Lekcja: pełne nadpisanie dużego
+  pliku przez agenta to operacja destrukcyjna, nawet gdy brief mówi „dopisz".
+* **Nie sprawdziłem interpretera przed dodaniem importu.** Znalezisko 1 było
+  moim defektem, wprowadzonym i złapanym w tej samej sesji — przez canary, nie
+  przeze mnie.
+
+### Bramki po całości
+
+```
+core suite            505 tests OK   (było 450; +55 w 9 nowych klasach)
+structural suite      116 tests OK
+canary                284 caught, 0 missed
+mutation gates.py     83/86 killed = 96.5%   (3 ocalałe: równoważne, patrz niżej)
+reproduce             69/69, exit 0
+release-battery       11/11 ramion zielonych
+validate              4718 record(s) OK
+```
+
+Trzy ocalałe mutanty to **mutanty równoważne w kodzie zastanym**: `gates.py:177`
+odrzuca trzecią wartość `override_decay` (`_`), a `flag` występuje wyłącznie
+wewnątrz tego odrzuconego napisu — więc pięciolinijkowy `if/elif/else`, który go
+liczy, jest martwy, a `advisory.py:139-146` niesie tę samą regułę naprawdę.
+Jedna reguła w dwóch miejscach, jedna kopia nieżywa. Nie naprawione tutaj:
+zastane, nie mój zakres, zapisane żeby nie zginęło.
+
+### Otwarte, świadomie
+
+* Trzy retrakcje czekają na terminal człowieka (G12).
+* Pozostałe ~21 claimów o dokładnym dopasowaniu — ta sama mechanika, decyzja
+  o skali należy do operatora.
+* **Właściwe domknięcie problemu jest gdzie indziej.** Zbiór obserwacji jest
+  jednocześnie bytem (co claim obserwuje) i narzędziem poznawczym (jak
+  wykrywamy nieaktualność), deklarowanym dwa razy niezależnie — dlatego dryfuje
+  w obie strony naraz (J-022). 63 różne zbiory na 76 claimów to nie
+  niechlujstwo, tylko przewidywalny skutek tej dwoistości. Wyprowadzanie zbioru
+  obserwacji **z receptury** (statycznie, z argumentów `grep`/`cat`/`sha256sum`)
+  czyni dryf strukturalnie niemożliwym, zamiast tylko wykrywalnym. To większy
+  temat niż FAZA 3 i nie należy go doklejać do tej gałęzi.
