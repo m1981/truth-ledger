@@ -18,6 +18,11 @@ The structural view — modules, tiers, intake order — lives beside this in
 `structure.md`. This document is the **behavioural contract**: what the system
 guarantees, and what it refuses.
 
+The four sections are a dependency order, not a table of contents: §1 fixes what
+may exist, §2 what may enter, §3 how a record earns and loses belief, §4 how the
+system observes itself doing it. A change that seems to belong in two of them
+belongs in the lower one first.
+
 ---
 
 ## 1. Model danych i zbieżność — Data Model & Confluence

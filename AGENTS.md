@@ -123,5 +123,28 @@ Meta-repo conventions, on top of the standard layer:
   import with `try/except ModuleNotFoundError` and degrade to a refusal
   that names the interpreter, so the failure is a sentence at intake
   rather than a traceback inside a sweep.
+- An analysis is a claim and carries an evidence class like any other.
+  Before a finding changes what anyone does, name what backs it: a command
+  that re-runs, or a stated basis. A conceptual frame — layers, hierarchies,
+  "this is the epistemic tier" — is NEITHER, and earns no conclusion on its
+  own; at best it is a hypothesis generator that says where to point a
+  measurement. The 2026-08-18 diagnosis ran that drill four times and the
+  frame lost three: it predicted `kernel.py` would be the weakly covered
+  module (measured that day: `validate_events` 96.6%, 173/179 mutants — the
+  strongest part of it), read 165 ADR→arm citation edges as a dependency
+  inversion (40 sites read by hand: incident citations, meaning nothing),
+  and called a 79%→47% label/import correlation drop a degradation (it was
+  two clean new modules diluting the pairs — evidence the refactor worked).
+  It won once, and that win is the shape to copy: asking which layer was
+  weakest sent a grep at `docs/governance/gate-metrics.md`, which found six
+  review dates already past and nothing in the repo enforcing them. The
+  frame chose the grep; the grep is the finding.
+- Say which half you are on. A sentence that restates a frame in the
+  system's own vocabulary — "the ledger is the ontological layer, the gates
+  are axiological, the fold is the epistemic bridge" — is true,
+  unfalsifiable, and load-bearing for nothing. Writing it feels like
+  understanding, which is why it survives review. If you cannot follow such
+  a sentence with a path, a number, or a command, delete it instead of
+  shipping it as insight.
 
 See `template/.truth/README.md` for the layer's full documentation.
