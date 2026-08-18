@@ -192,6 +192,41 @@ diverges on a comment. The screen guarantees the command is *safe* and
 *deterministic*, never that it is *informative*. That judgment is the filer's,
 and no gate substitutes for it.
 
+**Every mechanical gate here is syntactic; the only semantic instrument is a
+human.** The paragraph above states this for recipes, and it is not a property
+of recipes — it is the shape of the whole gate layer. Prefix checks, JSON Schema,
+glob matching, token sets, Jaccard similarity, hash equality, the reachability
+sweep's invoker grep: all of them read FORM. Meaning is judged in exactly one
+place, the verdict, and a verdict is a person.
+
+Naming that gap turns blind spots from discoveries into predictions. The
+question to ask of any gate is: **at what level does the defect live, and at
+what level does this instrument read?** The distance between the two is the
+residual, and it is disclosed rather than closed — more grep does not climb a
+level.
+
+The instance worth memorising, because it has now happened twice: **a textual
+gate can pass on its own retirement notice.** A `doctor` row greped
+`post-merge` for a verb name and matched the comment explaining that the verb
+had been removed, reporting the invariant enforced over a hook that enforces
+nothing. A claim reproduced green for weeks on the prose retiring the verb its
+sentence named. A grep cannot tell an assertion from its obituary, because that
+difference is one level above where a grep reads. The operational test is one
+question: *would deleting the thing this gate guards make it stop passing — or
+start passing, on the note announcing the deletion?*
+
+**A number that justifies a decision needs a recipe, exactly as a claim does.**
+This system's entire thesis is that a belief must carry a reproducible capsule.
+The measurements that justified its own architecture carried none, and it showed:
+during the refactor that produced this chapter, one metric summed per FILE what
+is emitted per CLAIM (overstating a total by 40% while understating its ratio
+threefold), and another argued from a 200-commit window for a gate whose
+threshold is measured over 30 days. Both survived review and were caught only by
+recomputation. Two rules follow, and they are the same rule twice: state how a
+governing number was produced, and **when the regime changes, re-measure the
+motivation and not only the code** — a conclusion can outlive the evidence that
+earned it, and usually looks strongest exactly then.
+
 **No dead metadata.** A payload field is admitted only if the fold or a blocking
 gate reads it. The rule is measured, not asserted: an AST sweep
 (`instruments/field-consumers.py`) reports any key the ledger carries that
