@@ -15,6 +15,19 @@ Meta-repo conventions, on top of the standard layer:
 - One home per fact: load-bearing facts in README/docs are cited as
   ledger ids, never restated as counts or contracts. Sweep with
   `bash scripts/fact-health.sh` after editing docs.
+  **That sweep has a measured blind spot, so a retracted NUMBER can
+  outlive its retraction indefinitely.** `fact-health.sh` reads only
+  `.md` files (its `FILES=` list) and matches only ledger IDs — a figure
+  restated inside a `.py` string is invisible twice over. Measured
+  2026-08-18: J-040 recounted the whisper metric (`2329`/`6.8` →
+  `1670`/`22.6`) and the correction reached the journal, the runbook and
+  the dossier, while four LIVE surfaces kept quoting the retracted pair
+  for a day — `registry.py:69`, `test-truth-core.py:5373`,
+  `.truth/watch-policies:30`, and worst, `gates.py:140`, which is the
+  REFUSAL text printed to an author: the gate argued from a number the
+  project had already withdrawn. When a journal entry retracts a figure,
+  grep the retracted literal across code and policy files too, not just
+  docs: `grep -rn '<old-figure>' template/ .truth/ scripts/`.
 - The normative mechanism spec is docs/truth-ledger-paper-v3.md §1; the
   CLI contract summary is template/.truth/README.md. Do not restate
   either elsewhere — link or cite.
@@ -79,6 +92,22 @@ Meta-repo conventions, on top of the standard layer:
   artifact. Three shipped releases (ADR-021, ADR-024, ADR-028) exist
   because exactly this drill flipped a "just document it" back into a
   code fix.
+- Delegating an EDIT to a subagent is a destructive operation; delegating
+  a SEARCH is not, and the split is worth holding. Measured 2026-08-17: an
+  agent briefed to "add tests to `template/scripts/test-truth-core.py`"
+  emitted a whole-file rewrite and took 784 lines with it, stripped the A3
+  `tracked_files` seam out of `shellio.py` (production code its brief
+  forbade it to touch), and deleted `docs/diagnosis-2026-08/`. None of
+  that reddened a suite — deleted tests do not fail. The same session's
+  SEARCH delegation (an inventory of every `evidence_paths` consumer,
+  every call site with its file:line) was accurate and saved real time.
+  So: `git diff HEAD > <scratch>/snapshot.patch` before handing an agent
+  write access, and after ANY delegated edit read `git diff --stat` for
+  files outside its scope and for net-negative line counts inside it — a
+  net -784 on an "add tests" task is the tell. A killed agent can still
+  land writes while shutting down, so re-verify AFTER `TaskStop`, not
+  before. `scripts/mutate.sh` mutates `template/truthlib/*.py` in place
+  and warrants the same snapshot-then-compare.
 - A pre-edit whisper hook is wired (`.claude/settings.json` → PreToolUse
   → `scripts/truth-whisper.py`, ADR-005 trial): editing a path the
   ledger watches injects the mechanical prediction of what your commit
