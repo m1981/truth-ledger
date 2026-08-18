@@ -36,6 +36,7 @@ health: ## Run 360-degree operational health check (<1s)
 	@echo "=== 2. Citation & Documentation Integrity ==="
 	-@bash scripts/fact-health.sh
 	-@(cd template && bash scripts/doc-health.sh)
+	-@bash scripts/retracted-figures.sh
 	@echo ""
 	@echo "=== 3. AST Schema & Payload Consumer Audit ==="
 	-@$(PYTHON) instruments/field-consumers.py

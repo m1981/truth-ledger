@@ -1,0 +1,29 @@
+# Retracted figures -- numbers this project has WITHDRAWN, and what replaced
+# them. Swept by scripts/retracted-figures.sh.
+#
+# FORMAT, one per line:
+#     <retracted-literal> -- <replacement-literal> -- <where it was retracted>
+#
+# WHY THIS FILE EXISTS. `scripts/fact-health.sh` reads only *.md and matches
+# only ledger IDs, so a figure restated inside a .py string is invisible to it
+# twice over. Measured 2026-08-18: J-040 recounted the whisper metric and the
+# correction reached the journal, the runbook and the dossier, while four LIVE
+# surfaces kept quoting the withdrawn pair -- including gates.py's REFUSAL
+# text, so the gate argued from a number the project had already withdrawn.
+#
+# THE RULE THE SWEEP ENFORCES: a retracted literal may still appear in code or
+# policy, but only NEXT TO its replacement -- that is what a correction looks
+# like ("the first pass read 2329/6.8, but ..."). A lone occurrence is a stale
+# restatement, and that is the failure. Window is 8 lines either way, which is
+# a comment block.
+#
+# NOT SWEPT: docs/ (where the retraction is legitimately discussed at length)
+# and .truth/claims.jsonl (append-only history -- an old record quoting a
+# figure is a fact about what was believed then, never a restatement to fix).
+#
+# CHOOSE SPECIFIC LITERALS. Matching is on word boundaries, so a short or
+# common number will collide with versions, hashes and ids. If a literal is
+# noisy, make it longer rather than loosening the sweep.
+
+2329 -- 1670 -- J-040 (whisper lines over 200 commits; first pass summed per FILE)
+6.8 -- 22.6 -- J-040 (claims named per edit; same recount)
