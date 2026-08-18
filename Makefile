@@ -39,6 +39,9 @@ health: ## Run 360-degree operational health check (<1s)
 	@echo ""
 	@echo "=== 3. AST Schema & Payload Consumer Audit ==="
 	-@$(PYTHON) instruments/field-consumers.py
+	@echo ""
+	@echo "=== 4. Label Coupling Audit (Tier C) ==="
+	-@$(PYTHON) instruments/label-coupling.py
 
 test: ## Run full unit, integration, v04, and canary test suites (~25s)
 	@echo "--- 1. Core Suite (Unit & Logic) ---"

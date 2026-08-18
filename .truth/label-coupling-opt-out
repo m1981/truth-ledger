@@ -1,0 +1,19 @@
+# label-coupling opt-out -- pary modulow dzielace ADR-y bez importu.
+#
+# Format:  modulA~modulB  <powod>
+#
+# BASELINE 2026-08-18, NIE ROZSTRZYGNIETY. Cztery pary ponizej sa zapisem
+# stanu w chwili wprowadzenia instrumentu, nie werdyktem, ze sa poprawne.
+# Kazda z nich moze byc jednym kontraktem w dwoch implementacjach --
+# dokladnie tym, przed czym ostrzegaja evidence.py:192 i advisory.py:600
+# ("a second implementation is forbidden, the F1/F5 drift lesson").
+# Rozstrzygniecie kazdej wymaga przeczytania obu modulow i jest osobna
+# praca; sens tego pliku jest taki, zeby PIATA para nie przeszla niezauwazona.
+#
+# policy~reports powstalo przy ekstrakcji reports.py z advisory.py (sierpien
+# 2026) i jest dowodem, ze ta klasa defektu rodzi sie przy dekompozycji.
+
+evidence~policy   baseline 2026-08-18, nierozstrzygniete: 10 wspolnych ADR (jaccard 0.37), najmocniejsza para w repo
+policy~reports    baseline 2026-08-18, nierozstrzygniete: 10 wspolnych ADR; para POWSTALA przy ekstrakcji reports.py z advisory.py
+advisory~gates    baseline 2026-08-18, nierozstrzygniete: 6 wspolnych ADR (jaccard 0.33)
+advisory~shellio  baseline 2026-08-18, nierozstrzygniete: 6 wspolnych ADR (jaccard 0.30)

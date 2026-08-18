@@ -249,6 +249,20 @@ else
   pass "field-consumers" "$SUM"
 fi
 
+# --- 8b. label coupling audit (Tier C) -----------------------------------
+# Two modules carrying the same ADRs with no import between them are one
+# contract in two implementations -- the F1/F5 drift lesson this repo names
+# twice in its own prose and detects nowhere. Literal python3 on purpose:
+# see the dark-gate note at the top of this file.
+OUT=$(python3 instruments/label-coupling.py 2>&1); RC=$?
+SUM=$(printf '%s\n' "$OUT" | tail -1)
+if [ "$RC" -ne 0 ]; then
+  bad "label-coupling" "$SUM:
+$(printf '%s\n' "$OUT" | grep -E '^FAIL' | head -3)"
+else
+  pass "label-coupling" "$SUM"
+fi
+
 # --- 9. reachability sweep ----------------------------------------------
 # The general form of the defect above: a check no root invokes is a claim
 # about coverage, not coverage. This arm is also how gate-reachability.sh
