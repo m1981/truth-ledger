@@ -17,7 +17,24 @@ cleanup() { rm -rf "$TMP1" "$TMP2" "$TMP3" "$TMP4" "$TMP5" ${TDIRS+"${TDIRS[@]}"
 trap cleanup EXIT
 
 mkrepo() {
-  cd "$1"
+  # The ADR-005 lesson, applied to the canary itself. On 2026-08-20 21:48 a
+  # battery run whose cwd was a LINKED WORKTREE escaped this sandbox: the
+  # bare `cd` below failed, and under `set -u` with NO `set -e` the `git
+  # init` ran wherever the shell happened to be standing -- writing fixture
+  # commits onto the shared repository's main, six fixture branches, a
+  # repointed branch ref and core.bare=true. AGENTS.md answered with a NORM
+  # ("never run the canary from a linked worktree"), and this project's own
+  # trial (RUNBOOK, S2-ext) is the evidence that norms alone do not hold.
+  # So the guard is mechanical: enter the sandbox or die, and refuse
+  # outright to `git init` inside a repository the canary does not own.
+  cd "$1" || { echo "canary: cannot enter sandbox '$1' -- refusing to run" >&2; exit 1; }
+  if owner=$(git rev-parse --show-toplevel 2>/dev/null); then
+    echo "canary: sandbox '$PWD' is INSIDE an existing git repository ($owner)." >&2
+    echo "  Refusing: this suite writes commits, branches, refs and git config," >&2
+    echo "  and from here every one of those would land on a repository it does" >&2
+    echo "  not own (measured incident: 2026-08-20 21:48, see AGENTS.md)." >&2
+    exit 1
+  fi
   git init -q -b main .
   git config user.email canary@truth.local
   git config user.name  truth-canary
@@ -203,7 +220,7 @@ else
   ok "doctor reports (no traceback) when a hook path is a directory"
 fi
 rmdir .git/hooks/pre-commit
-cd "$TMP1"
+cd "$TMP1" || { echo "canary: cannot cd into $TMP1 -- refusing to continue" >&2; exit 1; }
 rm -rf "$DG"
 
 # FAULT B FLIPPED (refactor step 2.5). Its subject -- "a commit touching a
@@ -1602,7 +1619,7 @@ else
     miss "negative control failed: healthy gate exited $GE2_RC on an honest append"
   fi
 fi
-cd "$TMP1"
+cd "$TMP1" || { echo "canary: cannot cd into $TMP1 -- refusing to continue" >&2; exit 1; }
 rm -rf "$GE" "$GESHIM"
 
 # ======================================================= sandbox 2 (G1)
@@ -2176,7 +2193,7 @@ if printf '%s\n' "$RAOUT" | grep -q "^$CID_RA_OK  reproduces" \
 else
   miss "unchanged peer $CID_RA_OK lost live status or stopped reproducing"
 fi
-cd "$RA_PREV"
+cd "$RA_PREV" || { echo "canary: cannot cd into $RA_PREV -- refusing to continue" >&2; exit 1; }
 rm -rf "$RA"
 
 # ---- FAULT SD-decay (ADR-032, v0.9.14): --scope-ok default expiry -------
@@ -2239,7 +2256,7 @@ if $T list --stale --json | grep -q "$CID_SD4" \
 else
   miss "expired override not staled, or staled by something other than TTL"
 fi
-cd "$SD_PREV"
+cd "$SD_PREV" || { echo "canary: cannot cd into $SD_PREV -- refusing to continue" >&2; exit 1; }
 rm -rf "$SD"
 
 # ---- FAULT OV: RETIRED (ADR-046) ----------------------------------------
@@ -2369,7 +2386,7 @@ if $T claim "gs7 negative control files ordinary sentence text" \
 else
   miss "GS7b: the text-nonempty gate refused legitimate text"
 fi
-cd "$GS_PREV"
+cd "$GS_PREV" || { echo "canary: cannot cd into $GS_PREV -- refusing to continue" >&2; exit 1; }
 rm -rf "$GS"
 
 # ---- FAULT X (ADR-035, v0.9.21): positive-claim exit gate ---------------
@@ -2471,7 +2488,7 @@ if [ "$X7RC" -ne 0 ] && printf '%s\n' "$X7ERR" | grep -q "ADR-035"; then
 else
   miss "X7: claim-at-death evaded the exit gate (rc=$X7RC)"
 fi
-cd "$XG_PREV"
+cd "$XG_PREV" || { echo "canary: cannot cd into $XG_PREV -- refusing to continue" >&2; exit 1; }
 rm -rf "$XG"
 
 # ---- FAULT TG (ADR-036, v0.9.22): tombstone citation gate ---------------
@@ -2620,7 +2637,7 @@ if [ "$TG12ARC" -ne 0 ] && [ "$TG12BRC" -ne 0 ] \
 else
   miss "TG12: citations accepted a non-id arg or broke the clean case (rc=$TG12ARC/$TG12BRC/$TG12CRC)"
 fi
-cd "$TG_PREV"
+cd "$TG_PREV" || { echo "canary: cannot cd into $TG_PREV -- refusing to continue" >&2; exit 1; }
 rm -rf "$TG"
 
 # ---- FAULT RX (ADR-049, v0.9.34): the retraction cause ------------------
@@ -2807,7 +2824,7 @@ if [ "$RXV_OK" -eq 0 ] && [ "$RXV_A" -ne 0 ] && [ "$RXV_B" -ne 0 ] \
 else
   miss "RX10: validate mirror wrong (legacy=$RXV_OK restated=$RXV_A agree=$RXV_B event=$RXV_C)"
 fi
-cd "$RX_PREV"
+cd "$RX_PREV" || { echo "canary: cannot cd into $RX_PREV -- refusing to continue" >&2; exit 1; }
 rm -rf "$RX"
 
 # ---- FAULT ST (ADR-050, v0.9.38): the staling breakdown -----------------
@@ -2983,7 +3000,7 @@ sys.exit(0 if (r['order'] == 'append' and r['resolved'] == 2
 else
   miss "ST8: append-order walk wrong or identical to the fold walk: $ST8_JSON"
 fi
-cd "$ST_PREV"
+cd "$ST_PREV" || { echo "canary: cannot cd into $ST_PREV -- refusing to continue" >&2; exit 1; }
 rm -rf "$ST" "$ST_N"
 
 # ---- FAULT RC (ADR-037, v0.9.23): recipe lints + generated-paths --------
@@ -3087,7 +3104,7 @@ if [ "$RC8OK" = ok ] && printf '%s\n' "$RC8ERR" | grep -q "NOT.*stored\|was NOT"
 else
   miss "RC8: dropped override stored or decayed silently (state=$RC8OK)"
 fi
-cd "$RC_PREV"
+cd "$RC_PREV" || { echo "canary: cannot cd into $RC_PREV -- refusing to continue" >&2; exit 1; }
 rm -rf "$RC"
 
 # ---- FAULT DW (ADR-038, v0.9.24): the dirty-watch advisory --------------
@@ -3181,7 +3198,7 @@ if printf '%s\n' "$DW8" | grep -q "dirty watch: f.txt"; then
 else
   miss "DW8: mid-merge conflict invisible to the advisory"
 fi
-cd "$DW_PREV"
+cd "$DW_PREV" || { echo "canary: cannot cd into $DW_PREV -- refusing to continue" >&2; exit 1; }
 rm -rf "$DW"
 
 # ---- FAULT BF (ADR-039, v0.9.25): blast forecast + churn report ---------
@@ -3308,7 +3325,7 @@ else
   miss "BF7: unborn HEAD read as a quietly-cold forecast"
 fi
 rm -rf "$BFU"
-cd "$BF_PREV"
+cd "$BF_PREV" || { echo "canary: cannot cd into $BF_PREV -- refusing to continue" >&2; exit 1; }
 rm -rf "$BF"
 
 # ---- FAULT VC (P2 contract layer, v0.9.27): the vocab verb --------------
@@ -3349,7 +3366,7 @@ if [ -z "$VC2ERR" ] && printf '%s\n' "$VC2OUT" | grep -q "^citation_bad: .*dispu
 else
   miss "VC2: plain vocab output or read-verb silence broken (stderr=[$VC2ERR])"
 fi
-cd "$VC_PREV"
+cd "$VC_PREV" || { echo "canary: cannot cd into $VC_PREV -- refusing to continue" >&2; exit 1; }
 rm -rf "$VC"
 
 # ---- FAULT UM (union merge): the headline sync path, driven for real ----
@@ -3405,7 +3422,7 @@ if [ -n "$UM_A" ] && [ "$UM_A" = "$UM_B" ]; then
 else
   miss "UM4: fold changed with merge direction (a=[$UM_A] b=[$UM_B])"
 fi
-cd "$UM_PREV"
+cd "$UM_PREV" || { echo "canary: cannot cd into $UM_PREV -- refusing to continue" >&2; exit 1; }
 rm -rf "$UM" "$UMR"
 
 # ---- FAULT UM5-UM7 (ADR-045/D3): the pre-merge-commit hook gates the ----
@@ -3467,7 +3484,7 @@ else
   miss "UM7: a merge rewriting a committed ledger line landed past the gate (ADR-045/INV-A)"
 fi
 git merge --abort >/dev/null 2>&1 || true
-cd "$UMH_PREV"
+cd "$UMH_PREV" || { echo "canary: cannot cd into $UMH_PREV -- refusing to continue" >&2; exit 1; }
 rm -rf "$UMH"
 
 # ---- FAULT LK (ADR-045/D2): write verbs serialize on the ledger lock ----
@@ -3510,7 +3527,7 @@ else
   miss "LK2: the record did not land (or landed twice) after release"
 fi
 rm -f .lk-held .lk-release
-cd "$LK_PREV"
+cd "$LK_PREV" || { echo "canary: cannot cd into $LK_PREV -- refusing to continue" >&2; exit 1; }
 rm -rf "$LK"
 
 # ---- FAULT EF (ADR-051, v0.9.38): capsule coherence ---------------------
@@ -3570,7 +3587,7 @@ if $T validate >/dev/null 2>&1; then
 else
   miss "EF5: validate refuses a record the CLI itself writes"
 fi
-cd "$EF_PREV"
+cd "$EF_PREV" || { echo "canary: cannot cd into $EF_PREV -- refusing to continue" >&2; exit 1; }
 
 # ---- FAULT PA (F3.1): an empty policy file must SAY it is empty ---------
 # ADR-037/SI-4 reads a committed-empty policy file as a conscious "nothing
@@ -3628,7 +3645,7 @@ if printf '%s\n' "$PA_OUT" | grep -q "OK    policy file attested (.truth/generat
 else
   miss "PA3: a populated list was still asked to attest, or the cross-check kept firing after it was covered"
 fi
-cd "$PA_PREV"
+cd "$PA_PREV" || { echo "canary: cannot cd into $PA_PREV -- refusing to continue" >&2; exit 1; }
 
 # ---- FAULT RP (F1.1): the reproduction sweep ----------------------------
 # `truth reproduce` asks the question no other verb asks: can this LIVE
@@ -3738,7 +3755,7 @@ sys.exit(0 if r and r[0]["arm"]=="no-capsule" else 1)'; then
 else
   miss "RP4: a capsule-less claim was not separated out"
 fi
-cd "$RP_PREV"
+cd "$RP_PREV" || { echo "canary: cannot cd into $RP_PREV -- refusing to continue" >&2; exit 1; }
 
 say ""
 say "canary result: $PASS caught, $FAIL missed"
