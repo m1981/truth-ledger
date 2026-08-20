@@ -13,6 +13,36 @@ v0.9.38 (one new READ verb, one behaviour change to `doctor`, the
   refactor; no schema change, fold untouched):
 
   -- BEHAVIOUR CHANGE, read this first ------------------------------------
+  * **Evidence commands no longer run through a shell (ADR-041; what
+    shipped, what it does NOT close, and the open questions answered: the
+    meta-repo's ADR-056).** The
+    screen used to tokenize with `shlex` while the executor ran
+    `subprocess.run(cmd, shell=True)`: TWO interpreters reading one
+    string, and every divergence between them was a channel. ADR-021
+    closed the newline; the 2026-08-01 audit then found three more
+    (`uniq *` is one word to shlex and N to `/bin/sh`, `cat <>F` CREATES
+    the file the '<' branch read as input, `>1` writes a file named `1`
+    behind the fd-dup carve-out). Enumerating them does not terminate,
+    because only `/bin/sh` implements `/bin/sh`. The screen's parse is now
+    the EXECUTION: `evidence.parse_evidence_command` emits argv arrays
+    with resolved descriptors and glob patterns, and
+    `shellio.run_evidence` runs them with `shell=False`, plumbing
+    pipelines, `&&`/`||`/`;`, `>/dev/null`, `2>&1` and `<FILE` itself.
+    **What this refuses that it used to accept**: `$VAR`/`${...}`
+    expansion (a literal under the runner would silently change the
+    recorded output -- an anchored `grep "a$"` still passes, because
+    `$` only expands when what follows can name an expansion), `~`,
+    `<>`, `&` backgrounding, `>&-`, a glob in program position, and
+    `2>&1 >/dev/null` (the runner captures one stream). Nothing else
+    moved: all 196 distinct evidence commands in the two ledgers produce
+    a byte-identical output hash and exit code under the new runner
+    (`TestShellFreeEvidenceRunner` pins the shapes; canary FAULT SF1-SF5
+    pin the channels). The ADR-014 acceptance oracle is untouched -- it
+    executes repository code on purpose and still runs through the shell.
+    `scripts/adr041-hash-stability.py` ships with the template so you can
+    run that same check against YOUR ledger before adopting this version;
+    it exits non-zero on any command whose hash moves or that the new
+    parser refuses.
   * `truth doctor` now FAILS on a committed-but-EMPTY policy file that
     carries no dated attestation (`.truth/generated-paths`,
     `.truth/citation-scope`). ADR-034's SI-4 reads committed-empty as

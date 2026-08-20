@@ -108,12 +108,15 @@ VERIFIED: missing evidence command, neither paths nor TTL, no commit to
 anchor to, the evidence-command safety screen (ADR-009, v0.6 — quote-aware: every
 pipeline segment's program must be a bare name in
 `.truth/evidence-allow`; no command substitution; no ASCII control
-character except tab — a newline is word-whitespace to the screen's
-`shlex` lexer but a statement separator to the executing `/bin/sh`, so
-the screen must tokenize like its executor or a hidden second command
-slips through into a verifier's recheck (ADR-021, H4); output redirection
+character except tab — a newline is word-whitespace to a lexer but a
+statement separator to a shell, and the acceptance oracle still has one
+(ADR-021, H4); output redirection
 only to `/dev/null` or an fd dup (`2>&1`), so the pin-the-output
-convention keeps working; an allowlisted program's own write/exec flags
+convention keeps working; since ADR-041 the screen's PARSE is what
+executes — evidence runs as argv arrays with `shell=False`, so `$VAR`,
+`~`, `<>`, `&` and other constructs with no argv equivalent are refused
+rather than approximated, and the screen no longer has to model a shell
+it does not use; an allowlisted program's own write/exec flags
 are refused by a per-program deny table — `find -exec/-execdir/-ok/-okdir/-delete/-fprint*/-fls`,
 `sort -o/--output/--compress-program`, and a few top-level `git` flags —
 but that table is a BLOCKLIST and cannot bound an interpreter or VCS, so

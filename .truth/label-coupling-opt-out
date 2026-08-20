@@ -17,3 +17,4 @@ evidence~policy   baseline 2026-08-18, nierozstrzygniete: 10 wspolnych ADR (jacc
 policy~reports    baseline 2026-08-18, nierozstrzygniete: 10 wspolnych ADR; para POWSTALA przy ekstrakcji reports.py z advisory.py
 advisory~gates    baseline 2026-08-18, nierozstrzygniete: 6 wspolnych ADR (jaccard 0.33)
 advisory~shellio  baseline 2026-08-18, nierozstrzygniete: 6 wspolnych ADR (jaccard 0.30)
+evidence~shellio  ROZSTRZYGNIETE 2026-08-18 (ADR-041/ADR-056): jeden kontrakt, dwie polowy, i podzial jest WYMUSZONY. parse_evidence_command (evidence, czysty) produkuje plan; run_evidence (shellio, I/O) go wykonuje. Importu nie ma, bo czysty modul nigdy nie importuje shellio (ADR-044), a ekspansja glob i otwarcie pliku sa I/O z definicji. To NIE jest druga implementacja tego samego: runner nie ma zadnego parsera -- nie dostaje stringa, wiec nie ma czego reinterpretowac. Dryf, przed ktorym ostrzega ten instrument, jest tu niewyrazalny, a nie tylko nieobecny.

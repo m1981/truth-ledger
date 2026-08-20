@@ -14,10 +14,12 @@ detects their drift; this corpus is that something.
 
 Run: python3 scripts/test-truth-core.py
 """
+import hashlib
 import importlib.machinery
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -793,6 +795,288 @@ class TestEvidenceScreen(unittest.TestCase):
         `copier update` never reverts it. The grey zone is code-owned, so
         it is what actually reaches a deployment still carrying them."""
         self.assertLessEqual({"rg", "file", "date"}, tm.DOCTOR_GREY_ZONE)
+
+class TestEvidenceParse(unittest.TestCase):
+    """ADR-041: the parse that BECOMES the execution.
+
+    Before it, the screen read the command with shlex and the executor
+    handed the same string to /bin/sh -- two interpreters, and every
+    divergence between them was a channel (ADR-021's newline, then
+    ADR-040's `uniq *`, `cat <>F` and `>1`). These arms pin the property
+    that replaced the enumeration: what the parser cannot express is
+    refused, and what it emits is argv."""
+
+    def _plan(self, cmd):
+        plan, err = tm.parse_evidence_command(cmd)
+        self.assertIsNone(err, f"{cmd!r} must parse: {err}")
+        return plan
+
+    def _seg(self, cmd, i=0, j=0):
+        return self._plan(cmd)[i]["pipeline"][j]
+
+    def _words(self, cmd, i=0, j=0):
+        return [w[0] for w in self._seg(cmd, i, j)["words"]]
+
+    def _err(self, cmd):
+        plan, err = tm.parse_evidence_command(cmd)
+        self.assertIsNone(plan, f"{cmd!r} must be refused")
+        return err
+
+    def test_fd_prefix_is_glue_sensitive(self):
+        """The reason shlex had to go: `2>&1` and `2 >&1` are ONE token
+        stream to it -- ['2', '>&', '1'] -- while /bin/sh reads the first
+        as an fd redirection and the second as the argument '2'. A screen
+        that cannot see that difference cannot gate an executor that acts
+        on it; under shell=False the argv IS the decision."""
+        glued = self._seg("wc -l 2>&1")
+        self.assertEqual([w[0] for w in glued["words"]], ["wc", "-l"])
+        self.assertEqual(glued["stderr"], "merge")
+        spaced = self._seg("wc -l 2 >&1")
+        self.assertEqual([w[0] for w in spaced["words"]], ["wc", "-l", "2"])
+        self.assertEqual(spaced["stderr"], "devnull")
+
+    def test_and_or_list_and_pipeline_shape(self):
+        plan = self._plan("grep -q x f.txt && cat f.txt | wc -l")
+        self.assertEqual([e["op"] for e in plan], [None, "&&"])
+        self.assertEqual(len(plan[0]["pipeline"]), 1)
+        self.assertEqual([[w[0] for w in s["words"]]
+                          for s in plan[1]["pipeline"]],
+                         [["cat", "f.txt"], ["wc", "-l"]])
+
+    def test_redirection_is_a_descriptor_not_punctuation(self):
+        """ADR-041 decision 2: the two sinks ADR-009 ever allowed are
+        both descriptors the runner sets directly, so `>` and `>&` stop
+        being characters a screen has to out-guess a shell about."""
+        seg = self._seg("grep -q x f.txt >/dev/null 2>&1")
+        self.assertEqual((seg["stdout"], seg["stderr"]), ("devnull", "devnull"))
+        self.assertEqual(self._seg("wc -l < f.txt")["stdin"], "f.txt")
+        self.assertEqual(self._seg("wc -l f.txt")["stdin"], None)
+
+    def test_read_write_open_is_refused(self):
+        """ADR-040 R4b: `cat <>FILE` CREATES the file. The old screen
+        classified every '<' as read-only input and accepted any source;
+        the runner opens a redirection by flag, so the construct has no
+        expression here and is named rather than approximated."""
+        self.assertIn("WRITING", self._err("cat <>PWNED"))
+
+    def test_digit_sink_and_fd_dup_stay_apart(self):
+        """ADR-040 R4c, now structural: a '>' target is /dev/null or
+        nothing, and a '>&' target is a descriptor. The old carve-out that
+        admitted the '1' of '2>&1' also admitted `cat f >2`, a write to a
+        file named '2'."""
+        for cmd in ("cat f.txt >2", "cat f.txt >22", "cat f.txt >>2"):
+            self.assertIn("read-only", self._err(cmd), cmd)
+        for cmd in ("wc -l f.txt 2>&1", "cat f.txt >&2",
+                    "grep -q x f.txt >/dev/null 2>&1"):
+            self._plan(cmd)
+
+    def test_backgrounding_is_refused(self):
+        """'&' was a SEPARATOR to the old screen, so `grep x f & touch P`
+        screened as two segments and ran as a background job plus a
+        write. The runner starts a command and waits for it."""
+        self.assertIn("backgrounds", self._err("grep x f.txt & echo hi"))
+
+    def test_expansions_are_refused_and_a_literal_dollar_is_not(self):
+        """No $VAR, no ~: the runner would pass them as literals, so a
+        value /bin/sh used to substitute would silently change the
+        recorded output. But '$' only EXPANDS when what follows can name
+        an expansion -- `grep -c "a$"` is an anchored regex to the shell
+        and stays one here, which is why the refusal is not a blanket."""
+        for cmd in ("echo $HOME", "echo ${HOME}", "echo \"$HOME\"",
+                    "grep -c x ~/f.txt"):
+            self.assertIsNotNone(self._err(cmd), cmd)
+        for cmd in ("grep -c 'a$' f.txt", 'grep -c "a$" f.txt',
+                    "grep -c a$ f.txt"):
+            self._plan(cmd)
+
+    def test_a_quoted_metacharacter_is_a_literal_not_a_pattern(self):
+        """ADR-040 R4a's other half: `uniq *` is one word to shlex and N
+        to the shell. The parser keeps both halves of a word -- the text
+        the shell would pass and the PATTERN it would expand -- so a star
+        that came out of quotes can never become an expansion."""
+        self.assertEqual(self._seg("uniq *")["words"], [("uniq", None),
+                                                        ("*", "*")])
+        self.assertEqual(self._seg("uniq '*'")["words"], [("uniq", None),
+                                                          ("*", None)])
+        self.assertEqual(self._seg("uniq \\*")["words"], [("uniq", None),
+                                                          ("*", None)])
+
+    def test_stderr_into_the_capture_alone_is_refused(self):
+        """`>/dev/null 2>&1` discards both; `2>&1 >/dev/null` sends stderr
+        to the captured stream and discards stdout. The runner captures
+        ONE stream, so the second order is named, not silently treated as
+        the first."""
+        self.assertIn("captured output", self._err("cat f.txt 2>&1 >/dev/null"))
+
+    def test_the_screen_is_this_parse(self):
+        """ADR-041: one implementation. Anything the parser refuses must
+        reach the caller as a screen refusal, or a command the runner
+        cannot execute would still pass intake."""
+        for cmd in ("cat <>PWNED", "grep x f.txt & echo hi", "echo $HOME",
+                    "cat f.txt >2", "(grep x f.txt)", "grep x f.txt &&"):
+            self.assertIsNotNone(tm.screen_evidence_command(cmd, ALLOW), cmd)
+
+    def test_a_pattern_in_program_position_is_refused(self):
+        """The allowlist screens the word; expansion would replace it.
+        No allowlist entry can carry a metacharacter, so a pattern here
+        is only ever an attempt to reach one sideways."""
+        for cmd in ("gre*p x f.txt", "[g]rep x f.txt", "grep x f.txt | w?"):
+            self.assertIsNotNone(tm.screen_evidence_command(cmd, ALLOW), cmd)
+
+    def test_the_accept_screen_keeps_its_shell(self):
+        """ADR-014 oracles execute repository code through /bin/sh on
+        purpose, so the expansions the parser refuses for evidence stay
+        parse-clean there -- shell_free=False. The program screen is the
+        same one; only what the executor will really do differs."""
+        self.assertIsNone(tm.parse_evidence_command(
+            "bash run.sh $BUILD_ID", shell_free=False)[1])
+        self.assertIsNotNone(tm.parse_evidence_command(
+            "bash run.sh $BUILD_ID")[1])
+
+
+class TestShellFreeEvidenceRunner(unittest.TestCase):
+    """ADR-041's real risk is not the screen, it is the 114+ filed claims
+    whose recorded output_hash was produced by `subprocess.run(cmd,
+    shell=True)`. Every arm below runs the command BOTH ways -- through
+    /bin/sh as the old executor did, and through the shell-free runner --
+    and asserts the recorded pair (output hash, exit code) is identical.
+    A divergence here does not fail a test in the abstract: it silently
+    diverges live claims on every consumer's next recheck."""
+
+    CASES = (
+        "cat a.txt",
+        "grep -c hello a.txt",
+        "grep -c nope a.txt",
+        "wc -l a.txt b.txt",
+        "grep -c hello a.txt | wc -l",
+        "grep -q hello a.txt && echo FOUND",
+        "grep -q nope a.txt && echo FOUND",
+        "grep -q nope a.txt || echo ABSENT",
+        "grep -c hello a.txt; cat b.txt",
+        "grep -q hello a.txt && grep -q world b.txt && echo BOTH",
+        "wc -l < a.txt",
+        "cat a.txt >/dev/null",
+        "cat a.txt >/dev/null 2>&1",
+        "cat missing.txt 2>&1",           # the COMMAND's message, not a shell's
+        "cat a.txt >&2",
+        "wc -l sub/*.txt",                # expansion order is the hash
+        "cat no-such-glob-*.txt",         # unmatched pattern stays literal
+        "echo *",
+        "echo '*'",
+        "grep -c 'a|b' a.txt",            # a pipe inside a quoted regex
+        "echo 'x  y'",
+        'echo "x  y"',
+        "sort a.txt | uniq | wc -l",
+        "nosuchprogram-xyz a.txt",        # 127, and recheck reads 127
+        "nosuchprogram-xyz a.txt | wc -l",
+        "grep -c hello a.txt b.txt sub/c.txt",
+        "find sub -name '*.txt' | sort | wc -l",
+    )
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        for rel, body in (("a.txt", "hello\nworld\na|b\n"),
+                          ("b.txt", "world\n"),
+                          ("sub/c.txt", "c\n"), ("sub/d.txt", "d\ndd\n")):
+            path = os.path.join(self.dir, rel)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(body)
+
+    def _shell(self, cmd):
+        r = subprocess.run(cmd, shell=True, capture_output=True, cwd=self.dir)
+        return hashlib.sha256(r.stdout).hexdigest(), r.returncode
+
+    def _runner(self, cmd):
+        plan, err = tm.parse_evidence_command(cmd)
+        self.assertIsNone(err, f"{cmd!r} must parse: {err}")
+        return tm.run_evidence(plan, cwd=self.dir)
+
+    def test_every_shape_hashes_and_exits_identically(self):
+        for cmd in self.CASES:
+            self.assertEqual(self._shell(cmd), self._runner(cmd),
+                             f"{cmd!r} diverges from /bin/sh -- a live "
+                             "claim's recorded hash would move under it")
+
+    def test_a_missing_program_is_127_so_recheck_says_cannot_verify(self):
+        """recheck_verdict reads 127 as 'environment, not reality'. The
+        shell produced that code; with no shell the runner has to."""
+        self.assertEqual(self._runner("nosuchprogram-xyz a.txt")[1], 127)
+        self.assertEqual(tm.recheck_verdict({"output_hash": "sha256:x"},
+                                            "y", 127)[0], "cannot_verify")
+
+    def test_an_unmatched_pattern_is_passed_through_literally(self):
+        """/bin/sh leaves a pattern that matches nothing as a literal
+        word; Python's glob returns []. The shell's rule is the one that
+        keeps a recipe whose glob went empty failing the way it did
+        instead of silently losing an argument (ADR-041 open question 2)."""
+        self.assertEqual(self._shell("cat no-such-glob-*.txt"),
+                         self._runner("cat no-such-glob-*.txt"))
+        self.assertNotEqual(self._runner("cat no-such-glob-*.txt")[1], 0)
+
+    def test_expansion_is_sorted_because_the_hash_depends_on_it(self):
+        """An unsorted argv would make `wc -l sub/*.txt` produce a
+        different output on every run, and G6's double-run would refuse
+        the filing as nondeterministic."""
+        plan, _ = tm.parse_evidence_command("wc -l sub/*.txt")
+        prev = os.getcwd()
+        os.chdir(self.dir)
+        try:
+            self.assertEqual(tm._expand_words(plan[0]["pipeline"][0]["words"]),
+                             ["wc", "-l", "sub/c.txt", "sub/d.txt"])
+        finally:
+            os.chdir(prev)
+
+    def test_no_shell_metacharacter_survives_into_execution(self):
+        """The point of the whole ADR: an argument that LOOKS like shell
+        syntax is an argument. Nothing writes PWNED, and the exit code is
+        grep's, not a shell's."""
+        digest, rc = self._runner("grep -c 'x; touch PWNED' a.txt")
+        self.assertEqual(rc, 1)
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "PWNED")))
+
+    def test_the_one_documented_divergence_is_the_shells_own_message(self):
+        """`nosuch 2>&1` used to hash /bin/sh's own "not found" line,
+        because the SHELL wrote it into the merged stream. There is no
+        shell now, so the merged stream carries only what the command
+        itself wrote -- nothing. Pinned as a decision: synthesizing a fake
+        shell message to keep the old bytes would be inventing evidence,
+        and no filed command in either ledger has this shape."""
+        self.assertNotEqual(self._shell("nosuchprogram-xyz 2>&1"),
+                            self._runner("nosuchprogram-xyz 2>&1"))
+        self.assertEqual(self._runner("nosuchprogram-xyz 2>&1"),
+                         (hashlib.sha256(b"").hexdigest(), 127))
+
+
+class TestEvidenceExecutionIsShellFree(unittest.TestCase):
+    """ADR-041 as a theorem rather than a comment: the evidence path must
+    not reach /bin/sh at all. shellio is the only subprocess importer
+    (ADR-044, enforced by TestModulePurity), so the whole surface fits in
+    one ast walk."""
+
+    def test_the_remaining_shell_sites_are_the_two_named_decisions(self):
+        import ast
+        path = os.path.join(HERE, "..", "truthlib", "shellio.py")
+        with open(path, encoding="utf-8") as fh:
+            tree = ast.parse(fh.read(), filename=path)
+        shells = set()
+        for fn in ast.walk(tree):
+            if not isinstance(fn, ast.FunctionDef):
+                continue
+            for node in ast.walk(fn):
+                if isinstance(node, ast.Call) and any(
+                        kw.arg == "shell" and isinstance(kw.value, ast.Constant)
+                        and kw.value.value is True for kw in node.keywords):
+                    shells.add(fn.name)
+        self.assertEqual(
+            shells, {"run_accept_command", "tracker_issues"},
+            "shell=True in shellio is a NAMED decision or a defect: "
+            "run_accept_command runs repository code on purpose (ADR-014) "
+            "and tracker_issues runs the consumer's own TRUTH_TRACKER_CMD, "
+            "whose contract IS a shell command (ADR-004). Evidence "
+            "execution is not on that list (ADR-041).")
+
 
 class TestAcceptScreen(unittest.TestCase):
     """ADR-014: same structural screen, its own allowlist -- the refusal

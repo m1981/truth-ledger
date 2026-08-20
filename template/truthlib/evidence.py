@@ -11,7 +11,6 @@ triage that used to be the fourth item here; what remains of it is read-side
 ledger's historical records still have to be interpretable.
 """
 import re
-import shlex
 
 from truthlib.registry import *
 from truthlib.kernel import *
@@ -98,21 +97,233 @@ def evidence_exit_error(text, returncode, exit_basis):
             "failing command proves this sentence: "
             "--evidence-exit-ok \"<basis>\".")
 
-_SCREEN_SEPARATORS = frozenset((";", "|", "||", "&&", "&"))
+# --- ADR-041: the ONE lexer ----------------------------------------------
+# Until ADR-041 the screen tokenized an evidence command with shlex and
+# the executor handed the SAME STRING to /bin/sh: two interpreters, and
+# every divergence between them was a channel. ADR-021 closed the newline
+# (word-whitespace to shlex, a statement separator to sh); the 2026-08-01
+# review then found `uniq *` (one word to shlex, N to sh), `cat <>F` (a
+# WRITE the '<' branch read as input) and `>1` (a file named '1' behind
+# the fd-dup carve-out). Enumerating divergences does not terminate,
+# because only /bin/sh implements /bin/sh.
+#
+# So the shell is gone from the evidence path. This lexer is the only
+# reader of an evidence command; its output feeds BOTH the screen and the
+# runner, and what it cannot express is refused rather than approximated.
+#
+# Why not shlex any more: shlex's stream cannot tell `2>&1` from `2 >&1`
+# -- both lex to ['2', '>&', '1'] -- while /bin/sh reads the first as an
+# fd redirection and the second as an argument plus a dup. A screen that
+# cannot see that difference cannot gate an executor that acts on it, and
+# under shell=False the argv IS the decision. The quoting rules below are
+# the POSIX word subset the runner can honour exactly: single quotes,
+# double quotes, backslash, and NOTHING that expands (no $VAR, no `cmd`,
+# no ~, no arithmetic) -- an evidence recipe that expands its environment
+# is not reproducible in a verifier's session anyway (ADR-009).
+
+_SCREEN_SEPARATORS = frozenset((";", "|", "||", "&&"))
 _SCREEN_PUNCT = frozenset("();<>|&")
+_OPERATOR_CHARS = "|&;<>"
+_GLOB_META = "*?["
+# The redirections the runner can express as subprocess parameters, and
+# therefore the only ones that survive the parse (ADR-041 decision 2).
+_REDIR_OPS = ("<", ">", ">>", ">&")
+
+# POSIX: '$' begins an expansion only when what follows can NAME one --
+# a parameter, a brace, a subshell, or one of the special parameters.
+# Everywhere else it is an ordinary character, which is why `grep "a$"`
+# and `grep 'a$'` are the same anchored regex to /bin/sh and stay the
+# same command here. Refusing every '$' would have failed a common
+# recipe shape for a divergence that does not exist.
+_EXPANSION_STARTERS = frozenset("{(@*#?-$!_0123456789")
+
+def _starts_expansion(cmd, i):
+    """Would /bin/sh expand the '$' at cmd[i]?"""
+    nxt = cmd[i + 1] if i + 1 < len(cmd) else ""
+    return bool(nxt) and (nxt.isalpha() or nxt in _EXPANSION_STARTERS)
+
+def _glob_quote(s):
+    """Neutralize glob metacharacters that came out of QUOTES. `'*'` is a
+    literal star to the shell and must stay one after expansion, so the
+    pattern half of a word escapes exactly the characters the text half
+    took from a quoted or backslash-escaped span."""
+    return "".join("[" + c + "]" if c in _GLOB_META else c for c in s)
+
+def _lex_word(cmd, i, shell_free):
+    """One shell WORD, from cmd[i] up to the first unquoted whitespace or
+    operator character.
+
+    Returns (text, pat, has_meta, quoted, j, err). `text` is the word
+    after quote removal -- what the shell would have passed as an argv
+    entry with no pathname expansion. `pat` is the same word as a glob
+    PATTERN, with metacharacters that came out of quotes escaped, and it
+    is the runner's input when `has_meta` says an UNQUOTED metacharacter
+    is present. Keeping both is what makes `uniq '*'` and `uniq *` two
+    different commands here, as they are to the shell and were not to the
+    old screen."""
+    n = len(cmd)
+    text, pat = [], []
+    has_meta = quoted = False
+    while i < n:
+        c = cmd[i]
+        if c in " \t" or c in _OPERATOR_CHARS:
+            break
+        if c in "()":
+            return None, None, False, False, i, (
+                f"unscreenable shell construct {c!r} -- a subshell has no "
+                "argv equivalent, and the runner executes argv (ADR-041)")
+        if c == "`":
+            return None, None, False, False, i, (
+                "command substitution (backtick) is not screenable (ADR-009)")
+        if c == "$" and shell_free and _starts_expansion(cmd, i):
+            return None, None, False, False, i, (
+                "'$' expansion is not available in an evidence command -- "
+                "the runner executes argv and never a shell (ADR-041), so a "
+                "value the shell used to substitute would now be a literal, "
+                "silently changing the recorded output. Quote it ('$') if "
+                "the character is the fact; an environment-dependent recipe "
+                "is not reproducible in a verifier's session anyway (ADR-009).")
+        if c == "~" and not text and shell_free:
+            return None, None, False, False, i, (
+                "'~' expansion is not available in an evidence command -- it "
+                "would name a different directory in every verifier's "
+                "session; write the repo-relative path (ADR-041)")
+        if c == "\\":
+            if i + 1 >= n:
+                return None, None, False, False, i, (
+                    "trailing backslash escapes nothing (ADR-041)")
+            text.append(cmd[i + 1])
+            pat.append(_glob_quote(cmd[i + 1]))
+            quoted = True
+            i += 2
+            continue
+        if c == "'":
+            j = cmd.find("'", i + 1)
+            if j < 0:
+                return None, None, False, False, i, (
+                    "unbalanced single quote (ADR-041)")
+            text.append(cmd[i + 1:j])
+            pat.append(_glob_quote(cmd[i + 1:j]))
+            quoted = True
+            i = j + 1
+            continue
+        if c == '"':
+            i += 1
+            quoted = True
+            while True:
+                if i >= n:
+                    return None, None, False, False, i, (
+                        "unbalanced double quote (ADR-041)")
+                d = cmd[i]
+                if d == '"':
+                    i += 1
+                    break
+                if d == "`":
+                    return None, None, False, False, i, (
+                        "command substitution (backtick) is not screenable "
+                        "(ADR-009)")
+                if d == "$" and shell_free and _starts_expansion(cmd, i):
+                    return None, None, False, False, i, (
+                        "'$' expands inside double quotes -- the runner "
+                        "executes argv and never a shell (ADR-041); use "
+                        "single quotes if the character is the fact")
+                if d == "\\" and i + 1 < n and cmd[i + 1] in '"\\`$':
+                    text.append(cmd[i + 1])
+                    pat.append(_glob_quote(cmd[i + 1]))
+                    i += 2
+                    continue
+                text.append(d)
+                pat.append(_glob_quote(d))
+                i += 1
+            continue
+        if c in _GLOB_META:
+            has_meta = True
+        text.append(c)
+        pat.append(c)
+        i += 1
+    return "".join(text), "".join(pat), has_meta, quoted, i, None
+
+def _lex_operator(cmd, i):
+    """The operator at cmd[i]. Returns (op, j, err)."""
+    c, two = cmd[i], cmd[i:i + 2]
+    if c == "&":
+        if two == "&&":
+            return "&&", i + 2, None
+        return None, i, (
+            "'&' backgrounds a command -- the runner executes argv and "
+            "waits for it (ADR-041), and a backgrounded probe's output is "
+            "not reproducible evidence (ADR-009)")
+    if c == "|":
+        return ("||", i + 2, None) if two == "||" else ("|", i + 1, None)
+    if c == ";":
+        if two == ";;":
+            return None, i, "';;' belongs to a case statement (ADR-041)"
+        return ";", i + 1, None
+    if c == ">":
+        if two == ">>":
+            return ">>", i + 2, None
+        if two == ">&":
+            return ">&", i + 2, None
+        return ">", i + 1, None
+    if two == "<>":
+        return None, i, (
+            "'<>' opens the target for WRITING as well as reading -- it "
+            "CREATES the file, which is why the old screen's read-only "
+            "reading of every '<' was a write channel (ADR-040 R4b, "
+            "ADR-041)")
+    if two == "<&":
+        return None, i, ("'<&' duplicates an input descriptor -- the runner "
+                         "gives a command its stdin, and nothing else "
+                         "(ADR-041)")
+    if two == "<<":
+        return None, i, ("a here-document has no argv equivalent (ADR-041)")
+    return "<", i + 1, None
+
+def _evidence_lex(cmd, shell_free=True):
+    """The ONE tokenization of an evidence command. Returns (toks, err),
+    where a token is ('w', text, pat_or_None) or ('o', op, fd_or_None) --
+    `fd` being the descriptor a redirection was GLUED to (`2>&1` -> fd 2;
+    `2 >&1` is the argument '2' and a dup of fd 1, exactly as the shell
+    reads them)."""
+    toks, i, n = [], 0, len(cmd)
+    while i < n:
+        c = cmd[i]
+        if c in " \t":
+            i += 1
+            continue
+        if c == "#":
+            break  # an unquoted '#' at word start starts a comment (POSIX)
+        if c in _OPERATOR_CHARS:
+            op, i, err = _lex_operator(cmd, i)
+            if err:
+                return None, err
+            toks.append(("o", op, None))
+            continue
+        text, pat, has_meta, quoted, j, err = _lex_word(cmd, i, shell_free)
+        if err:
+            return None, err
+        if not quoted and text.isdigit() and j < n and cmd[j] in "<>":
+            op, j, err = _lex_operator(cmd, j)
+            if err:
+                return None, err
+            toks.append(("o", op, int(text)))
+            i = j
+            continue
+        toks.append(("w", text, pat if has_meta else None))
+        i = j
+    return toks, None
 
 def _evidence_toks(cmd):
-    """The ONE screen-side tokenization of an evidence command (shlex
-    posix + punctuation mode, whitespace_split) -- shared by the ADR-009
-    screen and the ADR-037 recipe lints. A second screen-side parser is
-    forbidden (the F1/F5 drift lesson; a whitespace splitter would be
-    gameable by quote-splitting, 'v0.9''.8'). Returns (toks, err)."""
-    lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
-    lex.whitespace_split = True
-    try:
-        return list(lex), None
-    except ValueError as e:
-        return None, f"unparseable command ({e}) (ADR-009)"
+    """The flat token stream the ADR-037 recipe lints consume (and the
+    Tier C instruments reach through `scripts/truth`): words as the shell
+    would pass them, operators as text, an fd prefix glued to its
+    operator. One lexer, two readers -- a second screen-side parser is
+    forbidden (the F1/F5 drift lesson). Returns (toks, err)."""
+    toks, err = _evidence_lex(cmd)
+    if err:
+        return None, err
+    return [t[1] if t[0] == "w" else
+            ("" if t[2] is None else str(t[2])) + t[1] for t in toks], None
 
 # ADR-037: recipe-lint lexicons. Shapes and carve-outs change only with
 # the RC-canary faults (the ADR-007 constants-with-faults precedent).
@@ -179,24 +390,176 @@ def recipe_lints(cmd):
                         "frozen record.")
     return msgs
 
+# --- ADR-041: the parse IS the execution ---------------------------------
+# The plan the parser returns is the runner's whole input, and it is
+# deliberately shell-free DATA -- no string a downstream interpreter could
+# re-read:
+#
+#   plan     := [{"op": None|"&&"|"||"|";", "pipeline": [segment, ...]}, ...]
+#   segment  := {"words":  [(text, pattern_or_None), ...],
+#                "stdin":  None | path,
+#                "stdout": "pipe" | "devnull",
+#                "stderr": "devnull" | "merge"}
+#
+# `op` joins a pipeline to the one before it (None on the first), and the
+# runner evaluates the and-or list left to right on the running exit code
+# -- POSIX's own rule, and the one /bin/sh applied to these same commands
+# before ADR-041. "pipe" is the captured stream whose bytes become the
+# output hash; "merge" is `2>&1`. Redirections are resolved HERE, in
+# order, so the runner sets file descriptors and never parses.
+
+def _resolve_sinks(redirs):
+    """Apply a segment's redirections in order to the descriptor table,
+    the way the shell does -- `>/dev/null 2>&1` discards both, `2>&1
+    >/dev/null` does not. Returns (sinks, err)."""
+    table = {1: "pipe", 2: "devnull"}
+    stdin = None
+    for fd, kind, target in redirs:
+        if kind == "in":
+            stdin = target
+        elif kind == "out":
+            table[fd] = "devnull"
+        else:
+            table[fd] = table[int(target)]
+    if table[2] == "pipe" and table[1] != "pipe":
+        return None, ("this redirection order sends stderr to the captured "
+                      "output while stdout is discarded -- the runner "
+                      "captures one stream (ADR-041); write '>/dev/null "
+                      "2>&1' if you meant to discard both")
+    return {"stdin": stdin, "stdout": table[1],
+            "stderr": "merge" if table[2] == "pipe" else "devnull"}, None
+
+def _add_redir(redirs, fd, op, text, pat):
+    """One redirection, screened structurally rather than by inspecting
+    shell punctuation: ADR-009 ever allowed exactly two sinks, and both
+    are descriptors the runner sets directly."""
+    if pat is not None:
+        return ("a glob in a redirection target is not screenable -- the "
+                "word the screen counted is not the word that would open "
+                "(ADR-041)")
+    if op == "<":
+        if fd not in (None, 0):
+            return (f"input redirection on fd {fd} -- the runner gives a "
+                    "command its stdin, and nothing else (ADR-041)")
+        redirs.append((0, "in", text))
+        return None
+    if op in (">", ">>"):
+        if text != "/dev/null":
+            return (f"output redirection to {text!r} is refused -- evidence "
+                    "commands must be read-only, and '/dev/null' is the only "
+                    "allowed sink (ADR-009). A digit is a valid target only "
+                    "after an fd dup ('2>&1'), never after a plain '>'.")
+        if fd not in (None, 1, 2):
+            return (f"output redirection on fd {fd} has no runner equivalent "
+                    "(ADR-041)")
+        redirs.append((1 if fd is None else fd, "out", text))
+        return None
+    if text not in ("1", "2"):
+        return (f"fd duplication to {text!r} is refused -- '>&' duplicates a "
+                "file descriptor, so its target is stdout or stderr; "
+                "anything else is a write, and closing a descriptor has no "
+                "runner equivalent (ADR-009/ADR-041)")
+    if fd not in (None, 1, 2):
+        return (f"fd duplication of fd {fd} has no runner equivalent "
+                "(ADR-041)")
+    redirs.append((1 if fd is None else fd, "dup", text))
+    return None
+
+def parse_evidence_command(cmd, shell_free=True):
+    """ADR-041: parse an evidence command into the argv plan the runner
+    executes with shell=False. Returns (plan, err) -- and the error is the
+    screen's, because THE SCREEN IS THIS PARSE: `screen_evidence_command`
+    calls it and then checks program names on the very words that will be
+    passed to execve. A construct with no argv equivalent is refused here
+    rather than approximated, which is the whole content of "one
+    interpreter, not two".
+
+    `shell_free=False` is the ADR-014 acceptance oracle, which STILL runs
+    through /bin/sh on purpose (it executes repository code -- that is its
+    job). It shares this parse for the program-position screen only, so
+    the expansions the shell will really perform for it ($, ~) stay
+    parse-clean there and refused here."""
+    toks, err = _evidence_lex(cmd, shell_free)
+    if err:
+        return None, err
+    if not toks:
+        return None, "empty command (ADR-009)"
+    plan, pipeline, words, redirs = [], [], [], []
+    pending, op = None, None
+
+    def close_segment():
+        sinks, serr = _resolve_sinks(redirs)
+        if serr:
+            return serr
+        seg = {"words": list(words)}
+        seg.update(sinks)
+        pipeline.append(seg)
+        del words[:]
+        del redirs[:]
+        return None
+
+    for t in toks:
+        if t[0] == "w":
+            if pending is None:
+                words.append((t[1], t[2]))
+                continue
+            e = _add_redir(redirs, pending[0], pending[1], t[1], t[2])
+            if e:
+                return None, e
+            pending = None
+            continue
+        if pending is not None:
+            return None, (f"redirection operator {pending[1]!r} has no "
+                          "target (ADR-009)")
+        if t[1] in _REDIR_OPS:
+            pending = (t[2], t[1])
+            continue
+        if not words:
+            return None, (f"nothing to run before {t[1]!r} (ADR-009)")
+        e = close_segment()
+        if e:
+            return None, e
+        if t[1] == "|":
+            continue
+        plan.append({"op": op, "pipeline": list(pipeline)})
+        del pipeline[:]
+        op = t[1]
+    if pending is not None or not words:
+        return None, "dangling operator at end of command (ADR-009)"
+    e = close_segment()
+    if e:
+        return None, e
+    plan.append({"op": op, "pipeline": list(pipeline)})
+    return plan, None
+
 def screen_evidence_command(cmd, allowlist, allow_rel=EVIDENCE_ALLOW_REL,
                             missing_tail=None, unlisted_hint=None,
-                            allow_paths=False, denylist=None):
-    """ADR-009: evidence commands re-execute later in a *verifier's*
-    session (recheck) -- deferred code execution across the trust seam
-    G11 protects. Static screen over a QUOTE-AWARE token stream (shlex
-    punctuation mode -- a '|' inside a quoted grep regex is an argument,
-    not a pipe; the first real ledger command proved the naive split
-    wrong): every segment's program must be a bare name on the
-    allowlist; no command substitution; output redirection only to the
-    bit bucket ('>/dev/null') or an fd dup ('2>&1') -- the pin-the-
-    output convention depends on those. Input redirection (<) is
-    read-only and allowed. Returns an error string or None.
+                            allow_paths=False, denylist=None,
+                            shell_free=True):
+    """ADR-009/ADR-041: evidence commands re-execute later in a
+    *verifier's* session (recheck) -- deferred code execution across the
+    trust seam G11 protects.
+
+    Since ADR-041 the screen is a pass over the PARSE that will execute:
+    `parse_evidence_command` refuses every construct the shell-free runner
+    cannot express, and what survives is a list of argv arrays. So the
+    screen has exactly two things left to decide, and both are about
+    programs rather than about punctuation:
+
+      (a) every segment's program is a bare name on the allowlist and not
+          on the deny baseline (ADR-022), and
+      (b) no argument is one of the program's own exec/file-write flags
+          (PROGRAM_ARG_DENY, ADR-021 H4).
+
+    What is GONE is the modelling race: the old screen reasoned about what
+    /bin/sh would do with `>`, `>&`, a control character or a glob, and
+    lost that race three times (ADR-040 R4a-R4c). The words checked below
+    are now the words that reach execve.
 
     ADR-014 reuses this screen verbatim for acceptance oracles via
-    screen_accept_command (a second screen implementation is forbidden
-    -- the F1/F5 drift lesson); only the allowlist and the two
-    list-naming messages differ."""
+    screen_accept_command (a second screen implementation is forbidden --
+    the F1/F5 drift lesson); only the allowlist, the two list-naming
+    messages and `shell_free` differ. Returns an error string or None."""
     if allowlist is None:
         return ("no command allowlist at " + allow_rel +
                 " -- the safety screen fails closed. " +
@@ -206,123 +569,87 @@ def screen_evidence_command(cmd, allowlist, allow_rel=EVIDENCE_ALLOW_REL,
     if "$(" in cmd or "`" in cmd:
         return ("command substitution ('$(' or backtick) is not "
                 "screenable (ADR-009)")
-    # ADR-021 (H4): the screen tokenizes with shlex but run_evidence
-    # executes with /bin/sh (shell=True). shlex's whitespace set includes
-    # newline and CR, so it drops a post-newline program into ARGUMENT
-    # position while /bin/sh treats a newline as a statement separator and
-    # runs it -- a screen/executor tokenizer mismatch that smuggles an
-    # unscreened command into a verifier's recheck session. Refuse every
-    # ASCII control character except tab (tab is word-whitespace to both):
-    # evidence commands must be a single printable line.
+    # ADR-021 (H4), kept after ADR-041 made it redundant for evidence:
+    # the acceptance oracle still runs through /bin/sh (that is its
+    # purpose), and there a newline is still a statement separator that
+    # would drop an unallowlisted program into a screened command. For
+    # evidence the reason it is redundant -- the lexer no longer hands the
+    # string to anything -- is too subtle to trade for the defence.
     ctrl = next((c for c in cmd
                  if (ord(c) < 0x20 and c != "\t") or ord(c) == 0x7f), None)
     if ctrl is not None:
         return (f"control character {ctrl!r} is not screenable -- it is "
                 "word-whitespace to the screen's lexer but a command "
-                "separator to the executing shell (a newline is /bin/sh's "
-                "statement terminator); evidence commands must be a single "
-                "printable line (ADR-021)")
-    toks, tok_err = _evidence_toks(cmd)
-    if tok_err:
-        return tok_err
-    if not toks:
-        return "empty command (ADR-009)"
-    expecting_program = True
-    program = None  # the current segment's program, for arg-level screening
-    redir = None  # 'in' | 'out' when the next token is a redirection target
-    for tok in toks:
-        if redir:
-            # SEC-1: a plain '>' and an fd dup '>&' used to share this
-            # branch, so `tok.isdigit()` -- present to admit the '1' of
-            # '2>&1' -- also admitted `cat f >2`, which /bin/sh executes
-            # as a WRITE to a file literally named '2'. Proven in a
-            # sandbox: '>2' and '>22' created files, '>2a' and '>.git/x'
-            # were refused. Bounded (digit-only names in cwd) but real,
-            # and ADR-040 already listed "digit redirect targets" among
-            # the SHELL channels no allowlist can close. The lexer keeps
-            # the two apart -- '>2' -> ['>', '2'] but '2>&1' -> ['2',
-            # '>&', '1'] -- so the screen can too.
-            if redir == "out" and tok != "/dev/null":
-                return (f"output redirection to {tok!r} is refused -- "
-                        "evidence commands must be read-only; '/dev/null' "
-                        "is the only allowed sink, and a digit is a valid "
-                        "target only after an fd dup ('2>&1'), never after "
-                        "a plain '>' (ADR-009)")
-            if redir == "dup" and not (tok.isdigit() or tok == "-"):
-                return (f"fd duplication to {tok!r} is refused -- '>&' "
-                        "duplicates a file descriptor, so its target is a "
-                        "digit or '-' (close); anything else is a write "
-                        "(ADR-009)")
-            redir = None
-            continue
-        if tok in _SCREEN_SEPARATORS:
-            expecting_program = True
-            program = None
-            continue
-        if tok and set(tok) <= _SCREEN_PUNCT:
-            if tok.startswith("<"):
-                redir = "in"    # reads are fine, any source
-            elif tok.startswith(">") and tok.endswith("&"):
-                redir = "dup"   # '>&' -- duplicates an fd, never a write
-            elif tok.startswith(">"):
-                redir = "out"   # a real write: '/dev/null' only (SEC-1)
-            else:
-                return f"unscreenable shell construct {tok!r} (ADR-009)"
-            continue
-        if expecting_program:
-            if denylist and tok in denylist:
+                "separator to a shell (a newline is /bin/sh's statement "
+                "terminator); commands must be a single printable line "
+                "(ADR-021)")
+    plan, err = parse_evidence_command(cmd, shell_free=shell_free)
+    if err:
+        return err
+    for entry in plan:
+        for seg in entry["pipeline"]:
+            argv = [w[0] for w in seg["words"]]
+            program = argv[0]
+            if seg["words"][0][1] is not None:
+                # A pattern in program position: the word the allowlist
+                # would be asked about is not the word that would execve,
+                # because the runner expands it (ADR-041 decision 3). No
+                # allowlist entry can carry a metacharacter, so this can
+                # only ever be an attempt to reach one sideways.
+                return (f"program {program!r} is a pattern, not a bare "
+                        "command name -- the allowlist screens the word, "
+                        "and pathname expansion would replace it (ADR-041)")
+            if denylist and program in denylist:
                 # ADR-022: deny-wins over the allowlist. Shells/executors
                 # are never read-only evidence; refuse even if a consumer
                 # allowlisted one by accident (the H4 footgun).
-                return (f"'{tok}' is on the template-owned evidence deny "
+                return (f"'{program}' is on the template-owned evidence deny "
                         f"baseline ({EVIDENCE_DENY_REL}) -- shells and "
                         "generic executors turn the read-only screen into "
                         "arbitrary execution and are never valid evidence, "
                         "even if allowlisted (ADR-022). To run repository "
                         "code on purpose, use an acceptance oracle (ADR-014).")
-            if "/" in tok:
+            if "/" in program:
                 # Issue #7 (v0.7.2, accept screen only): an ALLOWLISTED
                 # exact repo-relative path may run as an oracle -- the
                 # committed entry bounds precisely which executable, which
                 # is stronger than an interpreter bare-name. Absolute
                 # paths and `..` segments never pass; the evidence screen
                 # (allow_paths=False) keeps ADR-009's blanket refusal.
-                if allow_paths and tok in allowlist \
-                        and not tok.startswith("/") \
-                        and ".." not in tok.split("/"):
-                    expecting_program = False
-                    program = tok
-                    continue
-                return (f"program {tok!r} is a path, not a bare command "
-                        "name -- " +
-                        ("add the exact repo-relative path to "
-                         f"{allow_rel} to admit it as an oracle; absolute "
-                         "paths and '..' never pass (issue #7, ADR-014)"
-                         if allow_paths else
-                         "repo-local executables are not screenable "
-                         "(ADR-009)"))
-            if tok not in allowlist:
-                return (f"'{tok}' is not in {allow_rel}. " +
+                if not (allow_paths and program in allowlist
+                        and not program.startswith("/")
+                        and ".." not in program.split("/")):
+                    return (f"program {program!r} is a path, not a bare "
+                            "command name -- " +
+                            ("add the exact repo-relative path to "
+                             f"{allow_rel} to admit it as an oracle; "
+                             "absolute paths and '..' never pass (issue #7, "
+                             "ADR-014)" if allow_paths else
+                             "repo-local executables are not screenable "
+                             "(ADR-009)"))
+            elif program not in allowlist:
+                return (f"'{program}' is not in {allow_rel}. " +
                         (unlisted_hint or "Add it there if it is read-only "
                          "and you accept it re-running inside verifier "
                          "sessions, or file with --evidence-unsafe-ok "
                          "(recheck will then refuse to execute it) "
                          "(ADR-009)."))
-            expecting_program = False
-            program = tok
-        else:
             # F1/v0.6.2: an allowlisted program can still open an exec or
             # file-write channel through its own flags (find -exec, sort
             # -o, git -c alias=!cmd). The bare-name check above cannot see
-            # this; the per-program deny table can.
+            # this; the per-program deny table can. Since ADR-041 these
+            # are the argv words themselves, so the table is sound for
+            # written flags -- a GLOB that expands into one at run time is
+            # the residual the ADR names, and is the shell's too.
             denied = PROGRAM_ARG_DENY.get(program)
-            if denied and tok.split("=", 1)[0] in denied:
-                return (f"{program} {tok.split('=', 1)[0]!r} opens an exec "
-                        "or file-write channel -- evidence commands must be "
-                        "read-only, and this one would re-run inside a "
-                        "verifier session (ADR-009)")
-    if expecting_program or redir:
-        return "dangling operator at end of command (ADR-009)"
+            if denied:
+                for tok in argv[1:]:
+                    if tok.split("=", 1)[0] in denied:
+                        return (f"{program} {tok.split('=', 1)[0]!r} opens an "
+                                "exec or file-write channel -- evidence "
+                                "commands must be read-only, and this one "
+                                "would re-run inside a verifier session "
+                                "(ADR-009)")
     return None
 
 def screen_accept_command(cmd, allowlist):
@@ -342,7 +669,7 @@ def screen_accept_command(cmd, allowlist):
                        "time inside the closing session, or file the issue "
                        "with --accept-unsafe-ok (`done` will then refuse "
                        "to execute the oracle) (ADR-014)."),
-        allow_paths=True)
+        allow_paths=True, shell_free=False)
 
 # --------------------------------------------------- verdict decisions
 

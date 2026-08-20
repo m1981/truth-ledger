@@ -120,9 +120,16 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
                                              denylist=load_denylist())
         if screen_err and (allow is None or not unsafe_ok):
             sys.exit("truth: " + screen_err)
-        digest, rc = run_evidence(evidence_cmd)
+        # ADR-041: the parse the screen made IS what runs. --evidence-unsafe-ok
+        # overrides the ALLOWLIST, never the parse: a command the runner
+        # cannot express is not executed at all, because approximating it
+        # is the two-interpreter defect the ADR closes.
+        plan, plan_err = parse_evidence_command(evidence_cmd)
+        if plan_err:
+            sys.exit("truth: " + plan_err)
+        digest, rc = run_evidence(plan)
         if not single_run:
-            err = determinism_error((digest, rc), run_evidence(evidence_cmd))
+            err = determinism_error((digest, rc), run_evidence(plan))
             if err:
                 sys.exit(err)
         payload["evidence"] = {"command": evidence_cmd,
@@ -313,13 +320,15 @@ def cmd_verdict(a):
                 screen_err = screen_evidence_command(ev["command"],
                                                      load_allowlist(),
                                                      denylist=load_denylist())
+            plan, plan_err = parse_evidence_command(ev["command"])
+            screen_err = screen_err or plan_err
             if screen_err:
                 sys.exit(f"truth: {a.claim_id}: recheck will not execute "
                          f"this evidence command -- {screen_err}. If you "
                          "trust it, run it yourself and file a manual "
                          "verdict with a basis naming what you ran "
                          "(ADR-009). Nothing was filed.")
-            digest, rc = run_evidence(ev["command"])
+            digest, rc = run_evidence(plan)
             # ADR-051: compare against the EFFECTIVE capsule -- the
             # claim's own, with output_hash/returncode overridden by the
             # newest evidence_refresh. Without this a refreshed claim
@@ -418,7 +427,9 @@ def cmd_verdict(a):
             if cap.get("screened") is not False and not \
                     screen_evidence_command(cap["command"], load_allowlist(),
                                             denylist=load_denylist()):
-                observed = run_evidence(cap["command"])
+                plan, plan_err = parse_evidence_command(cap["command"])
+                if not plan_err:                     # unreachable: the screen
+                    observed = run_evidence(plan)    # IS this parse (ADR-041)
         err = capsule_coherence_error(
             a.verdict, claims[a.claim_id]["claim"]["payload"], observed,
             a.refresh_evidence, eff_cap)
@@ -1331,10 +1342,11 @@ def reproduce_sweep(events, since=None):
             ev = entry["claim"]["payload"]["evidence"]
             screen_err = screen_evidence_command(ev["command"], allow,
                                                  denylist=deny)
-            if screen_err:
-                d = reproduce_triage(entry, screen_err=screen_err)
+            plan, plan_err = parse_evidence_command(ev["command"])
+            if screen_err or plan_err:
+                d = reproduce_triage(entry, screen_err=screen_err or plan_err)
             else:
-                digest, rc = run_evidence(ev["command"], cwd=root)
+                digest, rc = run_evidence(plan, cwd=root)
                 d = reproduce_triage(entry, recheck=recheck_verdict(
                     effective_evidence(
                         ev, latest_evidence_refresh(events, cid)),

@@ -488,6 +488,74 @@ else
   ok "screen refused the newline-smuggled command (ADR-021 tokenizer parity)"
 fi
 
+# ---- FAULT SF (ADR-041): shell-free evidence execution ------------------
+# The screen used to model what /bin/sh would do with a string the
+# executor then handed to /bin/sh. It lost that race three times: `cat
+# <>F` created a file the '<' branch read as input, `>1` wrote a file
+# named '1' behind the fd-dup carve-out, and a '&' separator backgrounded
+# a job the screen had already counted as a segment. The runner executes
+# argv now, so these are not patched refusals -- they are constructs with
+# no expression. Each arm asserts BOTH the refusal and the absence of the
+# file the old channel would have created.
+say "FAULT SF1 (ADR-040 R4b): a read-write open ('<>') must be refused and create nothing"
+if $T claim "the widget cache is warm" --class VERIFIED \
+     --evidence-cmd "cat <>PWNED_SF1" --paths "watched.txt" \
+     --tier P2 --duplicate-ok >/dev/null 2>&1; then
+  miss "intake accepted 'cat <>FILE' -- the read-write open channel is open"
+elif [ -e PWNED_SF1 ]; then
+  miss "'cat <>FILE' was refused but the file was created anyway"
+else
+  ok "read-write open refused, nothing created (ADR-041)"
+fi
+
+say "FAULT SF2 (ADR-040 R4c): a digit redirect target must be refused and create nothing"
+if $T claim "the widget count is pinned" --class VERIFIED \
+     --evidence-cmd "cat watched.txt >1" --paths "watched.txt" \
+     --tier P2 --duplicate-ok >/dev/null 2>&1; then
+  miss "intake accepted 'cat f >1' -- a write to a file literally named 1"
+elif [ -e 1 ]; then
+  miss "'cat f >1' was refused but the file '1' was created anyway"
+else
+  ok "digit redirect target refused, nothing created (ADR-041)"
+fi
+
+say "FAULT SF3 (ADR-041): '&' is not a separator -- backgrounding must be refused"
+if $T claim "the widget probe backgrounds" --class VERIFIED \
+     --evidence-cmd "grep -q x watched.txt & touch PWNED_SF3" \
+     --paths "watched.txt" --tier P2 --duplicate-ok >/dev/null 2>&1; then
+  miss "intake accepted a backgrounded command ('&' screened as a separator)"
+elif [ -e PWNED_SF3 ]; then
+  miss "the backgrounded command was refused but its second statement ran"
+else
+  ok "backgrounding refused, second statement never ran (ADR-041)"
+fi
+
+say "FAULT SF4 (ADR-041): an expansion the runner does not perform must be refused, not passed as a literal"
+if $T claim "the home directory is named" --class VERIFIED \
+     --evidence-cmd "echo \$HOME" --paths "watched.txt" \
+     --tier P2 --duplicate-ok >/dev/null 2>&1; then
+  miss "intake accepted '\$HOME' -- the runner would record a literal the shell used to substitute"
+else
+  ok "'\$VAR' refused rather than silently recorded as a literal (ADR-041)"
+fi
+
+say "FAULT SF5 (ADR-041, negative control): a glob-and-pipe recipe must still file AND recheck must agree with its own recorded hash"
+# The behavioural half of the ADR: 114 filed claims carry hashes produced
+# by `subprocess.run(shell=True)`. If the shell-free runner expanded or
+# piped differently -- unsorted matches, an empty expansion dropped, a
+# pipeline exit code taken from the wrong stage -- this recheck diverges.
+if CID_SF5=$($T claim "watched.* is one line long" --class VERIFIED \
+     --evidence-cmd "grep -c hello watched.* | wc -l" --paths "watched.txt" \
+     --tier P2 --duplicate-ok 2>/dev/null); then
+  if $T verdict "$CID_SF5" --recheck 2>&1 | grep -q "hash matches"; then
+    ok "glob+pipe recipe filed and rechecked to the same hash ($CID_SF5)"
+  else
+    miss "the shell-free runner did not reproduce its own recorded hash"
+  fi
+else
+  miss "screen wrongly refused a read-only glob+pipe recipe"
+fi
+
 say "FAULT ED (ADR-022): an accidentally-allowlisted shell must still be refused (deny-wins)"
 echo "bash" >> .truth/evidence-allow  # consumer allowlists a shell by accident
 if $T claim "the widget tests pass" --class VERIFIED \

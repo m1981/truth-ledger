@@ -107,19 +107,41 @@ them, and **deny wins over allow**:
 * `.truth/evidence-deny` — template-owned baseline. Shells and generic
   executors are never valid evidence, even if a consumer allowlists one.
 
-The screen (`evidence.screen_evidence_command`) is a static pass over a
-**quote-aware** token stream, and it is the only thing standing between the
-ledger and `/bin/sh`. It refuses: command substitution (`$(`, backtick); any
-ASCII control character except tab (a newline is `/bin/sh`'s statement
-separator but word-whitespace to the screen's lexer — the tokenizer mismatch
-that would smuggle an unscreened command); paths in program position; and any
-segment — after `;`, `&&`, `|`, `&` — whose program is not on the allowlist.
+**There is no `/bin/sh` on the evidence path (ADR-041).** There used to be
+two interpreters: the screen tokenized the command with `shlex`, and the
+executor handed the same string to `subprocess.run(shell=True)`. Every
+divergence between those two models was a channel — a newline (ADR-021), then
+`uniq *` (one word to shlex, N to the shell), `cat <>F` (a *write* the `<`
+branch read as input), `>1` (a file named `1` behind the fd-dup carve-out) —
+and enumerating them does not terminate, because only `/bin/sh` implements
+`/bin/sh`.
 
-Output redirection is admitted **only** to `/dev/null`. A digit is a valid
-target after an fd dup (`2>&1`) and never after a plain `>`: they used to share
-a branch, and `cat f >2` then wrote a file literally named `2`.
+So the parse **is** the execution. `evidence.parse_evidence_command` is the one
+reader of an evidence command; it emits a plan of argv arrays with descriptors
+and glob patterns already resolved, and `shellio.run_evidence` executes that
+plan with `shell=False` — plumbing pipelines, `&&`/`||`/`;`, `>/dev/null`,
+`2>&1` and `<FILE` in Python. The screen
+(`evidence.screen_evidence_command`) is a pass over that same plan, so the
+words it checks are the words that reach `execve`.
 
-Input redirection is read-only and allowed, any source.
+It refuses, structurally rather than by out-guessing a shell: command
+substitution (`$(`, backtick); every ASCII control character except tab (kept
+after it became redundant here — the ADR-014 oracle below still runs through a
+shell); `$`/`~` expansion, `&` backgrounding, `<>`, a here-document, a subshell
+— constructs with no argv equivalent; paths or patterns in program position;
+and any segment whose program is not on the allowlist.
+
+Output redirection is admitted **only** to `/dev/null`, and a `>&` target is a
+descriptor — both are now `subprocess` parameters rather than characters a
+screen has to model. Input redirection opens read-only, by flag, so `<>` cannot
+exist. Globs are expanded by the runner with stdlib `glob`, sorted, and an
+unmatched pattern passes through literally, as the shell does.
+
+**Residual, named rather than closed** (ADR-041 decision 3 claimed this was
+closed; it is not): expansion still happens at run time, so
+a glob whose *expansion* lands a written positional (`uniq *`) or a denied flag
+is not stopped by the word-level screen. That is ADR-040's positional cap
+(R1-R3), not this change; the shell had the same exposure.
 
 **No hollow success.** A positive sentence whose recorded evidence exit signals
 failure is refused at intake; absence proofs keep an advisory path. Override:

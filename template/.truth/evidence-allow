@@ -10,6 +10,14 @@
 # Pipelines of allowlisted commands pass; input redirection ('<') is
 # read-only and passes.
 #
+# Since ADR-041 an evidence command NEVER reaches /bin/sh: the screen's
+# parse is what executes, as argv arrays with shell=False, and the runner
+# does the pipes, '&&'/'||'/';', '>/dev/null', '2>&1' and '<FILE' itself.
+# Constructs with no argv equivalent are refused rather than
+# approximated: '$VAR' and '~' expansion, '<>', '&' backgrounding, and a
+# glob in program position. A quoted metacharacter stays a literal, and
+# an unmatched pattern passes through as one, exactly as the shell did.
+#
 # Test runners (pytest, npm test, cargo test, make) are deliberately NOT
 # shipped here: a test runner executes repository code, which is exactly
 # the arbitrary-execution channel being screened. Add yours below as a

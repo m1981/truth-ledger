@@ -19,6 +19,7 @@ exception is the defect; a declared one is a decision.
 """
 import contextlib
 import fcntl
+import glob
 import hashlib
 import io
 import json
@@ -188,17 +189,138 @@ def session():
     # forensic grouping, not identity -- set TRUTH_SESSION for real ids.
     return f"s-{os.getppid()}-{now_dt():%Y%m%d}"
 
-def run_evidence(cmd, cwd=None):
-    """The ONE evidence executor (intake, recheck, reaffirm, reproduce) --
-    a second one would drift from the screen that gates it (ADR-009/029).
+# --- ADR-041: the shell-free evidence runner (SHELL -- subprocess) -------
+# The screen's parse IS this executor's input. There is no command STRING
+# below this line: `evidence.parse_evidence_command` turned it into argv
+# arrays, resolved descriptors and glob patterns, and refused everything
+# it could not express -- so "the screen's model diverges from the
+# executor's" is unstatable here rather than merely untrue.
 
-    `cwd` is F1.1's addition: `reproduce` pins execution to the repo root
-    so a sweep run from a subdirectory does not report drift that is
-    really the caller's working directory. Default None keeps intake,
-    recheck and reaffirm byte-identical -- they inherit the caller's cwd,
-    exactly as they always have."""
-    r = subprocess.run(cmd, shell=True, capture_output=True, cwd=cwd)
-    return hashlib.sha256(r.stdout).hexdigest(), r.returncode
+@contextlib.contextmanager
+def _in_dir(path):
+    """Run a block with the process cwd moved. The child's cwd and the
+    GLOB's cwd must be the same directory or an expansion would name
+    files the command never sees; `subprocess(cwd=)` moves only the child,
+    and `glob(root_dir=)` is 3.10+ while the CLI supports 3.9 (G5). The
+    CLI is single-threaded and this is its only chdir."""
+    if path is None:
+        yield
+        return
+    prev = os.getcwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(prev)
+
+def _expand_words(words):
+    """ADR-041 decision 3: pathname expansion, by stdlib `glob`, over the
+    words the screen already counted -- a language small enough to model
+    replacing one that is not.
+
+    Two shell rules are reproduced deliberately. A pattern that matches
+    NOTHING passes through as a literal word (`/bin/sh` does that;
+    `glob.glob` returns []), so a recipe whose glob goes empty keeps
+    failing exactly as it always did instead of silently losing an
+    argument. And matches are SORTED: the shell sorts its expansions, and
+    an unsorted argv would make `wc -l lib/*.py` produce a different
+    output on every run, which the G6 double-run would then refuse."""
+    argv = []
+    for text, pat in words:
+        if pat is None:
+            argv.append(text)
+            continue
+        hits = sorted(glob.glob(pat))
+        argv.extend(hits or [text])
+    return argv
+
+def _run_segment(seg, pipe_in):
+    """One pipeline stage. Returns (proc, stdout_for_next, rc) -- `proc`
+    is None when the command could not START, and the codes for that are
+    the shell's own (127 not found, 126 not executable) because
+    recheck_verdict reads 127 as 'environment, not reality'."""
+    stdin, opened = pipe_in, None
+    if seg["stdin"] is not None:
+        try:
+            opened = open(seg["stdin"], "rb")
+        except OSError:
+            # A redirection that cannot open does not run the command --
+            # the shell's behaviour, and its exit code for it.
+            return None, subprocess.DEVNULL, 1
+        stdin = opened
+    stdout = (subprocess.DEVNULL if seg["stdout"] == "devnull"
+              else subprocess.PIPE)
+    stderr = (subprocess.STDOUT if seg["stderr"] == "merge"
+              else subprocess.DEVNULL)
+    proc, rc = None, 0
+    try:
+        proc = subprocess.Popen(_expand_words(seg["words"]), stdin=stdin,
+                                stdout=stdout, stderr=stderr)
+    except FileNotFoundError:
+        rc = 127
+    except OSError:
+        rc = 126
+    finally:
+        if opened is not None:
+            opened.close()
+    if proc is None:
+        return None, subprocess.DEVNULL, rc
+    return proc, (proc.stdout if stdout is subprocess.PIPE
+                  else subprocess.DEVNULL), rc
+
+def _run_pipeline(segments):
+    """`a | b | c`: real pipes, not materialized buffers, so a producer
+    still takes SIGPIPE from a consumer that stops reading. Exit code is
+    the LAST stage's -- POSIX's rule, and the one /bin/sh applied to these
+    commands before ADR-041 (pipefail is not the default and was never in
+    force here). A stage that cannot start is not fatal to the rest: the
+    shell runs `nosuch | wc -l` and wc reads EOF."""
+    procs, final, pipe_in, rc = [], None, None, 0
+    for idx, seg in enumerate(segments):
+        proc, nxt, seg_rc = _run_segment(seg, pipe_in)
+        if hasattr(pipe_in, "close"):
+            pipe_in.close()      # the parent's copy of the previous stage
+        pipe_in = nxt
+        if proc is None:
+            rc = seg_rc
+            continue
+        procs.append(proc)
+        if idx == len(segments) - 1:
+            final = proc
+    out = b""
+    if final is not None:
+        out = final.communicate()[0] or b""
+        rc = final.returncode
+    for p in procs:
+        if p is not final:
+            p.wait()
+    return out, rc
+
+def run_evidence(plan, cwd=None):
+    """The ONE evidence executor (intake, recheck, reproduce) -- a second
+    one would drift from the screen that gates it (ADR-009/029).
+
+    Takes the PLAN, never a string (ADR-041): the caller screens and
+    parses with `evidence.parse_evidence_command`, and this module -- which
+    cannot import a pure one -- executes argv arrays with shell=False.
+    The and-or list is evaluated left to right on the running exit code
+    (`&&` skips on failure, `||` skips on success, `;` always runs), which
+    is what /bin/sh did with the same string; the hash is taken over the
+    concatenated stdout of every pipeline that RAN, in order, which is
+    what a single captured stdout pipe gave before.
+
+    `cwd` is F1.1's: `reproduce` pins execution to the repo root so a
+    sweep run from a subdirectory does not report drift that is really
+    the caller's working directory."""
+    chunks, rc = [], 0
+    with _in_dir(cwd):
+        for i, entry in enumerate(plan):
+            op = entry["op"]
+            if i and ((op == "&&" and rc != 0) or (op == "||" and rc == 0)):
+                continue
+            out, rc = _run_pipeline(entry["pipeline"])
+            chunks.append(out)
+    return hashlib.sha256(b"".join(chunks)).hexdigest(), rc
 
 def run_accept_command(command, cwd):
     """ADR-014: execute the acceptance oracle at `done` time (SHELL --

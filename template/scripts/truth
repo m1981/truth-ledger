@@ -62,7 +62,7 @@ from truthlib.gates import _gate_text_nonempty, _gate_duplicate, \
     _gate_quantifier_scope, _gate_scope_decay, _gate_inv_m, \
     _gate_generated, _gate_class_precheck, _gate_evidence_exit, _gate_blast
 from truthlib.shellio import _last_ledger_ts, _LAST_TS_TAIL_BYTES, _short_sha, \
-    _OVERRIDES
+    _OVERRIDES, _expand_words
 from truthlib.cli import _issue_or_exit
 
 # A3: the ADR-044 monkeypatch seam is GONE. It lived here -- a
