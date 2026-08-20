@@ -209,5 +209,20 @@ Meta-repo conventions, on top of the standard layer:
   the ledger is built for (INV-A, ADR-031). But until you merge, `truth list`
   and `truth reproduce` in a worktree answer about a DIFFERENT ledger than
   `main`'s, which is a real way to reach a confident wrong conclusion.
+  A third consequence is practical: `.venv/` is gitignored, so a fresh
+  worktree has none and `make` silently falls back to the system `python3`
+  — symlink the main tree's `.venv` in, or the schema arm goes dark.
+- **`git add <file>` takes the other agent's hunks too.** Filtering
+  `git status` by FILE is not enough when two agents edit the SAME file, and
+  the failure is silent in a shared tree. Measured 2026-08-20: a commit of
+  mine added seven tests to `test-truth-core.py` — three mine, four another
+  agent's ADR-054 arms whose implementation was still uncommitted. HEAD then
+  carried tests for code that was not there and the battery went BLOCKED,
+  invisible locally because the missing implementation sat in the shared
+  working tree beside it. Before committing a file another agent is also
+  editing, read `git diff --cached <file>` and confirm every hunk is yours;
+  `git add -p` if it is not. To unpick one later, extract the hunk from the
+  bad commit and `git apply -R` it — never hand-edit, and never finish
+  someone's work for them by committing their half too.
 
 See `template/.truth/README.md` for the layer's full documentation.
