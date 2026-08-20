@@ -4920,6 +4920,90 @@ class TestCommitGateBanner(unittest.TestCase):
             self.assertIsNone(tm.find_gate_hook(hooks, ("pre-commit",),
                                                 "reproduce"))
 
+    # ------------------------------------------------ ADR-054: delegation
+
+    def _wire(self, d, hook_body, script_rel=None, script_body=None):
+        """A work tree with hooks/ and an optional repo-relative script."""
+        hooks = os.path.join(d, "hooks")
+        os.makedirs(hooks, exist_ok=True)
+        hp = os.path.join(hooks, "pre-push")
+        with open(hp, "w") as f:
+            f.write(hook_body)
+        os.chmod(hp, 0o755)
+        if script_rel:
+            sp = os.path.join(d, script_rel)
+            os.makedirs(os.path.dirname(sp), exist_ok=True)
+            with open(sp, "w") as f:
+                f.write(script_body)
+        return hooks, hp
+
+    def test_delegating_hook_is_the_gate(self):
+        """ADR-054: the gate is hook + runner + verb, not the hook file."""
+        with tempfile.TemporaryDirectory() as d:
+            hooks, hp = self._wire(
+                d, '#!/bin/sh\nexec bash scripts/release-battery.sh\n',
+                "scripts/release-battery.sh",
+                '#!/bin/sh\npython3 scripts/truth reproduce\n')
+            self.assertEqual(
+                tm.find_gate_hook(hooks, ("pre-push",), "reproduce", d), hp)
+            self.assertEqual(
+                [os.path.relpath(x, d)
+                 for x in tm.gate_hook_chain(hp, "reproduce", d)],
+                ["hooks/pre-push", "scripts/release-battery.sh"])
+
+    def test_needle_in_a_comment_is_not_an_invocation(self):
+        """The invalidate-scan incident, refused at both levels: a hook that
+        only NAMES the verb in prose is not the gate, and neither is one
+        whose delegate only names it in prose."""
+        with tempfile.TemporaryDirectory() as d:
+            hooks, _ = self._wire(
+                d, '#!/bin/sh\n# reproduce via release-battery.sh\nexit 0\n')
+            self.assertIsNone(
+                tm.find_gate_hook(hooks, ("pre-push",), "reproduce", d))
+        with tempfile.TemporaryDirectory() as d:
+            hooks, _ = self._wire(
+                d, '#!/bin/sh\nexec bash scripts/release-battery.sh\n',
+                "scripts/release-battery.sh",
+                '#!/bin/sh\n# reproduce runs elsewhere\nexit 0\n')
+            self.assertIsNone(
+                tm.find_gate_hook(hooks, ("pre-push",), "reproduce", d))
+
+    def test_removing_the_delegation_returns_the_check_to_fail(self):
+        """The property the marker-comment alternative would have destroyed:
+        delete the invocation and the check must go red again."""
+        with tempfile.TemporaryDirectory() as d:
+            hooks, hp = self._wire(
+                d, '#!/bin/sh\nexec bash scripts/release-battery.sh\n',
+                "scripts/release-battery.sh",
+                '#!/bin/sh\npython3 scripts/truth reproduce\n')
+            self.assertIsNotNone(
+                tm.find_gate_hook(hooks, ("pre-push",), "reproduce", d))
+            with open(hp, "w") as f:
+                f.write('#!/bin/sh\n# reproduce via release-battery.sh\n'
+                        'exit 0\n')
+            self.assertIsNone(
+                tm.find_gate_hook(hooks, ("pre-push",), "reproduce", d))
+
+    def test_sibling_hook_delegation_resolves(self):
+        """ADR-045's pre-merge-commit shares the pre-commit body via
+        `exec "$(dirname "$0")/pre-commit"`; that is a delegation too, and
+        before ADR-054 it passed only because the word rode in a comment."""
+        with tempfile.TemporaryDirectory() as d:
+            hooks = os.path.join(d, "hooks")
+            os.makedirs(hooks)
+            pc = os.path.join(hooks, "pre-commit")
+            with open(pc, "w") as f:
+                f.write('#!/bin/sh\nexec bash scripts/check-truth.sh\n')
+            os.chmod(pc, 0o755)
+            pmc = os.path.join(hooks, "pre-merge-commit")
+            with open(pmc, "w") as f:
+                f.write('#!/bin/sh\n# same gate, by delegation\n'
+                        'exec "$(dirname "$0")/pre-commit"\n')
+            os.chmod(pmc, 0o755)
+            self.assertEqual(
+                tm.find_gate_hook(hooks, ("pre-merge-commit",),
+                                  "check-truth", d), pmc)
+
     def test_banner_on_write_verb_when_unwired(self):
         with tempfile.TemporaryDirectory() as d:
             _mk_sandbox(d)

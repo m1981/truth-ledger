@@ -1586,10 +1586,13 @@ def cmd_doctor(a):
     for names, needle, purpose in ((("pre-commit",), "check-truth", "INV-A/INV-B"),
                                    (("pre-push",), "reproduce",
                                     "reproduce-on-read (INV-C successor)")):
-        hit = find_gate_hook(hooks_dir, names, needle)
+        hit = find_gate_hook(hooks_dir, names, needle, root)
         if hit:
+            # ADR-054: render the chain, so a delegating hook reports WHERE
+            # the verb runs instead of asserting the hook file contains it.
+            chain = gate_hook_chain(hit, needle, root) or [hit]
             ok(f"{names[0]} hook enforces {purpose}",
-               os.path.relpath(hit, root))
+               " -> ".join(os.path.relpath(p, root) for p in chain))
             continue
         # ADR-025 (H6): no local hook -- the README allows CI as the other
         # arm of the MUST, so decide it before failing. A CI config naming
@@ -1618,9 +1621,9 @@ def cmd_doctor(a):
     # is wired LOCALLY: a CI-arm repo (no local hook, gate named in CI)
     # is exempt because its gate runs server-side on push/PR, where a
     # merge commit arrives like any other.
-    if find_gate_hook(hooks_dir, ("pre-commit",), "check-truth"):
+    if find_gate_hook(hooks_dir, ("pre-commit",), "check-truth", root):
         pmc = find_gate_hook(hooks_dir, ("pre-merge-commit",),
-                             "check-truth")
+                             "check-truth", root)
         if pmc:
             ok("pre-merge-commit hook gates merge commits",
                os.path.relpath(pmc, root))

@@ -237,6 +237,24 @@ difference is one level above where a grep reads. The operational test is one
 question: *would deleting the thing this gate guards make it stop passing — or
 start passing, on the note announcing the deletion?*
 
+**It happened a third time, and the third time named the rule.** The same row,
+re-aimed from the retired verb to `truth reproduce` at `pre-push`, kept the
+one-hop grep and so inverted its own error: this repository's `pre-push` ends
+`exec bash scripts/release-battery.sh`, the battery runs the verb and blocks on
+its exit 7 — an armed gate, reported FAIL. Meanwhile `pre-merge-commit`, which
+shares the `pre-commit` body by delegation, was still passing on the word
+`check-truth` in the comment describing that delegation. One check, one wiring,
+both errors at once. The correction is not a better grep but a stated position
+on what the check examines: **the gate is the composite hook + runner + verb,
+not the hook file**, and the needle must appear in an INVOCATION — a non-comment
+line of the hook, or of a file it hands off to, one hop. `doctor` now renders
+the resolved chain (`.githooks/pre-push -> scripts/release-battery.sh`), so the
+row reports where the verb runs instead of asserting the file contains it. The
+residual is named and kept: at the leaf this is still a substring test, so use
+and mention remain indistinguishable there, exactly as the reachability sweep
+says of its own edges. The mereology moved up a level; the semantics did not
+(ADR-054).
+
 **A number that justifies a decision needs a recipe, exactly as a claim does.**
 This system's entire thesis is that a belief must carry a reproducible capsule.
 The measurements that justified its own architecture carried none, and it showed:

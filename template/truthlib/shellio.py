@@ -24,6 +24,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -980,30 +981,124 @@ def git_hooks_dir(root):
         hooks_dir = os.path.join(gd, "hooks")
     return hooks_dir, hp_cfg
 
-def find_gate_hook(hooks_dir, names, needle):
+# ADR-054. Both patterns are lifted from scripts/gate-reachability.sh
+# `invokes()`/`token_paths()` rather than re-invented: that sweep already
+# resolves this repository's hook chains correctly, and two instruments
+# answering one question must not answer it by different rules.
+_HOOK_INVOKER = re.compile(
+    r"""(?:^|[\s;&|(`='"])(?:bash|sh|zsh|python3?|exec|source|\.)\s"""
+    r"""|(?<![\w.])\./""")
+_HOOK_TOKEN = re.compile(r"""(?<![\w./-])([\w./${}"'-]+)(?![\w.-])""")
+
+def hook_invocation_lines(text):
+    """A hook's non-comment lines (ADR-054).
+
+    The needle must land in an INVOCATION, never in prose about one. The
+    check this replaced tested the whole file, and the comment above the
+    caller in cli.py records the cost: a one-hop grep matched
+    `invalidate-scan` inside a comment EXPLAINING that gate's removal, and
+    so kept reporting a retired check as enforced. Trailing comments on an
+    otherwise live line are not stripped -- the same granularity
+    gate-reachability works at, and the same residual."""
+    return [ln for ln in (raw.strip() for raw in text.splitlines())
+            if ln and not ln.startswith("#")]
+
+def hook_delegates(lines, root, hook_dir=None):
+    """Files these hook lines hand off to -- ONE hop (ADR-054).
+
+    A hook ending `exec bash scripts/release-battery.sh` is the gate when
+    the battery runs the verb: the gate is the composite hook + runner +
+    verb, not the file. Bounded to one hop deliberately -- the transitive
+    question belongs to scripts/gate-reachability.sh (ADR-048), which owns
+    the fixpoint; this stays cheap enough to run at CLI startup. Edges are
+    textual and grep-shaped, exactly as that sweep states of its own.
+
+    TWO BASES, because hooks delegate two ways. Repo-relative
+    (`scripts/release-battery.sh`) resolves against the work tree;
+    SIBLING-HOOK (`exec "$(dirname "$0")/pre-commit"`, which is how
+    pre-merge-commit shares the pre-commit body under ADR-045) resolves
+    against the hook's own directory. Command-substitution and variable
+    segments are dropped before resolving, so `$(dirname "$0")/pre-commit`
+    and `$HERE/x.sh` reduce to their tails; a token counts only if it
+    actually names a file under one of the bases, so a bare `sh` or `exec`
+    resolves to nothing."""
+    bases = [b for b in (hook_dir, root) if b]
+    out = []
+    for line in lines:
+        if not _HOOK_INVOKER.search(line):
+            continue
+        for m in _HOOK_TOKEN.finditer(line):
+            # Quotes come off FIRST: a trailing one on `/pre-commit"` would
+            # otherwise make the tail look variable-ish and be dropped.
+            segs = m.group(1).strip("\"'").split("/")
+            # Leading empty segments come from a stripped `$(...)`; leading
+            # variable-ish ones from `$HERE`. Both mean "resolve the tail".
+            while segs and (not segs[0]
+                            or any(c in segs[0] for c in "$\"'{")):
+                segs.pop(0)
+            tok = "/".join(segs).strip("\"'")
+            if not tok or tok in (".", ".."):
+                continue
+            for base in bases:
+                cand = os.path.join(base, tok)
+                if os.path.isfile(cand):
+                    if cand not in out:
+                        out.append(cand)
+                    break
+    return out
+
+def gate_hook_chain(hook_path, needle, root):
+    """[hook] when the hook invokes `needle` itself, [hook, delegate] when
+    it reaches it one hop away, [] when neither (ADR-054). doctor renders
+    the chain so the detail line names WHERE the gate actually runs."""
+    try:
+        lines = hook_invocation_lines(
+            open(hook_path, encoding="utf-8", errors="replace").read())
+    except OSError:
+        return []
+    if any(needle in ln for ln in lines):
+        return [hook_path]
+    for dele in hook_delegates(lines, root,
+                               os.path.dirname(hook_path)):
+        try:
+            if any(needle in ln for ln in hook_invocation_lines(
+                    open(dele, encoding="utf-8",
+                         errors="replace").read())):
+                return [hook_path, dele]
+        except OSError:
+            continue
+    return []
+
+def find_gate_hook(hooks_dir, names, needle, root=None):
     """The hook arm of the ADR-025 gate decision (factored out of doctor
     so the R2 write-verb banner shares it -- one detection, no fork):
-    the first active hook under hooks_dir naming `needle`, or None.
+    the first active hook under hooks_dir that INVOKES `needle`, itself or
+    one hop away (ADR-054), or None.
     Candidates are (path, must_be_executable): git requires +x in the
     effective dir; manager-delegated user hooks (husky runs `.husky/<name>`
     from the `_` shim dir via sh) commonly are not executable themselves.
     isfile + try/except: a *directory* named `pre-commit`, or an
     executable-not-readable hook, must yield a decision, not a traceback
-    (a doctor that crashes cannot decide the gate)."""
+    (a doctor that crashes cannot decide the gate).
+    `root` resolves a delegate's repo-relative path; callers that know the
+    work tree pass it. The fallback is the hooks dir's parent, which is
+    right for `.githooks/` and merely finds nothing under `.git/hooks` --
+    failing back to the direct-invocation answer, never to a false pass."""
     for name in names:
         cands = [(os.path.join(hooks_dir, name), True)]
         if os.path.basename(hooks_dir.rstrip(os.sep)) == "_":
             cands.append((os.path.join(
                 os.path.dirname(hooks_dir.rstrip(os.sep)), name), False))
+        base = root or os.path.dirname(hooks_dir.rstrip(os.sep))
         for hp, need_x in cands:
             try:
-                if os.path.isfile(hp) \
-                        and (not need_x or os.access(hp, os.X_OK)) \
-                        and needle in open(hp, encoding="utf-8",
-                                           errors="replace").read():
-                    return hp
+                if not (os.path.isfile(hp)
+                        and (not need_x or os.access(hp, os.X_OK))):
+                    continue
             except OSError:
                 continue
+            if gate_hook_chain(hp, needle, base):
+                return hp
     return None
 
 def commit_gate_wired():
@@ -1022,7 +1117,8 @@ def commit_gate_wired():
             return True
         root = r.stdout.strip()
         hooks_dir, _ = git_hooks_dir(root)
-        if find_gate_hook(hooks_dir, ("pre-commit",), "check-truth"):
+        if find_gate_hook(hooks_dir, ("pre-commit",),
+                          "check-truth", root):
             return True
         return ci_gate_names("check-truth", root) is not None
     except Exception:
