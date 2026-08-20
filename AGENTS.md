@@ -212,6 +212,25 @@ Meta-repo conventions, on top of the standard layer:
   A third consequence is practical: `.venv/` is gitignored, so a fresh
   worktree has none and `make` silently falls back to the system `python3`
   — symlink the main tree's `.venv` in, or the schema arm goes dark.
+- **NEVER run the canary, the battery, or `git push` from a LINKED worktree.**
+  Edit there; VERIFY from the main worktree. The canary escapes its sandbox
+  when its cwd is a linked worktree, and it scribbles on shared state:
+  measured 2026-08-20 21:48, a battery run triggered by `git push`'s pre-push
+  hook wrote fixture commits (`init`, `add comment`, `third line`) onto the
+  SHARED repository's `main`, created six fixture branches (`um-side`,
+  `umh-tamper`, `bl-rewrite`, …), repointed the worktree's own branch ref at
+  `canary: init`, and set `core.bare=true` — which breaks the MAIN working
+  tree outright (`git status` → "this operation must be run in a work tree").
+  `mkrepo()` in `truth-canary.sh` does a bare `cd "$1"` with no `|| exit`,
+  under `set -u` and NO `set -e`, so a failed cd lets `git init -b main .`
+  run wherever the shell happens to be standing.
+  The differentiator is verified, not assumed: the same canary run from the
+  MAIN tree produced 0 new branches and left `core.bare` untouched.
+  Repair, in this order, and nothing is lost — commits and files survive, it
+  is refs and config that get scribbled on:
+  `git config core.bare false`; `git update-ref refs/heads/main <real-sha>`;
+  `git update-ref refs/heads/<your-branch> <your-sha>` (find it with
+  `git log --oneline <sha>`, which still resolves); delete fixture branches.
 - **`git add <file>` takes the other agent's hunks too.** Filtering
   `git status` by FILE is not enough when two agents edit the SAME file, and
   the failure is silent in a shared tree. Measured 2026-08-20: a commit of
