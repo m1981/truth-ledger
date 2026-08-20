@@ -187,5 +187,27 @@ Meta-repo conventions, on top of the standard layer:
   findings as issues in the same sitting — that review surfaced three defects
   older than the change under review (wk-8437672f, wk-4f60611d, wk-1e579b90),
   and an unfiled finding dies with the session that found it.
+- **A worktree, not a branch, is what isolates parallel agents here.** A
+  branch protects the commit graph; the commit graph was never what broke.
+  Measured on the 2026-08-17/18 session: a feature branch was cut to keep out
+  of a concurrent worker's way, **0 commits then landed on `main`** and every
+  subsequent commit went to the branch instead — each other agent simply
+  followed onto it (re-check with
+  `git rev-list --count $(git merge-base main HEAD)..main`), so the branch
+  was `main` under another name plus a pending merge. In the same session the
+  SHARED WORKING DIRECTORY was destroyed twice (a subagent's whole-file rewrite;
+  a `git stash` from another session), and a branch prevents neither. This repo
+  has no PR flow to make a branch mean review-before-merge: it commits to `main`
+  behind a pre-commit gate and a pre-push battery. So branch only for work that
+  might be abandoned WHOLESALE; otherwise commit to `main` and give each
+  concurrent agent its own `git worktree`.
+  Two consequences of worktrees worth knowing before you are surprised by them:
+  ADR-045's ledger flock is placed under `--git-dir`, which in a linked
+  worktree is `.git/worktrees/<name>` and NOT the shared `.git`, so the lock
+  does not span worktrees — it does not need to, because each worktree has its
+  own `.truth/claims.jsonl` and the two histories reconcile by the union merge
+  the ledger is built for (INV-A, ADR-031). But until you merge, `truth list`
+  and `truth reproduce` in a worktree answer about a DIFFERENT ledger than
+  `main`'s, which is a real way to reach a confident wrong conclusion.
 
 See `template/.truth/README.md` for the layer's full documentation.
