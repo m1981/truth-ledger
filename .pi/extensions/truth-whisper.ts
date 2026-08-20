@@ -118,9 +118,32 @@ export default function (pi: ExtensionAPI) {
 			const key = `${sid}:${rel}:${lh}`;
 			if (seen.has(key)) return; // fatigue budget: already whispered this state
 			seen.add(key);
+			// Resolve the cache through git, never join(root, ".git", ...): in a
+			// LINKED WORKTREE root/.git is a FILE, so the hardcoded join names a
+			// path under a non-directory and the append throws ENOTDIR. The py
+			// hook carries this fix and test-integrations.py pins it
+			// (test_whisper_stage_git_worktree); this port never got either, and
+			// because the catch below was EMPTY the loss was silent -- every
+			// worktree session's entries vanished from the ADR-005 adoption
+			// counter, whose fatigue half (wk-5473af07) reads exactly this file
+			// and names the pi-* bucket by hand. The stage still fails OPEN, but
+			// visibly: advisory machinery may not fail silently (the F1 lesson).
+			const gp = spawnSync("git", ["rev-parse", "--git-path", "truth-whisper.seen"], {
+				encoding: "utf8",
+				cwd: root,
+			});
+			const cache =
+				gp.status === 0 && String(gp.stdout ?? "").trim()
+					? resolve(root, String(gp.stdout).trim())
+					: join(root, ".git", "truth-whisper.seen");
 			try {
-				appendFileSync(join(root, ".git", "truth-whisper.seen"), key + "\n");
-			} catch {}
+				appendFileSync(cache, key + "\n");
+			} catch (e) {
+				console.error(
+					`truth whisper: counter append to ${cache} failed (${e}) -- ` +
+						"the ADR-005 fatigue metric loses this entry",
+				);
+			}
 			return {
 				content: [
 					...(event.content ?? []),
