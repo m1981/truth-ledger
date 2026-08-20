@@ -114,17 +114,22 @@ Meta-repo conventions, on top of the standard layer:
   will stale; `docs/archive/` and `.truth/claims.jsonl` are deny-listed
   (edit tools blocked — the ledger changes only through the CLI). The
   whisper count per session lives in `.git/truth-whisper.seen`; that is
-  the ADR-005 adoption-gate metric. The same two stages are enforced
-  for the pi harness via `.pi/extensions/truth-whisper.ts` (same deny
-  list, same metric file), and `docs/archive/` is additionally guarded
-  harness-independently at pre-commit (`.githooks/pre-commit`). The
-  consumer hook has its own regression gate (it is untemplated, so it
-  has no home in the template canary): `bash scripts/test-whisper-hook.sh`
-  — deny voice, main-tree and worktree whisper, injection-verified. The
-  pre-push RELEASE BATTERY (`scripts/release-battery.sh`) has the same
-  shape and the same reason: `bash scripts/test-release-battery.sh`, six
-  arms, each one verified red against a mutated copy of the battery
-  before being committed. Do not add an arm you have not seen fail.
+  the ADR-005 adoption-gate metric. `docs/archive/` is additionally
+  guarded harness-independently at pre-commit (`.githooks/pre-commit`) —
+  but only while `core.hooksPath=.githooks` is set, and that is LOCAL
+  config no mechanism keeps true. `truth doctor` is the only thing that
+  says it lapsed; it had lapsed, and the freeze rested on the edit-tool
+  hook alone until 2026-08-21 (canary escape — see the worktree rule
+  above). The consumer hooks are untemplated, so they have no home in the
+  template canary; their regression gate is
+  `python3 template/scripts/test-integrations.py` — deny voice, main-tree
+  AND linked-worktree whisper, injection-verified, plus the session
+  digest, the CLI exit contracts and the Tier C instruments. The pre-push
+  RELEASE BATTERY (`scripts/release-battery.sh`) has had NO gate of its
+  own since `32022c6` (2026-08-15) retired `scripts/test-release-battery.sh`
+  with the rest of the bash scaffolding and nothing replaced its six
+  arms. Its doctrine stands and is exactly why that gap matters: do not
+  add an arm you have not seen fail.
 - Retracting a claim is HUMAN-ONLY (G12) and no agent flag opens it.
   `TRUTH_HUMAN` exists for the ADR-011 ack ceremony; reaching for it to
   get past a tombstone refusal is exactly the judgment laundering the
