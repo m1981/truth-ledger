@@ -317,6 +317,39 @@ $(printf '%s\n' "$OUT" | grep -E 'capsule-stale|unexecutable' | head -4)
 $(printf '%s\n' "$OUT" | tail -3)" ;;
 esac
 
+# --- 11. battery meta-gate, scoped ---------------------------------------
+# scripts/test-release-battery.sh proves each arm ABOVE can go red. It
+# cannot ride every push -- fourteen arms, a dozen battery runs, minutes --
+# and it cannot run unguarded from inside the battery at all, because that
+# recurses (the first cut of this arm did, in 2026-08, and cost minutes
+# before the guard).
+#
+# Both are solved here. The arm fires only when the battery, its gate, or
+# the hook that carries it moved -- an unchanged battery cannot have
+# regressed, which is the canary's own argument. TRUTH_BATTERY_NO_META
+# tells the nested batteries not to re-enter; it is set by THIS LINE and
+# nowhere else, and is not a skip flag for operators.
+#
+# Restored 2026-08-21 after `32022c6` swept both the gate and this arm
+# away with the bash scaffolding. For six days the mechanism guarding
+# every other gate was itself unguarded -- see the header of the gate.
+if [ -n "${TRUTH_BATTERY_NO_META:-}" ]; then
+  say "  skip  battery meta-gate -- re-entrant run under the outer battery"
+elif touches '^scripts/(release-battery|test-release-battery|gate-reachability)\.sh$|^\.githooks/pre-push$'; then
+  OUT=$(env TRUTH_BATTERY_NO_META=1 bash scripts/test-release-battery.sh 2>&1); RC=$?
+  SUM=$(printf '%s\n' "$OUT" | grep -E "^test-release-battery: " | tail -1)
+  CAUGHT=$(printf '%s' "$SUM" | sed -n 's/^test-release-battery: \([0-9]*\) caught.*/\1/p')
+  if [ "$RC" != 0 ]; then
+    bad "battery meta-gate" "$(printf '%s\n' "$OUT" | grep -E '^  MISSED' | head -3)"
+  elif [ "${CAUGHT:-0}" -eq 0 ]; then
+    bad "battery meta-gate" "reported success having run 0 arms"
+  else
+    pass "battery meta-gate" "${CAUGHT} arm(s) proven able to fail"
+  fi
+else
+  say "  skip  battery meta-gate -- this push touches neither the battery nor its hook"
+fi
+
 # --- verdict -------------------------------------------------------------
 if [ "$FAIL" = "1" ]; then
   say ""
