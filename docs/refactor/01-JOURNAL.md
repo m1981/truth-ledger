@@ -2995,3 +2995,75 @@ jest zmyślane, ale receptura z globem nie wyprowadza nic.
 
 **Żaden ADR nie powstał.** Rekord decyzji dla decyzji, której dowody nie
 popierają, byłby dokładnie tym, przed czym `docs/decisions/` stoi.
+
+---
+
+## J-046 · KOLIZJA NUMERU J-045 — i sprostowanie mojej własnej diagnozy · 2026-08-21
+
+Dwa wpisy w tym pliku noszą numer **J-045**:
+
+| linia | wpis | autor |
+|---|---|---|
+| 2810 | *REJESTR DECYZJI REAKTYWOWANY (R1) + ADR-054* | sesja `01HzSxqVKRdYhu8aSCK6B2bX` |
+| 2918 | *WYPROWADZANIE ZBIORU OBSERWACJI Z RECEPTURY — pomiar obalił propozycję* | sesja `01KzvGV9bYeWvrtRx5cFLXAi` |
+
+**Żadnego z nich nie przenumerowuję.** Ten wpis istnieje po to, żeby czytelnik
+trafiający na którykolwiek z nich wiedział, że drugi istnieje. Do cytowania:
+**J-045/rejestr** (2810) i **J-045/derywacja** (2918).
+
+### Dlaczego nie przenumerowanie
+
+Trzy powody, każdy sam wystarczający.
+
+Dziennik jest **append-only** — J-027 skorygował J-026 nowym wpisem właśnie
+dlatego, że edycja w miejscu jest tu zakazana. Zmiana nagłówka byłaby tą edycją.
+
+`docs/agent-onboarding.md:93` **już cytuje „J-045"** i z kontekstu chodzi
+o wpis 2918. Przenumerowanie unieważniłoby cudze odwołanie po cichu — cena
+wyższa niż sama kolizja.
+
+Numer nie niesie tu żadnej funkcji poza porządkiem czytania, a ten daje
+kolejność w pliku. Wpisy nie są cytowane po numerze w kodzie ani w ledgerze.
+
+### Mechanizm — i to, co zdiagnozowałem źle
+
+W `.local/session_01HzSxqVKRdYhu8aSCK6B2bX.md` zapisałem, że kolizja wzięła się
+z „dwóch sesji piszących następny numer w tym samym oknie". **To jest fałsz**,
+i tym akapitem to prostuję. Oba nagłówki weszły **jednym commitem**:
+
+    git show 7172d51 -- docs/refactor/01-JOURNAL.md | grep -c '^+## J-045'   # => 2
+
+`7172d51` (191 wstawień) należy do sesji `01KzvGV9…`, ale wpis 2810 napisała
+sesja `01HzSxqV…`. To nie był wyścig o numer — to `git add` po ścieżkach,
+zabierający cudzą niezacommitowaną pracę z tego samego pliku.
+
+Ten sam mechanizm uderzył w tym tygodniu **trzy razy**, za każdym razem
+w inną ofiarę:
+
+| commit | co zabrał | skutek |
+|---|---|---|
+| `39e1052` | ADR-054 bez implementacji | rekord twierdził „Implementation lands with this record" nieprawdziwie przez 3 dni |
+| `f53ee93` | 4 testy ADR-054 bez implementacji | HEAD czerwony ~2 dni; słusznie cofnięte w `86a0c06` |
+| `7172d51` | wpis J-045/rejestr z dziennika | ta kolizja |
+
+Reguła w `AGENTS.md` (`43b7760`) powstała po drugim przypadku i **nie
+zapobiegła** trzeciemu — bo trzeci zdarzył się wcześniej tego samego dnia, a
+norma działa dopiero wtedy, gdy się ją pamięta w chwili stagowania. Domknięte
+dopiero przez `c84bfcd`, który wprowadził implementację ADR-054 razem z jej
+testami, jednym commitem.
+
+### Kto to rozstrzygnął
+
+Propozycję — „nowy wpis zamiast przenumerowania" — postawiła sesja
+`01KzvGV9…` w swoim handoffie, odmawiając jednostronnego ruchu na cudzym
+wpisie. Sesja `01HzSxqV…`, autorka wpisu 2810, przyjęła ją i zarezerwowała
+numer 046 (wymiana międzysesyjna, 2026-08-21). Mój pierwotny pomysł
+przenumerowania był gorszy i został wycofany przed wykonaniem.
+
+### Dług, nazwany a nie zamknięty
+
+**Nic nie broni przed trzecim wpisem o tym samym numerze.** Numer bierze się
+przez napisanie nagłówka, co jest normą, nie bramką. Bramka byłaby tania —
+`grep -c '^## J-0NN'` w baterii albo w `doc-health` — ale nie dokładam jej tym
+wpisem, żeby nie mieszać zapisu zdarzenia z rozbudową mechanizmu. Kandydat na
+issue, nie na cichy dopisek.
