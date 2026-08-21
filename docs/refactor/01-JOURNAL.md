@@ -3067,3 +3067,180 @@ przez napisanie nagłówka, co jest normą, nie bramką. Bramka byłaby tania �
 `grep -c '^## J-0NN'` w baterii albo w `doc-health` — ale nie dokładam jej tym
 wpisem, żeby nie mieszać zapisu zdarzenia z rozbudową mechanizmu. Kandydat na
 issue, nie na cichy dopisek.
+
+---
+
+## J-047 · CZTERY SESJE, DWANAŚCIE POTKNIĘĆ — czego norma nie obroni · 2026-08-21
+
+Zapis na polecenie właściciela, po fast-forwardzie `main` do `74e2fcc`.
+Materiał: potknięcia czterech sesji z 15–21 sierpnia, moje włącznie. Tekst
+przeszedł jedną rundę weryfikacji u opisywanych sesji **przed** commitem;
+dwie z nich sprostowały to, co o nich napisałem, i obie poprawki osłabiły
+tezę, którą chciałem postawić. Zostały przyjęte — patrz sekcja przedostatnia.
+
+### Inwentarz — chronologia zmierzona
+
+    for c in 32022c6 f53ee93 39e1052 7172d51 86a0c06 43b7760 c84bfcd; do
+      git log -1 --format='%h %ad %s' --date=format:'%m-%d %H:%M' $c; done
+
+| kiedy | co | koszt |
+|---|---|---|
+| 08-15 13:41 | `32022c6` kasuje `scripts/test-release-battery.sh`, nic nie zastępuje | bateria bez własnej bramki do dziś; blokuje trzy pozycje z kolejki |
+| 08-18 14:56 | `f53ee93` bierze 4 testy ADR-054 bez implementacji | HEAD czerwony ~2 dni |
+| 08-18 15:03 | `39e1052` bierze ADR-054 bez implementacji | rekord twierdził nieprawdę o sobie 3 dni |
+| 08-18 15:07 | `7172d51` bierze cudzy wpis z dziennika | kolizja J-045 |
+| ~08-20 wieczór | canary uruchomiony z podlinkowanego worktree pisze do WSPÓLNEGO `.git/config` | `core.hooksPath` skasowany (bramki martwe ~4 dni), `user.name=test-actor` (4 commity), `core.bare=true`, fikstury na `main` |
+| 08-20 21:45 | `86a0c06` słusznie cofa testy — ale zostawia implementację bez nich | zieleń nieinformatywna: zniknął jedyny dyskryminator |
+| 08-21 00:49 | `c84bfcd` (mój) dokłada 9 wystąpień `release-battery` do `test-truth-core.py` | `grep -rl release-battery` w testach daje odtąd fałszywe TAK |
+
+**Granica dowodu w wierszu piątym, na wyraźne żądanie sesji `01JdHzXY`:**
+udowodniona jest KLASA, nie INSTANCJA. Zmierzone: podlinkowany worktree dzieli
+`.git/config` (`git -C <wt> config --show-origin user.name`); canary w ramieniu
+TL-1 jest jedynym kodem w repo kasującym `core.hooksPath`; `test-integrations.py:48`
+ustawia `user.name test-actor`. **Nie wiadomo, który przebieg to zrobił ani
+dokładnie kiedy.** Zapis „canary skasował wskaźnik dnia X o godzinie Y" byłby
+nadinterpretacją i tego wpisu nie ma.
+
+Do tego pięć potknięć nie-commitowych, każde zgłoszone przez sprawcę:
+`01KzvGV9` oparł plan P3 na pliku skasowanym dwa dni przed startem swojej sesji;
+`013jva2` wypuścił bramkę Tier B pod etykietą Tier C dwa dni po założeniu issue
+o bramkach bez metryk; `01JdHzXY` dwukrotnie zeznał, że `.githooks/` ma trzy
+hooki (ma pięć — przyczyna: `ls -la | head -6`, ucięty odczyt podany jako stan
+repo), podał hipotezę o porcie pi jako wniosek przed przeczytaniem portu, i
+wpisał do tabeli `196/196` zamiast komendy, co zwietrzało w dobę; ja dwukrotnie
+zgłosiłem sprostowanie do twierdzenia, które było poprawne.
+
+### Sprostowanie do J-046 — popełnione w zapisie o tym samym mechanizmie
+
+W J-046 napisałem, że reguła `43b7760` „powstała po drugim przypadku i nie
+zapobiegła trzeciemu". **Fałsz.** Reguła jest z 08-20 21:46, a wszystkie trzy
+zabrania cudzej pracy z 08-18, **w oknie jedenastu minut** (14:56, 15:03, 15:07).
+Postawiłem sekwencję przyczynową z pamięci — w zapisie, którego tematem jest
+stawianie twierdzeń z pamięci. J-046 zostaje nietknięty (append-only).
+
+Tę samą nieprawdę zeznała mi wcześniej sesja `01KzvGV9` i **sama ją wycofała**,
+zanim zdążyłem ją zacytować. Jej wersja poprawki jest lepsza od mojej i wchodzi
+tu w całości:
+
+> Reguła **nie zawiodła w zapobieganiu — nigdy nie dostała szansy.** Jest
+> nietestowana przeciw żywemu przypadkowi. Zawiodło **WYKRYWANIE, i to jest
+> twarde: 3 z 3 moich potknięć wykrył ktoś inny albo narzędzie, ani jednego ja.**
+
+To przesuwa cały argument tego wpisu. **Nie mamy dowodu, że normy nie
+zapobiegają** — mamy dowód, że **nie wykrywają**. Wniosek jest słabszy, niż
+zamierzałem, i jako jedyny da się obronić danymi.
+
+### Taksonomia — cztery klasy, nie trzy
+
+`01KzvGV9` rozdzielił coś, co skleiłem: „nie sprawdziłem, CO stageuję" i „nie
+sprawdziłem, CZY istnieje to, na co się powołuję" to **dwa różne mechanizmy**,
+zbiegające się dopiero na poziomie ogólności „cytowanie z pamięci zamiast
+z komendy". Mechanizmy obronne są więc dwa, nie jeden.
+
+**A. Rozdzielenie atomowej zmiany na granicy commita.** `git add` operuje na
+ścieżkach; jednostką poprawności nie jest ścieżka.
+
+**B. Wspólny stan mutowalny poza gitem.** Worktree dzieli `.git/config`.
+
+**C1. Niesprawdzone, co się stageuje.** Wariant A od strony sprawcy.
+
+**C2. Niesprawdzone, czy przedmiot odniesienia istnieje.** Plan na skasowanym
+pliku; `head -6` w roli stanu repo; liczba w roli komendy.
+
+**D. Dowód bez nośnika.** Moja próba czerwieni ADR-054 (3 dni tylko w prozie),
+fuzz 3215 kombinacji `01JdHzXY` (skrypt jednorazowy), mutation score `gates.py`.
+
+### Obrony — i miejsca, gdzie obrona sama się rozbraja
+
+**A → topologia, nie bramka.** Hunk nie nosi podpisu sesji i nosić nie będzie.
+Ale cudza praca może być **fizycznie nieobecna** w moim drzewie: worktree na
+agenta do EDYCJI, drzewo główne do weryfikacji (i tak wymuszone przez
+`64f278c`/`441de48`). Zamienia normę w niemożliwość. Koszt do zaadresowania:
+`.venv` jest gitignorowany, więc świeże worktree po cichu schodzi na systemowy
+`python3` — lekarstwo produkuje własną klasę fałszywych sygnałów.
+
+**B → strażnik poza tym, czego strzeże.** Pułapka strukturalna: bramka wyłączona
+przez awarię nie zgłosi tej awarii. Hook nie wykryje, że hooki są wyłączone;
+bateria w `pre-push` też nie, bo `pre-push` JEST hookiem. Obrona musi żyć tam,
+gdzie awaria nie sięga:
+* `truth doctor` **w digeście sesyjnym** — digest odpala hook SessionStart,
+  niezależnie od `core.hooksPath`. Cztery dni martwych bramek zamieniłyby się
+  w jedną linię przy starcie każdej sesji;
+* **niezmienniczość `.git/config` wokół `make test`** — snapshot przed i po,
+  odmowa przy różnicy. Łapie przyczynę u źródła i jest testowalna sama w sobie.
+
+**C2 → sweep cytowań ścieżkowych.** Repo umie sądzić cytowania `tr-`
+(`fact-health`) i liczby (`retracted-figures`). Analogiczny defekt to cytowanie
+ścieżki, która nie istnieje — dokładnie to, co uwaliło plan P3. `git ls-files`
+zna odpowiedź; sweep kosztuje kilkanaście linii.
+
+**C1 → patrz A.** Nie ma tu osobnej bramki, bo nie ma czego podpisać.
+
+**D → nośnikiem jest claim z kapsułą, nie proza.** Repo ma na to werb. Reguła
+`wk-71694410` mówi to o ramionach canary; uogólnienie na „dowód wykonany
+w sesji" nie istnieje.
+
+### Mechanizm, który zadziałał naprawdę — i nie wymaga, żeby ktoś był bystry
+
+Moją pułapkę z `c84bfcd` (grep dający odtąd fałszywe TAK) wykryto tego samego
+wieczoru. Chciałem to zapisać jako czyjąś czujność; sesja `01JdHzXY` odmówiła
+przyjęcia tej atrybucji i podała lepsze wyjaśnienie, które przyjmuję:
+
+> Nie wykryłem Twojej pułapki; ja po prostu mierzyłem to samo dzień wcześniej
+> i liczby się nie zgodziły. Mechanizmem obronnym nie była niczyja czujność,
+> tylko **dwa niezależne pomiary tej samej rzeczy w różnym czasie, zapisane na
+> tyle dokładnie, żeby dało się je zestawić.**
+
+To jest jedyny mechanizm z tego tygodnia, który **się skaluje**, bo nie zakłada
+przenikliwości po żadnej ze stron. Wyprowadzona z niego reguła jest tania:
+**zapisuj pomiar z datą i komendą, wtedy następny pomiar sam się z nim
+pokłóci.** Odwrotność tej reguły też ma dowód — `196/196` wpisane jako liczba
+zamiast komendy zwietrzało w dobę i nie pokłóciło się z niczym.
+
+### Dwie klasy błędu, nie jedna
+
+Przypisałem sesji `013jva2` siedem tez obalonych własnym pomiarem. Poprawili:
+**pięć złapali sami, dwóch nie byliby w stanie.** Oba przegapione dotyczyły
+struktury dokumentu, który sami edytowali, i obalił je niezależny recenzent.
+
+To dzieli mechanizmy na dwa rozłączne zbiory. **Kolumna „komenda" łapie błędy
+autora o świecie. Nie łapie błędów autora o dokumencie, który autor właśnie
+napisał** — tam ślepota jest strukturalna, nie z niedbalstwa. Ceremonia
+niezależnego czytelnika z `AGENTS.md` nie jest redundancją wobec dyscypliny
+pomiarowej; obie są konieczne i żadna nie zastępuje drugiej.
+
+### Kontrola w pamięci to kontrola, której nie ma
+
+`01JdHzXY` o mały włos skasowałby trzy worktree bez sprawdzenia unikatów.
+Sprawdził tylko dlatego, że osierocony `1c9579a` nauczył go tego pięć minut
+wcześniej. Ich własny wniosek, i jest to najkrótsze streszczenie całego wpisu:
+
+> Kontrola siedziała w mojej świeżej pamięci, nie w procedurze — a to znaczy,
+> że następna sesja jej nie będzie miała.
+
+### Odmowa, która uczy wyjścia
+
+`013jva2` chciał wygasić źle postawione issue; G12 odmówił i **w treści odmowy
+podał właściwe wyjście** („file diverge saying it should die, and stop; the
+human queue decides"). Nie sięgnęli po obejście przez `done --basis`, bo —
+ich słowami — „zamiana powinien-umrzeć na jest-zrobiony to pranie osądu".
+Kontrapunkt do `wk-36066db9` („stop refusal messages teaching their own
+bypass"): odmowa ma uczyć wyjścia, nie obejścia, a różnica jest cała w tym,
+czy wyjście prowadzi DO człowieka, czy dookoła niego.
+
+### Co mechanizuję, a co zostaje prozą
+
+Trzy issue: niezmienniczość `.git/config` wokół testów, sweep cytowań
+ścieżkowych, `truth doctor` w digeście sesyjnym. Czwarta rzecz —
+worktree-na-agenta — jest decyzją operatorską o topologii pracy i idzie do
+właściciela jako pytanie, nie jako robota.
+
+**Czego świadomie NIE proponuję:** kolejnych reguł w `AGENTS.md`. Nie dlatego,
+że mam dowód ich nieskuteczności — nie mam, i to jest właśnie poprawka
+`01KzvGV9` — tylko dlatego, że reguła, której nikt nie mierzy, jest bramką bez
+wiersza ADR-047. Jeśli któraś ma zostać, niech dostanie incydent, który ją
+wywołał, i datę przeglądu pytającego „czy się powtórzył". Nie proponuję też
+bramki na własność hunka: hunk nie nosi podpisu.
+
+**Ten wpis sam jest ryzykiem klasy D.** Analiza bez nośnika wyparuje jak moja
+próba czerwieni. Dlatego trzy issue powstają razem z nim, nie „potem".
