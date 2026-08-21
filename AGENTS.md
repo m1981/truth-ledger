@@ -127,9 +127,14 @@ Meta-repo conventions, on top of the standard layer:
   digest, the CLI exit contracts and the Tier C instruments. The pre-push
   RELEASE BATTERY (`scripts/release-battery.sh`) has had NO gate of its
   own since `32022c6` (2026-08-15) retired `scripts/test-release-battery.sh`
-  with the rest of the bash scaffolding and nothing replaced its six
-  arms. Its doctrine stands and is exactly why that gap matters: do not
-  add an arm you have not seen fail.
+  with the rest of the bash scaffolding and nothing replaced its **twelve**
+  arms (`git show 32022c6^:scripts/test-release-battery.sh | grep -c '^echo "ARM'`).
+  This paragraph said SIX until 2026-08-21, and six was the count on the day
+  the sentence was first written; `3c449a4` took it 6→12 on 2026-08-02 and the
+  prose never followed. Anyone rebuilding to the stale figure would rebuild
+  half the harness and think it done — which is the AGENTS.md rule about
+  restated numbers, firing on AGENTS.md itself. Its doctrine stands and is
+  exactly why that gap matters: do not add an arm you have not seen fail.
 - Retracting a claim is HUMAN-ONLY (G12) and no agent flag opens it.
   `TRUTH_HUMAN` exists for the ADR-011 ack ceremony; reaching for it to
   get past a tombstone refusal is exactly the judgment laundering the
