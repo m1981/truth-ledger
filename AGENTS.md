@@ -224,8 +224,14 @@ Meta-repo conventions, on top of the standard layer:
   hook wrote fixture commits (`init`, `add comment`, `third line`) onto the
   SHARED repository's `main`, created six fixture branches (`um-side`,
   `umh-tamper`, `bl-rewrite`, …), repointed the worktree's own branch ref at
-  `canary: init`, and set `core.bare=true` — which breaks the MAIN working
-  tree outright (`git status` → "this operation must be run in a work tree").
+  `canary: init`, set `core.bare=true` — which breaks the MAIN working tree
+  outright (`git status` → "this operation must be run in a work tree") — and
+  overwrote `user.name`/`user.email` with the sandbox identity, so the NEXT
+  FOUR commits by two different sessions were authored by
+  `test-actor <test@example.com>` before anyone noticed
+  (`git log --format='%h %an' | grep test-actor`). That last one is the
+  damage you cannot repair: config and refs are restorable, a wrong author
+  in published history is not.
   `mkrepo()` in `truth-canary.sh` does a bare `cd "$1"` with no `|| exit`,
   under `set -u` and NO `set -e`, so a failed cd lets `git init -b main .`
   run wherever the shell happens to be standing.
