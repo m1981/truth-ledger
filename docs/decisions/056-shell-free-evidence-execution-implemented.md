@@ -1,15 +1,30 @@
 # ADR-056: shell-free evidence execution, implemented — what ADR-041 proposed, and what it cost
 
-Status: **PROPOSED** (2026-08-18, agent-authored) — the CODE has landed; this
-record has not been independently reviewed. ADR-041 named two conditions for
-its own acceptance: a simulation against all filed evidence commands, and an
-independent adversarial pass. **The simulation is done and passed (196/196
-hash-identical, below). The adversarial pass has not happened.** That matters
-more here than usual: ADR-041 was drafted with the observation that the last
-patch in this area passed 235 canary arms and was then broken three ways by a
-red team, so a green suite is explicitly not sufficient evidence for this one.
-Accepting this record is the operator's call after that pass, not an agent's.
+Status: **ACCEPTED** (2026-08-22, operator ruling) — accepted WITHOUT the
+independent adversarial pass that ADR-041 named as a condition of its own
+acceptance. The record keeps that fact in its status line, because the reason
+it mattered has not gone away: ADR-041 was drafted with the observation that
+the previous patch in this area passed 235 canary arms and was then broken
+three ways by a red team, so a green suite is explicitly not sufficient
+evidence for this change. The operator reviewed the code and the whole-corpus
+hash-stability simulation and ruled the architectural soundness of the
+shell-free executor decisive: *"We accept the residual risk."*
 
+The simulation is reproducible and its number moves with the corpus, so read
+it from the command rather than from this page:
+
+    python3 template/scripts/adr041-hash-stability.py .truth/claims.jsonl
+
+Two things this acceptance does NOT settle, both already disclosed below and
+repeated here so a reader of the status line alone is not misled: R4a stays
+open (glob expansion happens at run time, so `uniq *` still delivers a write
+in positional position), and the lexer — `_lex_word`, `_evidence_lex` — is
+where this runner departs from `/bin/sh` and is therefore where an adversarial
+pass, if one is ever commissioned, should aim.
+
+Originally filed PROPOSED (2026-08-18, agent-authored), with its author asking
+that it stay PROPOSED until that pass happened. It did not happen; the record
+was accepted anyway, deliberately and on the record.
 Date: 2026-08-18
 
 Amends: **ADR-041** (shell-free evidence execution — one interpreter, not two),

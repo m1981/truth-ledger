@@ -15,6 +15,22 @@ and judgments below are ours alone and are never templated (the
 ADR-003 placement test). Reviews ride the existing R11 monthly
 hand-audit slot — zero ceremony beyond the audit already due.
 
+**Scope boundary (operator ruling, 2026-08-22).** This registry covers
+INTAKE GATES and COUNTED OVERRIDES — the things that refuse a *filing*.
+It does NOT cover the release battery's arms, which refuse a *push*.
+Mixing them is a category error: they have different lifecycles, and
+`scripts/release-battery.sh` is the source of truth for its own arm set,
+now with its own regression gate (`scripts/test-release-battery.sh`,
+restored 2026-08-21) and its own meta-gate arm.
+
+One battery arm, `label-coupling`, had carried a row here since
+`4760366` — filed retroactively and in good faith by the session that
+shipped that gate, but it was the only one of thirteen, and the
+expectation it created was what the ruling resolves. The row is removed
+rather than joined by twelve siblings. If you are about to add a battery
+arm to this table, that is the decision you would be reversing; reverse
+it deliberately, in a record, not in a table edit.
+
 ## The registry
 
 Current values pulled 2026-08-02 from the Tier C instruments
@@ -39,7 +55,6 @@ Current values pulled 2026-08-02 from the Tier C instruments
 | ADR-038 dirty-watch advisory | restale-at-birth incidence — advisory-only, no counter; hand-read of filing transcripts at audit | none mechanized (advisory prints, stores nothing) | no counter | 2026-09-08 | armed (advisory) |
 | ADR-039 blast advisory | calibrated floor vs fallback; forecast-vs-observed spread; history health | blast-report `effective_floor`, `floor_source`, `rows`, `history_state` | floor **64** (calibrated) · history ok · top staler `template/scripts/truth` (988 invalidations) | 2026-09-08 | armed (advisory) |
 | ADR-033 verbatim-repeat detector | repeats caught once decay-expiry→re-file cycles exist | override-velocity `repeats` (+ `decay_expiries` as the opportunity clock) | repeats **[]** · 0 expiries (no firing opportunity yet) | **2026-10-08** | **dated probation** (minutes item 1) |
-| `label-coupling` (battery arm 8b, no override flag) | unrecorded-coupling count: module pairs sharing ADRs above the 0.25 Jaccard threshold with no import between them and no line in `.truth/label-coupling-opt-out`. The gate's whole job is to refuse the NEXT one, so a healthy reading is 0 and the interesting series is the opt-out file's growth rate — each new line is a decomposition that forced an architectural ruling | `instruments/label-coupling.py` summary line (`N unrecorded coupling(s)`) + `wc -l .truth/label-coupling-opt-out` | 0 unrecorded · opt-out holds 5 pairs (4 baseline 2026-08-18 **unadjudicated**, 1 adjudicated 2026-08-18 as ADR-041/056 forced split) · fired once in its first 2 days, catching `evidence~shellio` | 2026-09-20 | armed, **on probation**: filed 2026-08-20, retroactively — the gate shipped 2026-08-18 without this row, which ADR-047 makes part of a gate's definition of done. Review must ask whether one catch in two days is signal or a threshold set too low |
 
 Supporting Tier C context read alongside (not gates, no rows): the
 separation report (172 author→verifier pairs, 0 same-session, median

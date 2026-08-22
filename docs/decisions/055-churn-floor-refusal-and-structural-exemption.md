@@ -1,11 +1,21 @@
 # ADR-055: the churn floor refuses, and structural selector targets are exempt from both watch budgets
 
-Status: **PROPOSED** (2026-08-18, agent-authored) — this record is retrospective
-for its first half and forward-looking for its second, and it is deliberately
-not self-accepted. ADR-039 made the refusal conditional on operator evidence
-that has not been produced (see Context); waiving or satisfying that condition
-is the operator's call, not an agent's.
+Status: **ACCEPTED** (2026-08-22, operator ruling) — accepted OVER an unmet
+condition, and the record says so rather than tidying it away. ADR-039 made
+the advisory→refusal promotion conditional on operator evidence (≥30 days of
+forecast-versus-observed churn) that was never produced, and refactor step 2.5
+made "observed stalings" unmeasurable, so the condition is not merely pending
+but unsatisfiable in its original form. The operator reviewed the code and
+ruled that the architectural soundness of the churn floor and the structural
+exemption outweighs the missing evidence: *"We accept the residual risk."*
 
+What that leaves open, stated for whoever audits this later: the threshold
+itself is still unvalidated by data. Nothing here claims it is calibrated —
+only that it is accepted. Superseding this record with a calibrated threshold
+remains the honest end state.
+
+Originally filed PROPOSED (2026-08-18, agent-authored) and deliberately not
+self-accepted; the agent's refusal to accept its own record stands as written.
 Date: 2026-08-18
 
 Amends: **ADR-039** (the blast forecast and the churn report — advisory only),
