@@ -390,19 +390,42 @@ records up: that manufactures churn and a false air of intentionality.
 
   ```
   python3 - <<'PY'
-  import json, subprocess
-  rows = json.loads(subprocess.run(["python3", "template/scripts/truth",
-      "list", "--json"], capture_output=True, text=True).stdout)
+  import json, subprocess, sys
+  sys.path.insert(0, "template")
+  from truthlib.kernel import match_paths
+  adrs = subprocess.run(["git", "ls-files", "docs/archive/adr/"],
+                        capture_output=True, text=True).stdout.split()
+  rows = json.loads(subprocess.run(
+      ["python3", "template/scripts/truth", "list", "--json"],
+      capture_output=True, text=True).stdout)
   live = {r["id"] for r in rows if r["status"] == "live"}
-  hits = [(r["id"], p)
-          for line in open(".truth/claims.jsonl", encoding="utf-8")
-          for r in [json.loads(line)]
-          if r["kind"] == "claim" and r["id"] in live
-          for p in (r["payload"].get("evidence_paths") or [])
-          if "adr" in p.lower()]
-  print(len(hits), "live claim-path pair(s) naming an ADR file")
+  watched = set()
+  for line in open(".truth/claims.jsonl", encoding="utf-8"):
+      r = json.loads(line)
+      if r["kind"] == "claim" and r["id"] in live:
+          pats = r["payload"].get("evidence_paths") or []
+          watched.update(f for f in adrs if match_paths(f, pats))
+  print(f"{len(adrs)} ADR file(s) in the archive, "
+        f"{len(watched)} watched by a live claim")
   PY
   ```
+
+  *Why it counts files and not patterns.* The first version of this probe
+  asked whether any watch path contained the substring `adr`, which is the
+  fail-open shape this repository has a Tier C instrument for: a future
+  watch written as `docs/archive/**` contains no such substring, would have
+  vanished from the answer silently, and the `0` would have read as clean.
+  The form above intersects the ACTUAL archived files with each live claim's
+  watch set through the CLI's own `match_paths`, so a glob that starts
+  covering them changes the number instead of slipping past it — verified by
+  running it against a hypothetical `docs/archive/**` watch, which turns
+  `0 watched` into `54`. Found in review by an independent reader, in the
+  very command written to demonstrate that class.
+
+  *Interpreter note.* `python3` here is the bare system interpreter, which on
+  some machines lacks `jsonschema`; this probe does not need it, but a reader
+  copying the shape into something that validates records will meet the trap
+  `.local/machine.md` describes.
 
 **LIVING CONTRACT — must be watched by a deliberate claim.** A living
 contract states machinery other surfaces obey *now*; if it drifts,
