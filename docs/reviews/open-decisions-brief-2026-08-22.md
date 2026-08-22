@@ -270,6 +270,32 @@ lottery.**
    analogous instrument for stale numbers *in capsules* already have a home, or
    is it a new Tier C instrument?
 
+**Two distinctions the reviewer should test, offered by the session that
+caught the miscount** (`013jva2WUTrMH9MrjV1N1wxB`, filed as `wk-96a3bd63` so
+the finding outlives this brief):
+
+*Direction of failure.* This grep fails **open** — it reports fewer gates than
+exist. `gate-reachability.sh` states the opposite property as a design choice:
+*"a variable-built path reads as unreachable, never as reached."* An
+undercounting counter looks reasonable and nobody questions it; an
+overcounting one raises an alarm. If a rule comes out of this, it is that a
+capsule which COUNTS should fail toward the alarm, not toward silence.
+
+*Enumerating versus cardinal capsules.* A capsule that greps a pattern
+enumerates what it recognises, and is therefore vulnerable to forms not yet
+invented. A capsule that counts entities — `wc -l` over a policy file, `ls`
+over a directory — is not, because it counts the things rather than their
+spelling. The one battery arm that already has a registry row uses `wc -l
+.truth/label-coupling-opt-out`; the row this brief's §2 would add for other
+arms should not use `grep -c` over section headers.
+
+*How it was actually found, which is the least reassuring part.* The
+miscount surfaced because this session told another to "count with a command,
+not from my message" — and then supplied a command worse than the message it
+was correcting. The rule fired on the very command it was meant to protect,
+and only because someone happened to be checking a number for an unrelated
+issue. Nothing looked for it.
+
 ---
 
 ## Summary
