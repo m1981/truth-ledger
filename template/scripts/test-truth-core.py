@@ -4562,6 +4562,42 @@ class TestRecipeLints(unittest.TestCase):
         self.assertEqual(
             tm.recipe_lints("grep 'Accepted (2026-07-20' adr.md"), [])
 
+    def _enum(self, cmd):
+        return [m for m in tm.recipe_lints(cmd) if "SET or its SIZE" in m]
+
+    def test_set_emitting_grep_warns_fail_open(self):
+        """RULING 8: a grep whose output is a set or a count is fail-OPEN --
+        it counts what the pattern recognises, not what exists. tr-38d32bc7
+        reproduced green for four days on exactly this shape."""
+        for cmd in ("grep -c '^say \"FAULT' canary.sh",
+                    "grep -oE '^# --- [0-9]+' battery.sh",
+                    "grep -rl contradicts a.md b.md",
+                    "grep --count FAULT canary.sh"):
+            with self.subTest(cmd=cmd):
+                self.assertTrue(self._enum(cmd),
+                                f"no fail-open warning for {cmd!r}")
+
+    def test_existence_grep_stays_silent(self):
+        """`grep -q <literal>` ASSERTS PRESENCE. Rename the symbol and it
+        fails loudly; it never claimed to enumerate a set, so warning about
+        it would be noise -- and noise is how a lint gets ignored."""
+        self.assertEqual(self._enum("grep -q 'def fold_key' kernel.py"), [])
+        self.assertEqual(self._enum("sha256sum fact-health.sh"), [])
+
+    def test_guarded_recipe_stays_silent(self):
+        """The fail-closed pairing the lint ASKS FOR must not be scolded for
+        containing the shape it repairs: a `-v` anywhere means the author is
+        already subtracting the recognised forms."""
+        self.assertEqual(self._enum(
+            "grep -E '^# --- [0-9]' f | grep -vE '^# --- [0-9]+b?[.] [a-z]'"
+            " | wc -l"), [])
+
+    def test_set_emitting_warning_fires_once(self):
+        """One message per recipe, not per flag -- a lint that repeats
+        itself three times for one idea trains its reader to skim."""
+        self.assertEqual(len(self._enum(
+            "grep -c A f.txt && grep -c B g.txt && grep -oE C h.txt")), 1)
+
     def test_quote_split_literal_still_warns(self):
         # shlex concatenates adjacent quoted parts into ONE token -- a
         # whitespace splitter would have been gameable here (F1/F5).

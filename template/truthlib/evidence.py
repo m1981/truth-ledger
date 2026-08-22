@@ -328,10 +328,33 @@ def _evidence_toks(cmd):
 # ADR-037: recipe-lint lexicons. Shapes and carve-outs change only with
 # the RC-canary faults (the ADR-007 constants-with-faults precedent).
 GREP_FAMILY = frozenset(("grep", "rg", "egrep", "fgrep", "zgrep"))
+
+# RULING 8 (2026-08-22). Flags whose output is a SET or its SIZE, short
+# bundled forms included (-oE, -rl, -cE). A grep carrying one of these
+# counts what its PATTERN RECOGNISES, not what exists -- so a form the
+# pattern predates is simply absent, the number stays plausible, and the
+# capsule reproduces green while its fact drifts. That is not theory:
+# tr-38d32bc7 did exactly this for four days.
+_SET_EMITTING_SHORT = frozenset("colL")
+_SET_EMITTING_LONG = frozenset((
+    "--count", "--only-matching", "--files-with-matches",
+    "--files-without-match"))
+_INVERT_FLAGS = frozenset(("-v", "--invert-match"))
 VERSION_SHAPE_RE = re.compile(r"\bv?\d+\.\d+(?:\.\d+)?\b")
 DATE_SHAPE_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 SCHEMA_ID_RE = re.compile(r"truth-ledger-record\.v\d")
 FROZEN_DATE_RE = re.compile(r"(?:Accepted|Amended|Date:)\s*\(?\d{4}-")
+
+def _set_emitting(tok):
+    """Does this grep flag make the output a set or a count? Short flags
+    bundle (-oE, -rl), so the test is membership in the bundle rather than
+    equality -- an equality test would miss every real recipe in the
+    ledger, which is how a lint ships and fires on nothing."""
+    if tok in _SET_EMITTING_LONG:
+        return True
+    return (tok.startswith("-") and not tok.startswith("--")
+            and bool(_SET_EMITTING_SHORT & set(tok[1:])))
+
 
 def recipe_lints(cmd):
     """ADR-037: warnings, never refusals (a gate refusing legitimate
@@ -350,6 +373,13 @@ def recipe_lints(cmd):
         return []
     msgs = []
     program, expecting, n_flagged = None, True, False
+    # Whole-recipe property, so it is computed once rather than re-asked
+    # per token: a `-v` anywhere means the author is already subtracting.
+    guarded = any(t in _INVERT_FLAGS
+                  or (t.startswith("-") and not t.startswith("--")
+                      and "v" in t[1:])
+                  for t in toks)
+    enum_flagged = False
     for t in toks:
         if t in _SCREEN_SEPARATORS:
             expecting, program = True, None
@@ -370,6 +400,24 @@ def recipe_lints(cmd):
                         "first insertion above the match (ADR-012/"
                         "ADR-037). Drop -n unless the line number is the "
                         "fact.")
+            continue
+        # RULING 8: warn on the fail-open enumerating shape -- but stay
+        # SILENT when the recipe already subtracts its own recognised
+        # forms (a `-v` anywhere in it), because that is the fail-closed
+        # pairing this lint is asking for and scolding it would teach the
+        # opposite of the lesson.
+        if program in GREP_FAMILY and not enum_flagged and not guarded \
+                and _set_emitting(t):
+            enum_flagged = True
+            msgs.append("recipe: this grep emits a SET or its SIZE, so it "
+                        "counts what the pattern recognises rather than "
+                        "what exists -- fail-OPEN to a form invented "
+                        "later, which reproduces green while the fact "
+                        "drifts (RULING 8, 2026-08-22). Consider pairing "
+                        "it with an assertion that the complement is "
+                        "empty: `... | grep -v '<recognised forms>' | "
+                        "wc -l` reading 0. Legitimate as filed; measured "
+                        "by instruments/capsule-blindness.py.")
             continue
         if "/" in t or SCHEMA_ID_RE.search(t):
             continue
