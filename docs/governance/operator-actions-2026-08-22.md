@@ -7,6 +7,12 @@ does not read fenced content as a citation, so this page can name ids that are
 about to die without the ADR-036 tombstone gate refusing their retraction and
 without the sweep turning red afterwards.
 
+**And then this page broke its own rule, in the commit that stated it.** Three
+ids escaped into prose here — the whisper sentinel and the two successors —
+and `fact-health` went from 0 failures to 1 the moment the operator retracted
+the first of them. Corrected 2026-08-22. The rule was right; stating a rule
+and following it are two different acts, and only one of them is checked.
+
 Agents executed rulings 2, 5, 7, 8a and 8b. What remains is G12: retraction and
 issue cancellation are human-only and no agent flag opens them.
 
@@ -30,9 +36,9 @@ TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=wk-1bbb48c2 \
 
 ## Ruling 8 (final part) — retract the count-literal claim
 
-Its successors are already filed and reproduce: `tr-7f8d4a83` (the arm set,
-with no count literal and a form-complete capsule) and `tr-d2aa8783` (the
-fail-closed guard, positive form).
+Its two successors are already filed and reproduce — the arm set, with no
+count literal and a form-complete capsule, and the fail-closed guard in its
+positive form. Both are named in the block below.
 
 ```
 TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-38d32bc7 \
@@ -103,9 +109,9 @@ TRUTH_HUMAN=1 TRUTH_HUMAN_ACK=tr-c5ff452c python3 template/scripts/truth verdict
 git rm .pi/extensions/truth-whisper.ts
 ```
 
-`tr-599e7561` is `unverified`, not `live` — it never had a verifier. Retracting
-an unverified claim is legitimate and the fold accepts it; noted only so the
-status in the output is not a surprise.
+The sentinel is `unverified`, not `live` — it never had a verifier.
+Retracting an unverified claim is legitimate and the fold accepts it; noted
+only so the status in the output is not a surprise.
 
 ## After the batch
 

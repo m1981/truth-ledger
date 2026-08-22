@@ -376,14 +376,33 @@ records up: that manufactures churn and a false air of intentionality.
   along the successor chain and is watched by nothing today.
   It **will** stale on every new ADR and on any Status-header edit; that
   staling is its whole job — a new ADR should re-assert the series'
-  shape once, in a fresh verifier session, not silently extend it. Note
-  the ADRs lit *today* are lit by **literal per-file** paths that the
-  living behaviour-claims cite as their doc surface (e.g. `tr-f9318142`
-  lists `…/029-…md`), not by a directory glob — so a new ADR does not
-  stale them, it simply arrives dark until the series claim or a
-  behaviour claim names it. That is correct; the earlier worry about
-  "incidental glob coverage of the ADR series" does not hold here (no
-  such glob exists).
+  shape once, in a fresh verifier session, not silently extend it.
+
+  *Corrected 2026-08-22.* This paragraph used to add that the ADRs lit
+  today are lit by literal per-file paths carried as the doc surface of
+  living behaviour-claims, and named one as an example. **No live claim
+  watches any ADR path today** — the intersection is empty, and the
+  reason is step 1.3: the corpus moved to `docs/archive/adr/`, which is
+  frozen and watched by nothing. The old worry about "incidental glob
+  coverage of the ADR series" still does not hold, but not for the old
+  reason — the corpus is not under-watched by a glob, it is unwatched
+  entirely, and deliberately so. Check rather than trust the sentence:
+
+  ```
+  python3 - <<'PY'
+  import json, subprocess
+  rows = json.loads(subprocess.run(["python3", "template/scripts/truth",
+      "list", "--json"], capture_output=True, text=True).stdout)
+  live = {r["id"] for r in rows if r["status"] == "live"}
+  hits = [(r["id"], p)
+          for line in open(".truth/claims.jsonl", encoding="utf-8")
+          for r in [json.loads(line)]
+          if r["kind"] == "claim" and r["id"] in live
+          for p in (r["payload"].get("evidence_paths") or [])
+          if "adr" in p.lower()]
+  print(len(hits), "live claim-path pair(s) naming an ADR file")
+  PY
+  ```
 
 **LIVING CONTRACT — must be watched by a deliberate claim.** A living
 contract states machinery other surfaces obey *now*; if it drifts,
