@@ -263,6 +263,26 @@ else
   pass "label-coupling" "$SUM"
 fi
 
+# --- 8c. arm-index: every enforced family names what it guards -----------
+# wk-db5fce52. This instrument was a DARK GATE for as long as it existed:
+# outside the CHECKS globs, invoked by no root, and FAILING (2 families in
+# the canary declared no subject) with nobody to read the exit code. A
+# check nothing calls is a claim about coverage, not coverage -- section 9
+# below states the general form; this arm is one instance of it paying.
+#
+# Subject-less families are a REPORTED warning for non-enforced species and
+# a FAILURE for enforced ones (today: the canary). That asymmetry is the
+# instrument's, not this arm's -- read its exit code and print its summary,
+# decide nothing here.
+OUT=$(python3 instruments/arm-index.py 2>&1); RC=$?
+SUM=$(printf '%s\n' "$OUT" | tail -1)
+if [ "$RC" -ne 0 ]; then
+  bad "arm-index" "$SUM:
+$(printf '%s\n' "$OUT" | grep -E '^FAIL' | head -3)"
+else
+  pass "arm-index" "$SUM"
+fi
+
 # --- 9. reachability sweep ----------------------------------------------
 # The general form of the defect above: a check no root invokes is a claim
 # about coverage, not coverage. This arm is also how gate-reachability.sh

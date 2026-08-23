@@ -1100,7 +1100,7 @@ fi
 # replace it: after an ADR-051 refresh the claim is live AND its recorded
 # capsule still reproduces. A live claim that cannot reproduce is exactly
 # the population `truth reproduce` exists to name.
-say "FAULT L: re-verified claim stays live and its refreshed capsule reproduces"
+say "FAULT L (ADR-051): re-verified claim stays live and its refreshed capsule reproduces"
 CID_R=$($T claim "watched.txt has multiple lines" --class VERIFIED \
         --evidence-cmd "wc -l < watched.txt" --paths "watched.txt" --tier P1 --duplicate-ok)
 echo "another line" >> watched.txt

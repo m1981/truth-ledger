@@ -115,7 +115,7 @@ cleanup_mutants
 # itself. A subset prints `SUBSET n of m` where the digits would be, so the
 # sed captures nothing, the meta-gate reads zero, and the battery FAILS.
 # Partial verification cannot masquerade as full verification.
-TOTAL_ARMS=15
+TOTAL_ARMS=16
 WANT=""
 usage() {
   printf 'usage: %s [--arm N | N] ...\n' "${0##*/}" >&2
@@ -134,12 +134,22 @@ while [ $# -gt 0 ]; do
 done
 # An unknown arm is exit 2 -- environment/usage, never a governance verdict.
 # Silently ignoring it would report "0 caught" and read as a passing subset.
+# Validated against TOTAL_ARMS ARITHMETICALLY, not against a glob. The
+# glob that used to stand here (`[1-9]|1[0-5]`) was a SECOND source of
+# truth for the arm count, and it drifted the first time an arm was added:
+# it rejected `--arm 16` while the very message it printed said "arms are
+# 1..16", because the message read TOTAL_ARMS and the test did not. Same
+# shape as the capsule that counted `^# --- [0-9]+[.]` and went blind to
+# `5b.` -- an enumeration standing in for a count (J-047).
 for _a in $WANT; do
   case "$_a" in
-    [1-9]|1[0-5]) ;;
-    *) printf 'no such arm: %s (arms are 1..%s)\n' "$_a" "$TOTAL_ARMS" >&2
-       exit 2 ;;
+    ''|*[!0-9]*) _ok=0 ;;
+    *) [ "$_a" -ge 1 ] && [ "$_a" -le "$TOTAL_ARMS" ] && _ok=1 || _ok=0 ;;
   esac
+  if [ "$_ok" -ne 1 ]; then
+    printf 'no such arm: %s (arms are 1..%s)\n' "$_a" "$TOTAL_ARMS" >&2
+    exit 2
+  fi
 done
 want() {
   [ -z "$WANT" ] && return 0
@@ -502,6 +512,45 @@ elif ! grep -q "sed -n 's/\^canary result: " scripts/release-battery.sh; then
   miss "the battery no longer parses the canary summary the way this suite stubs it"
 else
   ok "the canary's summary contract holds at the producer, so the stub still stands for something real"
+fi
+
+fi
+
+if want 16; then
+echo "ARM 16: a failing Tier C instrument must block the battery, not be reported and shrugged off"
+# wk-db5fce52. `arm-index` was a DARK GATE: outside CHECKS, called by no
+# root, and FAILING for as long as anyone had looked -- an exit code with
+# no reader. Section 8c of the battery now reads it. This arm exists so
+# that section is not itself a thing nobody has seen fail (AGENTS.md).
+#
+# The mutation points the invocation at a path that does not exist, so
+# python3 exits non-zero for a reason that cannot be confused with the
+# instrument's own verdict. What is asserted is the PROPAGATION: a
+# non-zero Tier C instrument must suppress the green verdict and exit 1.
+MUT="scripts/.arm16-dead-instrument.sh"
+if mutate 's|instruments/arm-index\.py|instruments/.arm16-no-such-instrument.py|' "$MUT"; then
+  run "$MUT"; O="$OUT"; R="$RC"
+  rm -f "$MUT"
+  # ASSERT ON THIS ARM'S OWN VERDICT LINE, never on the battery's global
+  # outcome. The first cut of this arm tested "no green verdict" and
+  # "exit 1", and reported CAUGHT even when section 8c was mutated to
+  # `pass` -- because an UNRELATED arm (fact-health) was red at the time,
+  # so both assertions held for someone else's reason. That is the vacuous
+  # shape this file's own ARM 5 was written to escape, reintroduced by the
+  # author of this comment and caught only by running the red-check the
+  # doctrine demands. `FAIL  arm-index` is produced by bad() and by
+  # nothing else, so it cannot be satisfied by another arm failing.
+  if ! printf '%s\n' "$O" | grep -q "^  FAIL  arm-index"; then
+    miss "battery did not report arm-index as FAILING while its instrument could not run at all"
+  elif [ "$R" != "1" ]; then
+    miss "battery exited $R with a dead Tier C instrument -- a governance failure must exit 1"
+  elif printf '%s' "$O" | grep -q "all arms green"; then
+    miss "battery reported green while arm-index was reported FAIL"
+  else
+    ok "a dead Tier C instrument is reported FAIL by name and suppresses the green verdict"
+  fi
+else
+  miss "ARM 16 could not mutate the arm-index invocation -- section 8c drifted, so this arm was checking nothing"
 fi
 
 fi

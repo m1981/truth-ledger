@@ -100,7 +100,21 @@ SOURCES = (
     ("instruments/fingerprint.sh", "probe", False),
 )
 
-FAMILY_RE = re.compile(r'^\s*(?:say|echo)\s+"((?:FAULT|ARM|CASE|LANE)[^"]*)"')
+# The header vocabulary is an ENUMERATION, and an enumeration over spellings
+# is fail-open to a form invented later -- the same class as the capsule that
+# counted `^# --- [0-9]+[.]` and went blind to `5b.` (J-047, wk-96a3bd63).
+# Here it cost a FALSE POSITIVE rather than a false negative, which is the
+# safe direction and is why this was survivable: `DOCTOR (G4)` at
+# truth-canary.sh:71 declares its subject perfectly well, but the pattern
+# could not see the header at all, so its 12 arms were reported as
+# "(no family header)" and the instrument FAILED. The subject was never
+# missing; the parser was.
+# DOCTOR earned its place by causing that failure -- do not add spellings
+# speculatively. Verified before adding: of every `say`/`echo` header in the
+# swept suites, DOCTOR is the ONLY one that declares a subject and is missed
+# by this pattern.
+FAMILY_RE = re.compile(
+    r'^\s*(?:say|echo)\s+"((?:FAULT|ARM|CASE|LANE|DOCTOR)[^"]*)"')
 ASSERT_RE = re.compile(r'(?:^|\s)(ok|miss|bad)\s+"')
 PROBE_RE = re.compile(r'^probe\s+"([^"]+)"')
 CLASS_RE = re.compile(r"^class\s+(Test\w+)")
@@ -115,7 +129,7 @@ TESTDEF_RE = re.compile(r"^\s+def\s+(test_\w+)")
 # answered by any of them. Insisting on ADR-nnn alone reported 15 families
 # as subject-less when 13 of them plainly declare a subject, and a rule
 # that calls a followed convention a violation gets switched off.
-PAREN_TAG_RE = re.compile(r"^(?:FAULT|ARM|CASE|LANE)\s+\S+\s*\(([^)]+)\)")
+PAREN_TAG_RE = re.compile(r"^(?:FAULT|ARM|CASE|LANE|DOCTOR)\s*\S*\s*\(([^)]+)\)")
 
 
 def _subject(text):
