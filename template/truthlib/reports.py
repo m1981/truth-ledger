@@ -80,7 +80,7 @@ def blast_report(events, folded=None, history=None):
 
 # ------------------------------------------------------ stats (FS-1)
 
-def half_life_observations(events):
+def half_life_observations(events, now_dt=None):
     """FS-1: elapsed live-time for every claim that was live and later
     DIVERGED -- the raw material for tier-calibrated TTL suggestions
     (paper section 6.2, made a number). This replays the same (ts, id)
@@ -123,28 +123,25 @@ def half_life_observations(events):
             if ev["id"] not in state:
                 state[ev["id"]] = {"tier": p.get("cost_tier"),
                                    "status": "unverified", "since": None}
-        elif kind in ("verdict", "invalidation"):
+        elif kind == "verdict":
+            # PARITY WITH fold(), which is the whole discipline of this
+            # replay. `invalidation` is no longer in this branch at all:
+            # step 2.5 made the path arm inert and ADR-057 made the TTL
+            # arm inert too, so the kind moves no status in fold() and
+            # must move none here. This replay used to carry its own rule
+            # (`new = "stale" if kind == "invalidation"`), and step 2.5
+            # proved why that shape is dangerous: the moment fold's
+            # algebra changed, the replay went on describing a ledger
+            # nobody has. It was test_half_life_replay_matches_fold that
+            # caught it -- exactly the arm's job -- and the fix each time
+            # is to delete the second opinion rather than re-sync it.
             cid = p.get("claim")
             e = state.get(cid)
             if not e or e["status"] == "retracted":
                 continue
-            if kind == "invalidation":
-                # PARITY WITH fold(), through the SAME discriminator it
-                # calls (kernel.ttl_invalidation). This replay used to
-                # carry its own rule -- `new = "stale" if kind ==
-                # "invalidation"` -- and step 2.5 proved why that is the
-                # dangerous shape: the moment fold's algebra changed, the
-                # replay went on describing a ledger nobody has. It was
-                # test_half_life_replay_matches_fold that caught it, which
-                # is exactly the arm's job; the fix is to delete the second
-                # opinion rather than re-sync it.
-                if not ttl_invalidation(p):
-                    continue  # path invalidation: inert in fold, inert here
-                new = "stale"
-            else:
-                # R13: registry .get -- an unknown verdict still skips
-                # silently here, exactly as the local map did.
-                new = VERDICT_STATUS.get(p.get("verdict"))
+            # R13: registry .get -- an unknown verdict still skips
+            # silently here, exactly as the local map did.
+            new = VERDICT_STATUS.get(p.get("verdict"))
             if not new:
                 continue
             ts = parse_ts(ev.get("ts") or "")
@@ -163,6 +160,28 @@ def half_life_observations(events):
                             (ts - e["since"]).total_seconds() / 86400.0))
             e["status"] = new
             e["since"] = ts if new == "live" else None
+    # ADR-057: the clock, applied exactly as fold() applies it and for the
+    # same reason -- this replay's second return value is asserted equal to
+    # fold()'s statuses (test_half_life_replay_matches_fold), so a clock in
+    # one and not the other is drift by construction.
+    #
+    # It changes no OBSERVATION. The measured transition is live ->
+    # diverged (a judge's finding), and a read-time expiry produces
+    # `stale`, never `diverged` -- so ADR-032's exclusion of TTL expiries
+    # from the medians stays structural rather than becoming a special
+    # case. This loop only brings the final-status map into line.
+    if now_dt is not None:
+        by_id = {}
+        for _, ev in ordered:
+            if ev.get("kind") == "claim":
+                by_id.setdefault(ev["id"], ev)
+        for cid, e in state.items():
+            if e["status"] not in ACTIVE_STATUSES:
+                continue
+            c = by_id.get(cid)
+            if c is not None and ttl_expiry(c, now_dt) is not None:
+                e["status"] = "stale"
+                e["since"] = None
     return obs, {cid: e["status"] for cid, e in state.items()}
 
 def claim_concerns(payload):
@@ -183,7 +202,8 @@ def stats_report(events, now, folded=None):
     needs that a machine can compute. Pure fold consumer; pass `folded`
     (a fold(events) result) to share one fold across the stats
     consumers (ADR-034 -- each consumer used to re-fold and re-sort)."""
-    claims, _ = folded if folded is not None else fold(events)
+    claims, _ = folded if folded is not None \
+        else fold(events, now_dt=now)
     by_status, by_tier = {}, {}
     for e in claims.values():
         by_status[e["status"]] = by_status.get(e["status"], 0) + 1
@@ -255,10 +275,17 @@ def separation_report(events, now, folded=None):
         involved reading;
       * fastest -- (seconds, claim id) or None;
       * median_seconds -- the corpus middle, for context.
-    Pure: no clock read (`now` unused -- every timestamp is read from the
-    records, never recomputed; kept for signature parity)."""
-    del now  # signature parity; the report reads records, not the clock
-    claims, _ = folded if folded is not None else fold(events)
+    Clock discipline (ADR-057): the BODY reads no clock -- every figure
+    above comes from record timestamps, and `now` is deleted right after
+    the fold so reaching for it is a NameError rather than a review
+    finding. What DID change is the fold beneath it: `live_unevidenced`
+    says "LIVE today", and since ADR-057 "today" is a real parameter --
+    a claim past its TTL is stale to this report exactly as it is to
+    `truth list`. When the caller shares a `folded`, `now` goes unused
+    entirely."""
+    claims, _ = folded if folded is not None \
+        else fold(events, now_dt=now)
+    del now  # the report BODY reads records, never the clock (see above)
     authored = {}
     for cid, e in claims.items():
         c = e["claim"]
@@ -329,10 +356,19 @@ def override_report(events, now, folded=None):
         DEAD (stale/diverged/retracted). A prior claim still live/unverified
         is NOT flagged (that is ADR-018 near-duplicate territory). tokens()
         is REUSED, never re-implemented -- the ADR-018/021 parity lesson.
-    Pure: no clock read (now is unused -- expiries are read from records,
-    not recomputed; kept for signature parity with stats_report)."""
-    del now  # signature parity; the report reads records, not the clock
-    claims, _ = folded if folded is not None else fold(events)
+    Clock discipline (ADR-057): the BODY reads no clock -- `decay_expiries`
+    and the rest are counted from records, and `now` is deleted right
+    after the fold so the body cannot reach it. The fold beneath it does
+    take the clock, because `repeats` turns on whether the PRIOR claim is
+    now DEAD (stale/diverged/retracted) and TTL staleness is read-time
+    since ADR-057. Note the asymmetry this leaves, and it is deliberate:
+    `decay_expiries` counts ADR-032 decay records that no longer get
+    written, so it is a HISTORICAL figure that will not grow. The
+    ADR-032 judgment still expires -- the fold says so -- but nothing
+    counts the event of it expiring, because there is no event."""
+    claims, _ = folded if folded is not None \
+        else fold(events, now_dt=now)
+    del now  # the report BODY reads records, never the clock (see above)
     scope_filings = overridden_dupes = screened_false = paths_filings = 0
     exit_overrides = hollow_warned = generated_overrides = 0
     max_scope_ttl = None
@@ -489,7 +525,17 @@ def baseline_snapshot(events):
     """Issue #3 (10007): the frozen status account of one fold. Counts
     AND sorted id lists -- ids make diffs exact and give auditors the
     drill-down; sorting plus sort_keys serialization makes the artifact
-    deterministic, so identical ledgers yield byte-identical baselines."""
+    deterministic, so identical ledgers yield byte-identical baselines.
+
+    DELIBERATELY CLOCKLESS (ADR-057). Every other report folds with
+    `now_dt` so TTL expiry shows up; this one must not, because its whole
+    contract is that the same ledger yields the same bytes. A baseline
+    that folded with a clock would diff against itself overnight, and the
+    drift would read as ledger movement rather than as the calendar
+    turning. The cost is stated rather than hidden: a baseline counts a
+    TTL-expired claim under the status its verdicts left it in.
+    blast_report is clockless for the weaker version of the same reason
+    -- it takes no `now` at all and counts historical records."""
     claims, _ = fold(events)
     issues = fold_issues(events)
     c_ids, tiers = {}, {}
@@ -655,7 +701,7 @@ def health_report(events, now, *, folded=None, history=None,
     refused it, correctly: ADR-046 ruled that stats carries the Tier B
     core and analysis metrics live elsewhere. This IS elsewhere, and it
     ships."""
-    folded = folded if folded is not None else fold(events)
+    folded = folded if folded is not None else fold(events, now_dt=now)
     claims, _ = folded
     out = {
         "ledger": stats_report(events, now, folded=folded),

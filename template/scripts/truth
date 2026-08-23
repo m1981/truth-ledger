@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""truth v0.9.38 -- append-only claims ledger with a native work kernel.
+"""truth v0.10.0 -- append-only claims ledger with a native work kernel.
 
 Facts are appended as JSONL records to .truth/claims.jsonl (INV-A:
 append-only, commit-gated by scripts/check-truth.sh); every status is
@@ -55,8 +55,10 @@ from truthlib.kernel import _glob_rx, _ISSUE_EVENT_STATUS
 from truthlib.evidence import _evidence_toks, _SCREEN_SEPARATORS, \
     _SCREEN_PUNCT
 # _anchor_unreachable and _evidence_paths_touched went with the strategies
-# themselves in refactor step 2.6; _ttl_expired is the whole cascade now.
-from truthlib.policy import _ttl_expired
+# themselves in refactor step 2.6; _ttl_expired went with the SEAM in
+# ADR-057, which moved the clock arm to kernel.ttl_expiry (a public name,
+# so it arrives through the kernel star-import above and needs no line
+# here). truthlib.policy now exports no underscore name at all.
 from truthlib.advisory import _escape_ctrl
 from truthlib.gates import _gate_text_nonempty, _gate_duplicate, \
     _gate_quantifier_scope, _gate_scope_decay, _gate_inv_m, \

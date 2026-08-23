@@ -190,9 +190,10 @@ def _gate_inv_m(ctx):
     if not paths:
         return None
     # INV-M applies to any claim carrying evidence_paths, not only
-    # VERIFIED -- decide_invalidation doesn't gate on evidence_class
-    # either, so an INFERRED/UNVERIFIED claim with paths is exposed to
-    # the identical dead-tripwire failure.
+    # VERIFIED -- the staling path never gated on evidence_class either
+    # (decide_invalidation did not, and neither does the ADR-057 fold),
+    # so an INFERRED/UNVERIFIED claim with paths is exposed to the
+    # identical dead-tripwire failure.
     malformed = malformed_path_list(paths)
     if malformed:
         return ("truth: --paths entry contains whitespace with no comma "

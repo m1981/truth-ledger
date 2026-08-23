@@ -515,7 +515,15 @@ class TestClaudeSessionDigest(unittest.TestCase):
 
 
 class TestTierCInstruments(unittest.TestCase):
-    """Test the 5 Tier C Instruments on real ledger and sandbox red proofs."""
+    """Tier C instruments on the real ledger plus a sandbox red proof.
+
+    Covers 6 of the 10 scripts in instruments/ -- separation-report,
+    override-velocity, blast-report, concern-tag, retraction-causes and
+    semantic-audit. The gap is real and filed (wk-15dfc164); this
+    docstring states the number it actually examines rather than the
+    number of files in the directory, because the previous wording
+    ("all 5 instruments") read as full coverage of a set that had grown
+    to nine."""
 
     def test_separation_report_real_and_sandbox(self):
         """separation-report.py parses JSON and detects sub-second agree."""
@@ -683,6 +691,149 @@ class TestTierCInstruments(unittest.TestCase):
         finally:
             sb.cleanup()
 
+    def test_semantic_audit_extracts_and_never_reaches_the_network(self):
+        """semantic-audit.py (ADR-059): the justification sentences of ACTIVE
+        claims, PLUS orphan_basis from retracted ones, deterministically,
+        with no networking imported."""
+        inst = os.path.join(INSTRUMENTS_DIR, "semantic-audit.py")
+
+        # THE HARD CONTRACT FIRST (ADR-059). An extractor that grew a
+        # `requests.post` would still pass every behavioural assertion
+        # below while shipping this repository's justification text to a
+        # third party. Nothing else in the suite would notice, so the pin
+        # is structural: the module's source may not name a transport.
+        with open(inst, encoding="utf-8") as f:
+            source = f.read()
+        body = "\n".join(l for l in source.splitlines()
+                          if not l.lstrip().startswith("#"))
+        code = body.split('"""', 2)[-1]      # drop the module docstring,
+        for banned in ("requests", "http.client", "urllib",             # which discusses them
+                       "socket", "httpx", "urlopen", "smtplib"):
+            # assertTrue, not assertNotIn: the latter dumps the whole
+            # module into the failure message and buries the sentence.
+            self.assertTrue(banned not in code,
+                            f"semantic-audit.py names {banned!r} outside "
+                            "its docstring -- ADR-059 forbids network I/O "
+                            "in the extractor; the send belongs in CI")
+
+        res = subprocess.run([sys.executable, inst], cwd=REPO_ROOT,
+                             capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        rows = json.loads(res.stdout)
+        self.assertIsInstance(rows, list)
+        for r in rows:
+            self.assertEqual(sorted(r), ["basis", "id", "record", "type"])
+            self.assertTrue(r["basis"].strip())
+        # Deterministic: a CI diff must mean the LEDGER moved.
+        again = subprocess.run([sys.executable, inst], cwd=REPO_ROOT,
+                               capture_output=True, text=True)
+        self.assertEqual(res.stdout, again.stdout)
+        # The census is on stderr and names every type, including the
+        # ones reading zero -- a dark arm has to be visible.
+        self.assertIn("scope_basis=", res.stderr)
+        self.assertIn("orphan_basis=", res.stderr)
+
+        # Sandbox red proof: a live claim's scope_basis is extracted, and
+        # the SAME sentence disappears once the claim leaves the active
+        # set -- the scope decision, made falsifiable.
+        sb = Sandbox()
+        try:
+            sb.write_file("f.txt", "data\n")
+            sb.git_commit("add f.txt")
+            basis = "the include filter deliberately covers the whole codebase"
+            res = sb.run_truth(
+                "claim", "no occurrences remain anywhere in the codebase",
+                "--class", "VERIFIED", "--evidence-cmd",
+                "grep -rc data --include=f.txt .", "--paths", "f.txt",
+                "--tier", "P1", "--scope-ok", basis,
+                env={"TRUTH_ACTOR": "gate", "TRUTH_SESSION": "s-sa"})
+            cid = res.stdout.strip()
+
+            out = subprocess.run([sys.executable, inst], cwd=sb.root,
+                                 capture_output=True, text=True)
+            self.assertEqual(out.returncode, 0, out.stderr)
+            got = [r for r in json.loads(out.stdout) if r["id"] == cid]
+            self.assertEqual(len(got), 1, out.stdout)
+            self.assertEqual(got[0]["type"], "scope_basis")
+            self.assertEqual(got[0]["basis"], basis)
+
+            sb.run_truth("verdict", cid, "diverge", "--basis", "the count moved",
+                         env={"TRUTH_ACTOR": "gate", "TRUTH_SESSION": "s-judge"})
+            out = subprocess.run([sys.executable, inst], cwd=sb.root,
+                                 capture_output=True, text=True)
+            self.assertEqual(out.returncode, 0, out.stderr)
+            self.assertEqual(
+                [r for r in json.loads(out.stdout) if r["id"] == cid], [],
+                "a diverged claim's justification is history -- extracting "
+                "it spends L2 tokens on a finding nobody can act on")
+
+            # THE ORPHAN BRANCH, which is the one exception and therefore
+            # the one most likely to be lost in a later tidy-up. A
+            # retraction filed with --orphan-ok defends an ACT, not a
+            # fact: the dangling citations are still in the corpus, so the
+            # sentence stays auditable after its claim dies. It also
+            # cannot be exercised any other way -- validate_events refuses
+            # orphan_basis on a non-retracted verdict, so an active-only
+            # scope makes this field structurally unreachable.
+            res = sb.run_truth("claim", "the widget registry lists four entries",
+                               "--tier", "P2",
+                               env={"TRUTH_ACTOR": "gate", "TRUTH_SESSION": "s-sa"})
+            dead = res.stdout.strip()
+            orphan_basis = "the citations are pattern exemplars, not facts anyone stands on"
+            res = sb.run_truth("verdict", dead, "retracted", "--basis", "wrong at filing",
+                               "--cause", "wrong", "--orphan-ok", orphan_basis,
+                               # ADR-011, both halves: the env var alone is
+                               # refused headless (canary FAULT H1), so the
+                               # sandbox fixture supplies the id-specific ack
+                               # exactly as the other suite fixtures do.
+                               env={"TRUTH_ACTOR": "gate", "TRUTH_SESSION": "s-judge",
+                                    "TRUTH_HUMAN": "1", "TRUTH_HUMAN_ACK": dead})
+            self.assertEqual(res.returncode, 0, res.stderr)
+
+            out = subprocess.run([sys.executable, inst], cwd=sb.root,
+                                 capture_output=True, text=True)
+            self.assertEqual(out.returncode, 0, out.stderr)
+            got = [r for r in json.loads(out.stdout) if r["id"] == dead]
+            self.assertEqual([r["type"] for r in got], ["orphan_basis"],
+                             "orphan_basis must be extracted from a RETRACTED "
+                             "claim, and nothing else may leak in with it")
+            self.assertEqual(got[0]["basis"], orphan_basis)
+            self.assertIn("orphan_basis=1", out.stderr)
+
+            # ...and the branch is gated on the claim's STATUS, not on the
+            # field being present. validate_events refuses orphan_basis on
+            # any non-retracted verdict, so the only way this record exists
+            # is a raw append -- a forgery, or a hand-edited ledger. It must
+            # not reach the audit: `cid` is DIVERGED, and a sentence
+            # excusing dangling citations for a claim nobody retracted is
+            # an argument about an act that never happened.
+            #
+            # Pinned because the extractor CLAIMS this protection in a
+            # comment, and a guard nothing exercises is a guard that gets
+            # tidied away. Seeding it by widening ORPHAN_STATUSES to
+            # include "diverged" must turn this red.
+            forged = {
+                "id": "tr-00fa15e0", "kind": "verdict", "actor": "forger",
+                "session": "s-forge",
+                "ts": "2026-01-01T00:00:00.000000+00:00",
+                "payload": {"claim": cid, "verdict": "diverge",
+                            "basis": "raw append",
+                            "orphan_basis": "smuggled past intake"},
+            }
+            with open(os.path.join(sb.root, ".truth", "claims.jsonl"),
+                      "a", encoding="utf-8") as f:
+                f.write(json.dumps(forged) + "\n")
+            out = subprocess.run([sys.executable, inst], cwd=sb.root,
+                                 capture_output=True, text=True)
+            self.assertEqual(out.returncode, 0, out.stderr)
+            self.assertNotIn("smuggled past intake", out.stdout,
+                             "an orphan_basis raw-appended onto a NON-retracted "
+                             "claim reached the audit -- the branch is keyed on "
+                             "the field, not on the claim's status")
+            self.assertIn("orphan_basis=1", out.stderr)
+        finally:
+            sb.cleanup()
+
 
 class TestMarkdownAndSpecHealth(unittest.TestCase):
     """Test Markdown citation health (fact-health.sh) and session-close gate."""
@@ -717,9 +868,13 @@ class TestMarkdownAndSpecHealth(unittest.TestCase):
         # 2. Stale claim
         self.sb.write_file("stale.txt", "original\n")
         self.sb.git_commit("add stale.txt")
-        # Step 2.5/2.6: `stale` is reachable ONLY through TTL expiry now,
-        # so the fixture backdates the claim and runs the clock verb. This
-        # doubles as the integration-level pin that ADR-019 kept its writer.
+        # Step 2.5/2.6: `stale` is reachable ONLY through TTL expiry, and
+        # ADR-057 makes that expiry a READ-TIME derivation -- so backdating
+        # the claim past its ttl_days is the whole fixture. The
+        # `run_truth("ttl-scan")` line that used to follow is gone: the
+        # verb no longer exists, and because nothing asserted its exit code
+        # it kept "passing" as a silent argparse failure while the read-time
+        # clock did the real work. A call nobody checks is not a step.
         res = self.sb.run_truth("claim", "stale.txt says original", "--class", "VERIFIED",
                                 "--evidence-cmd", "cat stale.txt", "--paths", "stale.txt", "--tier", "P1",
                                 "--ttl-days", "1", env={"TRUTH_NOW": "2026-06-01T00:00:00+00:00"})
@@ -727,7 +882,6 @@ class TestMarkdownAndSpecHealth(unittest.TestCase):
         self.sb.run_truth("verdict", cid_stale, "agree", "--basis", "verified", env={"TRUTH_SESSION": "s-v1"})
         self.sb.write_file("stale.txt", "modified\n")
         self.sb.git_commit("modify stale")
-        self.sb.run_truth("ttl-scan")
 
         # 3. Disputed claims (distinct sentences to avoid near-duplicate refusal)
         res = self.sb.run_truth("claim", "fixture engine reads configuration from local disk", "--class", "UNVERIFIED", "--tier", "P1")

@@ -8,6 +8,99 @@ The CLI still states its CURRENT version on its own line 2
 line and pins every other version surface to it. Newest first; a
 release adds its entry here AND bumps the docstring version line.
 
+v0.10.0 (the clock stops being an event; two verbs retired, one added.
+  No schema change -- the record $id stays `truth-ledger-record.v0.18`.):
+
+  -- THIS ENTRY IS INCOMPLETE, AND DELIBERATELY SAYS SO --------------------
+  * `v0.9.38` was tagged before the Reproduce-on-Read refactor's later
+    steps, FAZA 3 and FAZA 4 landed. 122 commits sit between that tag and
+    this entry (`git rev-list --count v0.9.38..HEAD`), and MOST OF THEM
+    HAVE NO ENTRY HERE. What is
+    written below is what was verified against the code while writing it:
+    the ADR-057/058/059 work, and the CLI surface delta computed
+    mechanically from the tagged tree. The rest is listed by commit so the
+    gap is countable rather than invisible:
+
+        c0ff7f3  Reproduce-on-Read steps 2.5/2.6 -- the double-invalidation
+                 rule; `invalidate-scan` narrowed to `ttl-scan`; `reaffirm`
+                 retired
+        4198ed2  ADR-041 -- shell-free evidence execution (see ADR-056 for
+                 what shipped and what it does NOT close)
+        ee7902a  FAZA 3 step 3.1 -- named watch policies
+        79750ed  step 3.2 -- the watch budget as a hard refusal
+        0dbfc87  step 3.2, second arm -- the WIDTH budget on ADR-039
+        be0b4da  FAZA 3 steps 3.1/3.3 -- structural selectors in policy,
+                 gates and reproduce
+        2822d8e  structural anchors -- sub-tree selectors
+        0131a92  FAZA 4 steps 4.1/4.2 -- one projection over the fold, and
+                 the `truth health` verb
+        c84bfcd  ADR-054 -- doctor resolves a delegated gate
+        39e1052  ADR-055 -- churn floor as a refusal, structural exemption
+
+    A release TAG should not be cut until those have entries written by
+    people who can vouch for them. Writing them from a code read would be
+    the restated-fact failure this project has a sweep for.
+
+  -- CLI SURFACE DELTA SINCE v0.9.38 (computed, not remembered) ------------
+  * REMOVED: `invalidate-scan`, `reaffirm`. Both were write paths for a
+    staling proxy that fired 1997 times against 71 judged divergences on
+    this ledger -- a 3.6% positive predictive value. `truth reproduce`
+    (v0.9.38) answers the same question semantically at read time.
+    Nothing replaces `invalidate-scan`; `verdict --recheck` remains the
+    per-claim re-confirmation. No aliases.
+  * ADDED: `health`.
+  * `ttl-scan` -- the interim verb step 2.6 narrowed `invalidate-scan`
+    into -- was born and died between two unreleased commits and NEVER
+    SHIPPED. A consumer upgrading from v0.9.38 has never been able to
+    call it, so it needs no deprecation path.
+
+  -- READ-TIME TTL (ADR-057, meta-repo docs/decisions/057-*.md) ------------
+  * `fold(events, now_dt=None)`. The clock is a PARAMETER, so the fold
+    stays a pure function of its two arguments and confluence is
+    untouched: same events + same instant fold to the same state in any
+    input order. `now_dt=None` (the default) evaluates no TTL at all,
+    which is what keeps `baseline` byte-reproducible.
+  * ADR-019's arithmetic is unchanged -- the shelf life counts from the
+    claim's own `ts`, the boundary is strict -- and now lives in
+    `kernel.ttl_expiry`, successor to `policy._ttl_expired`.
+  * The `invalidation` record kind is WHOLLY INERT for status. Step 2.5
+    had already retired the path arm; the TTL arm joins it. The ~1997
+    records already written stay in the ledger and stay readable; a
+    replayed or forged expiry record can no longer stale a claim the
+    clock says is fresh.
+  * `status_ts` for a derived `stale` is the EXPIRY INSTANT
+    (`claim ts + ttl_days`), never the reader's `now` -- so two readers
+    agree on it, and queue aging prices from when the fact expired
+    instead of reporting a long-dead claim as zero days old.
+  * REMOVED with the verb: `INVALIDATORS`, `decide_invalidation`,
+    `_ttl_expired`, and the strategy seam itself. An empty tuple would
+    have advertised a seat for exactly the design being retired.
+  * The shipped `truth-scan.yml` drops to `permissions: contents: read`.
+    Gone with the writer: the bot identity, its commit-back, its push,
+    the `[skip ci]` marker, the actor loop-guard and the concurrency
+    queue -- all of which existed only to contain that one write. An L1
+    instrument no longer holds commit access to the branch it measures.
+  * Consumers running `truth ttl-scan` in CI: you cannot be, see above.
+    Consumers whose CI ran `invalidate-scan`: remove the step; expiry is
+    visible in `truth list --stale`, `truth queue` and `truth health`.
+
+  -- META-REPO ONLY, NOT SHIPPED TO CONSUMERS -----------------------------
+  * `scripts/epistemic-isolate.sh` (ADR-058): restores the measuring
+    apparatus from origin/main so a judging run cannot use an instrument
+    it authored. Implemented, tested, and deliberately WIRED TO NOTHING --
+    a local pre-push hook cannot isolate the very thing a local change is
+    editing without blocking honest work. Operator ruling 2026-08-23:
+    isolation belongs at the CI/CD boundary, which this repo does not yet
+    have. Residual recorded in the ADR, not papered over.
+  * `instruments/semantic-audit.py` (ADR-059): extracts the justification
+    sentences that intake gates admit -- `--scope-ok`, `--paths-ok`,
+    `--generated-ok`, `--exit-ok`, `--refresh-evidence` from ACTIVE
+    claims, plus `--orphan-ok` from retracted ones -- as flat JSON for an
+    external reader. The gates check a sentence EXISTS; nothing has ever
+    checked it MEANS anything, and a model asked to rule on an argument
+    is a judge, not a measurement (EPI-305), so the judging half lives at
+    L2. NO NETWORK I/O, pinned structurally by the integration suite.
+
 v0.9.38 (one new READ verb, one behaviour change to `doctor`, the
   structural view, and the acceptance instrument for the coming
   refactor; no schema change, fold untouched):

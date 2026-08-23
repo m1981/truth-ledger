@@ -1,4 +1,4 @@
-"""truth v0.9.38 -- append-only claims ledger with a native work kernel.
+"""truth v0.10.0 -- append-only claims ledger with a native work kernel.
 
 truthlib.cli -- argparse and the cmd_* orchestration (the line above is
 the argparse description, kept in lockstep with the entry docstring by
@@ -157,7 +157,7 @@ def build_claim_payload(text, evidence_class, evidence_cmd, paths_csv, tier,
 
 def cmd_claim(a):
     events = load_events()
-    claims, _ = fold(events)
+    claims, _ = fold(events, now_dt=now_dt())
     payload, facts = build_claim_payload(
         a.text, a.evidence_class, a.evidence_cmd, a.paths, a.tier,
         a.ttl_days, a.basis, a.single_run, a.duplicate_ok, claims,
@@ -276,7 +276,7 @@ def cmd_citations(a):
 
 def cmd_verdict(a):
     events = load_events()          # ADR-051: the refresh readers need it
-    claims, _ = fold(events)
+    claims, _ = fold(events, now_dt=now_dt())
     if a.claim_id not in claims:
         sys.exit(f"truth: unknown claim {a.claim_id}")
     if claims[a.claim_id]["status"] == "retracted":
@@ -466,47 +466,24 @@ def cmd_verdict(a):
     rec = append_record("verdict", payload)
     print(json.dumps(rec) if a.json else f"{a.claim_id} -> {verdict}")
 
-def cmd_ttl_scan(a):
-    """ADR-019/G10: materialize TTL expiry, and nothing else.
-
-    SUCCESSOR TO `invalidate-scan` (refactor step 2.6). The old
-    verb read three signals -- TTL, anchor reachability, evidence-path
-    diffs -- and the last two are exactly the proxy this refactor
-    retires: 1997 records at a 3.6% positive predictive value, replaced
-    by `truth reproduce`, which asks the semantic question (does the
-    recorded capsule still produce its recorded output?) at ~8ms per
-    capsule. Those two strategies are gone from INVALIDATORS, so this
-    verb is what remained: the CLOCK.
-
-    It has to remain, and could not be folded into `reproduce`. TTL
-    expiry is the one thing reproduction provably cannot detect -- a
-    claim whose TTL runs out today reproduces perfectly today -- and
-    this is still the ONLY clock reader in the system: the fold stays
-    pure and confluent by demoting to stale off the emitted record
-    rather than evaluating a TTL itself. Retiring it would have left
-    ADR-019 with a reader and no writer."""
-    claims, _ = fold(load_events())
-    head = head_commit() or "0000000"
-    now = now_dt()
-    hits = []
-    for cid, entry in claims.items():
-        if entry["status"] not in ACTIVE_STATUSES:
-            continue
-        # `facts` is vestigial for the clock arm (_ttl_expired reads only
-        # the claim's own ts and ttl_days) and is kept as the seam the
-        # strategy signature is built on. The per-claim git probes the old
-        # verb ran to fill it -- commit_reachable plus a diff against the
-        # anchor, once per active claim -- are gone with the strategies
-        # that consumed them, which is most of this verb's former cost.
-        decision = decide_invalidation(entry, {"head": head}, now)
-        if decision:
-            append_record("invalidation",
-                          {"claim": cid, "commit": head, **decision["payload"]})
-            hits.append((cid, decision["label"]))
-    if not a.quiet:
-        for cid, why in hits:
-            print(f"stale: {cid} ({why})")
-        print(f"ttl-scan: {len(hits)} claim(s) expired")
+# cmd_ttl_scan was REMOVED by ADR-057 (READ-TIME TTL). It was the
+# system's only clock reader and the last writer of `invalidation`
+# records: it folded, walked every active claim, asked
+# policy.decide_invalidation, and appended a record so the fold could
+# read `stale` back off it. All of that answered a question the fold can
+# now answer itself from (claim ts, ttl_days, now_dt) -- see
+# kernel.ttl_expiry and the ADR-057 block in kernel.fold.
+#
+# EPI-607 is the reason, not the tidiness: a TTL is a TIMER, not a
+# detector. Materializing it as an append-only event asserted that
+# something HAPPENED to the claim at the moment a scanner ran, when the
+# only thing that happened was that someone looked at a clock. The
+# records it wrote are indifferent history now, and they stay
+# (EPI-501); nothing writes another.
+#
+# What went with it, deliberately: the CI scan job's expiry step, its
+# bot commit and its push. A read-time projection needs no write path,
+# so there is no longer a machine identity appending to this ledger.
 
 def cmd_premise(a):
     # Input hygiene, mirror parity (same class as the citations check,
@@ -534,7 +511,7 @@ def cmd_premise(a):
         # any agent could spend a human's P0 block via a normal CLI
         # verb, no forgery needed), and exits the refusal.
         events = load_events()
-        claims, premises = fold(events)
+        claims, premises = fold(events, now_dt=now_dt())
         issues = fold_issues(events)
         premises = merge_premises(premises, issue_premises(issues))
         premises = apply_supersedes(premises, fold_supersedes(events))
@@ -551,7 +528,7 @@ def cmd_premise(a):
 
 def cmd_contradicts(a):
     events = load_events()
-    claims, _ = fold(events)
+    claims, _ = fold(events, now_dt=now_dt())
     # R14b: the issue #4 checks live in contradicts_intake_error (core).
     err = contradicts_intake_error(a.claim_a, a.claim_b, claims, events)
     if err:
@@ -578,8 +555,8 @@ def cmd_list(a):
     alone would have been exactly that. `--watch-policy -` selects the
     complement: path-carrying claims on NO policy, i.e. the migration
     backlog."""
-    claims, _ = fold(load_events())
     now = now_dt()
+    claims, _ = fold(load_events(), now_dt=now)
     want = {f for f in STATUSES if getattr(a, f)}
     wp = getattr(a, "watch_policy", None)
     def _wp_match(payload):
@@ -605,8 +582,12 @@ def cmd_list(a):
                   f"{r['class']:<10} {r['text']}")
 
 def cmd_queue(a):
-    claims, _ = fold(load_events())
-    rows = queue_rows(claims, now_dt())
+    # ADR-057: ONE clock read per command. The fold derives expiry from
+    # it and queue_rows prices age off the same instant, so the two
+    # cannot disagree about which side of a TTL boundary this run is on.
+    now = now_dt()
+    claims, _ = fold(load_events(), now_dt=now)
+    rows = queue_rows(claims, now)
     if a.json:
         print(json.dumps(rows, indent=2))
     elif not rows:
@@ -622,7 +603,7 @@ def cmd_queue(a):
 def cmd_issue(a):
     events = load_events()
     issues = fold_issues(events)
-    claims, _ = fold(events)
+    claims, _ = fold(events, now_dt=now_dt())
     deps = split_csv(a.deps)
     unknown_deps = [d for d in deps if d not in issues]
     if unknown_deps:
@@ -726,7 +707,7 @@ def cmd_done(a):
         if event != "closed":
             sys.exit("truth: --claim only accompanies a plain close "
                      "(claim-at-death records what the finished work made true)")
-        claims, _ = fold(events)
+        claims, _ = fold(events, now_dt=now_dt())
         # Validate and run evidence BEFORE any append: both records or
         # neither (ADR-002). build_claim_payload sys.exits on any failure.
         claim_payload, claim_facts = build_claim_payload(
@@ -833,7 +814,7 @@ def cmd_issues(a):
         # `truth ready --stdin` and the join must equal the native path.
         print(json.dumps(native_ready_issues(issues)))
         return
-    claims, premises = fold(events)
+    claims, premises = fold(events, now_dt=now_dt())
     premises = merge_premises(premises, issue_premises(issues))
     # ADR-013: apply the redirects, exactly as `ready` and `impact` do. The
     # effective premise list is DERIVED, like every status in this system,
@@ -872,7 +853,7 @@ def cmd_issues(a):
 
 def cmd_ready(a):
     events = load_events()
-    claims, premises = fold(events)
+    claims, premises = fold(events, now_dt=now_dt())
     issues_fold = fold_issues(events)
     native = native_ready_issues(issues_fold) if issues_fold else None
     # A1: the loader returns its refusal; the shell exits it, unchanged.
@@ -961,7 +942,7 @@ def cmd_impact(a):
         if a.paths:
             sys.exit("truth: --inverse takes no positional paths (it "
                      "enumerates every tracked file; scope with --under)")
-        claims, _ = fold(load_events())
+        claims, _ = fold(load_events(), now_dt=now_dt())
         rep = inverse_report(tracked_files(), claims, a.under,
                              a.exclude or [])
         if rep["considered"] == 0:
@@ -988,7 +969,7 @@ def cmd_impact(a):
         sys.exit("truth: give paths to query, or --inverse for the "
                  "backward slice")
     events = load_events()
-    claims, premises = fold(events)
+    claims, premises = fold(events, now_dt=now_dt())
     issues = fold_issues(events)
     premises = merge_premises(premises, issue_premises(issues))
     premises = apply_supersedes(premises, fold_supersedes(events))
@@ -1017,7 +998,7 @@ def cmd_impact(a):
     sys.exit(3 if rows else 0)
 
 def cmd_dispatch(a):
-    claims, _ = fold(load_events())
+    claims, _ = fold(load_events(), now_dt=now_dt())
     if a.claim_id not in claims:
         sys.exit(f"truth: unknown claim {a.claim_id}")
     prompt_path = os.path.join(repo_root(), PROMPT_REL)
@@ -1065,8 +1046,9 @@ def cmd_stats(a):
     # meta-repo's instruments/*.py over `truth ... --json` + the raw
     # ledger. stats keeps exactly what Tier B reads: counts, verdicts,
     # half-life (feeds the FS-1 intake advisory), and queue aging.
-    folded = fold(events)
-    report = stats_report(events, now_dt(), folded=folded)
+    now = now_dt()
+    folded = fold(events, now_dt=now)
+    report = stats_report(events, now, folded=folded)
     if a.json:
         print(json.dumps(report, indent=2))
         return
@@ -1109,14 +1091,15 @@ def cmd_health(a):
     should cross knowingly. Without it the reproduce section is null and
     the signal says so, rather than implying a clean sweep nobody ran."""
     events = load_events()
-    folded = fold(events)
+    now = now_dt()
+    folded = fold(events, now_dt=now)
     history, hstate = blast_history()
     policies, _pstate, perr = load_watch_policies()
     reproduce = None
     if a.reproduce:
         sweep = reproduce_sweep(events)
         reproduce = dict(sweep["counts"], examined=sweep["examined"])
-    report = health_report(events, now_dt(), folded=folded,
+    report = health_report(events, now, folded=folded,
                            history=history if hstate == "ok" else None,
                            history_state=hstate, reproduce=reproduce,
                            watch_policies=None if perr else policies)
@@ -1316,7 +1299,7 @@ def reproduce_sweep(events, since=None):
         # so --since narrows WHICH claims are live, not just the report.
         events = [(n, ev) for n, ev in events
                   if (ev.get("ts") or "") >= a.since]
-    claims, _ = fold(events)
+    claims, _ = fold(events, now_dt=now_dt())
     allow, deny = load_allowlist(), load_denylist()
     # F1.1: pin execution to the repo root. Capsules were recorded by
     # `claim` running there; a sweep from a subdirectory would otherwise
@@ -1488,7 +1471,7 @@ def cmd_doctor(a):
     if os.path.exists(lp):
         t0 = time.perf_counter()
         events_d = load_events()
-        folded = fold(events_d)
+        folded = fold(events_d, now_dt=now_dt())
         fold_issues(events_d)
         fold_ms = (time.perf_counter() - t0) * 1000
         errs = validate_events(events_d)
@@ -1645,7 +1628,7 @@ def cmd_doctor(a):
         fail("discovery", "no instruction file mentions scripts/truth -- the "
              f"layer is invisible to agents (G2). Checked: {', '.join(DISCOVERY_FILES)}")
 
-    claims, premises = folded if folded is not None else fold(events_d)
+    claims, premises = folded if folded is not None else fold(events_d, now_dt=now_dt())
     dangling = [f"{i}->{c}" for i, cs in premises.items() for c in cs if c not in claims]
     if dangling:
         warn("premise integrity", f"dangling premise(s): {', '.join(dangling)}")
@@ -1860,20 +1843,21 @@ VERB_TABLE = [
         JSON_FLAG,
     ], cmd_citations),
 
-    # Refactor step 2.6: `invalidate-scan` was NARROWED to `ttl-scan`
-    # and `reaffirm` was RETIRED outright. Both were write paths for the
-    # staling proxy; `truth reproduce` is the read-time replacement, and
-    # `verdict --recheck` remains the per-claim re-confirmation. The READ
-    # side of both is untouched -- the fold still parses all 1997
-    # `invalidation` records and reports still classify the 1283
-    # `reaffirm_cleared` ones (ADR-046 legacy-admitted, closed to new
-    # records).
-    ("ttl-scan",
-     "mark claims stale whose ttl_days has elapsed (ADR-019); the only "
-     "clock reader in the system. Successor to invalidate-scan, whose "
-     "path and anchor arms were retired in favour of `truth reproduce`", [
-        _flag("--quiet", action="store_true"),
-    ], cmd_ttl_scan),
+    # Refactor step 2.6 NARROWED `invalidate-scan` to `ttl-scan` and
+    # RETIRED `reaffirm` outright; ADR-057 then removed `ttl-scan` too.
+    # All three were WRITE paths for a status the system can derive:
+    # `truth reproduce` answers drift semantically at read time,
+    # `verdict --recheck` remains the per-claim re-confirmation, and the
+    # clock is now a parameter of the fold rather than a verb. The READ
+    # side of all three is untouched -- the fold still parses all 1997
+    # `invalidation` records (as inert history) and reports still
+    # classify the 1283 `reaffirm_cleared` ones (ADR-046
+    # legacy-admitted, closed to new records).
+    #
+    # There is no successor verb and that is the point: `truth list`,
+    # `truth queue` and `truth health` already report expiry, because
+    # they fold with a clock. Adding `ttl-check` here would re-introduce
+    # the idea that expiry is an EVENT someone must trigger.
 
     ("premise", "link a tracker issue (external or wk-) "
                 "to a claim it depends on; --supersedes redirects a "

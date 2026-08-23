@@ -769,11 +769,28 @@ def latest_invalidation_reason(events, cid):
 # readers share.
 
 def ttl_staleness(events, cid):
-    """Red-team F3 hardening: is the claim TTL-staled, for triage arm 1?
+    """HISTORICAL READER ONLY SINCE ADR-057 -- read this before using it.
+
+    It answers "was a TTL expiry ever RECORDED for this claim", which
+    stopped being the same question as "is this claim TTL-stale" the
+    moment expiry became a read-time derivation. Nothing writes those
+    records any more, so for every claim filed after ADR-057 this
+    returns False no matter how long expired. The live question is
+    `kernel.ttl_expiry(claim_record, now)`, or simply the status the
+    fold derives.
+
+    It survives because the ~1997 records already in the ledger stay
+    readable forever (J-012, EPI-501) and this is the ONE place that
+    reads them correctly, including the pre-stamp fallback below. Its
+    only production consumer was the `reaffirm` triage, retired in
+    refactor step 2.6, so it has none today.
+
+    Red-team F3 hardening: is the claim TTL-staled, for triage arm 1?
     Prefers the structured `reason_code: "ttl"` the scan stamps on TTL
     invalidations over free-text parsing. ADR-019 makes TTL expiry
-    MONOTONE -- the scan is the only clock reader, the clock never runs
-    backwards, and re-verification never resets the TTL -- so ANY
+    MONOTONE -- the clock never runs backwards and re-verification never
+    resets the TTL (ADR-057 kept both; it only moved WHO reads the
+    clock) -- so ANY
     reason_code=="ttl" invalidation on the claim is durable proof of TTL
     staleness: a LATER invalidation carrying a different free-text
     reason (including a raw-appended forgery) can no longer flip the

@@ -1,4 +1,4 @@
-# .truth — append-only claims ledger (v0.9.38)
+# .truth — append-only claims ledger (v0.10.0)
 
 > Reader: any agent or human about to assert, trust, or re-verify a fact about this repository | Enables: filing a claim in one command, and knowing which claims are still live before acting on them | Update-trigger: the record schema, invariants, or CLI contract change
 
@@ -50,13 +50,16 @@ sorts the raw `ts` string, so `ts` must be the canonical profile
 `YYYY-MM-DDTHH:MM:SS.ssssss+00:00` — fixed-width UTC microseconds,
 exactly what the CLI mints; any other offset, `Z` suffix, or precision
 fails `validate` (ADR-015: string order must equal time order). The fold
-reads **no clock**: even TTL expiry is not folded from wall-time — the
-`ttl-scan` (the sole clock reader) counts elapsed time from the
+takes the clock as an **argument** and reads none of its own
+(ADR-057): `fold(events, now_dt=...)` counts elapsed time from the
 claim's own `ts` and, when *strictly more than* `ttl_days` have passed
-(`now - ts > ttl_days`; the exact boundary has not yet expired), appends
-an **invalidation record**; only that record demotes the claim to
-`stale`. A TTL'd claim the scan has not visited is not stale, however old
-(ADR-019 — this is what keeps the fold pure and confluent). Duplicate
+(`now - ts > ttl_days`; the exact boundary has not yet expired), derives
+`stale` — appending nothing. Expiry is a projection, not an event: the
+same ledger reads live when asked about a moment inside the shelf life
+and stale when asked about one outside it, and two readers asking at the
+same instant always agree (ADR-019 for the arithmetic, which did not
+change; ADR-057 for who asks it). `fold(events)` with no clock never
+expires anything, which is what keeps `baseline` reproducible. Duplicate
 claim and issue ids are first-wins (F6, ADR-006): a later append bearing
 an existing id is inert. Status is ONE total function (ADR-020): each
 verdict/invalidation sets it last-writer-wins in `(ts, id, canon)` order
@@ -169,9 +172,9 @@ exists and warns when load+fold exceeds 200ms (the FS-3 scale gate —
 the snapshot cache is deliberately unbuilt until that warning fires;
 since v0.9.29 the same latency also prices the WRITE path, because every
 write verb loads and folds inside the ledger lock's critical section
-(ADR-045) — the remaining linear scans, ttl-scan and reproduce
-walking every claim, are watched-by-design residuals with no sensor of
-their own: this warning's trip is their proxy).
+(ADR-045) — the remaining linear scans, reproduce walking every claim
+and the fold's own ADR-057 expiry pass, are watched-by-design residuals
+with no sensor of their own: this warning's trip is their proxy).
 
 ## Layout
 
@@ -594,18 +597,23 @@ means a capsule stopped producing and a human must judge it (`verdict
 <id> diverge`, or an agree with `--refresh-evidence`); exit 8 means the
 sweep examined zero claims, which is a failure and never a pass.
 
-`scripts/truth ttl-scan` is the other half, and the only clock reader in
-the system: it expires claims whose `ttl_days` has elapsed (ADR-019) —
-the one thing reproduction cannot detect, since a claim expiring today
-still reproduces perfectly today. A TTL expiry is the ONLY route to
-`stale`, and re-verification never resets it, so the exit is a re-file.
+TTL expiry is the other half, and it has **no verb at all** since
+ADR-057. It is the one thing reproduction cannot detect — a claim
+expiring today still reproduces perfectly today — so it is derived by
+the fold on every read: `truth list --stale`, `truth queue` and
+`truth health` already show it, because they fold with a clock. A TTL
+expiry remains the ONLY route to `stale`, and re-verification never
+resets it, so the exit is a re-file.
 
-> **Retired by the Reproduce-on-Read refactor:** `invalidate-scan` (narrowed to `ttl-scan`) and
-> `reaffirm`. Both were write paths for a staling proxy that fired 1997
-> times for 71 judged divergences on the template's own ledger — a 3.6%
-> positive predictive value. Reading old records is UNAFFECTED: the fold
-> still parses every `invalidation`, and reports still classify
-> `reaffirm_cleared`. Retiring a writer is not breaking a reader.
+> **Retired by the Reproduce-on-Read refactor:** `invalidate-scan`
+> (narrowed to `ttl-scan`) and `reaffirm`; **and by ADR-057:**
+> `ttl-scan` itself. All three were write paths for a status the system
+> can derive. The proxy the first two served fired 1997 times for 71
+> judged divergences on the template's own ledger — a 3.6% positive
+> predictive value. Reading old records is UNAFFECTED: the fold still
+> parses every `invalidation` (as inert history), and reports still
+> classify `reaffirm_cleared`. Retiring a writer is not breaking a
+> reader.
 
 A `--scope-ok` override
 you file without `--ttl-days` gets a default 30-day expiry (ADR-032), so

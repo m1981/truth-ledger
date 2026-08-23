@@ -171,10 +171,14 @@ ISSUE_STATUSES = ("open", "claimed", "closed", "cancelled")
 # stats, impact, dispatch, validate, doctor, issues, baseline, vocab) stay
 # silent; `validate --stdin` especially MUST stay exempt -- it runs
 # inside the commit gate itself.
-# Refactor step 2.6: `invalidate-scan` narrowed to `ttl-scan` (it still
-# appends invalidation records, so it stays a write verb) and `reaffirm`
-# was retired outright, taking its entry with it.
-WRITE_VERBS = frozenset(("claim", "verdict", "ttl-scan", "premise",
+# Refactor step 2.6 narrowed `invalidate-scan` to `ttl-scan` and retired
+# `reaffirm`; ADR-057 removed `ttl-scan` as well. Nothing appends
+# `invalidation` records any more -- TTL expiry is derived by the fold at
+# read time -- so the set is now exactly the AUTHOR-DRIVEN writes. That is
+# a tightening of what this constant means: every verb left here is one a
+# human or agent chose to run, and the unwired-gate banner therefore
+# always has somebody to address.
+WRITE_VERBS = frozenset(("claim", "verdict", "premise",
                          "contradicts", "issue", "start", "done"))
 DISCOVERY_FILES = ("AGENTS.md", "CLAUDE.md", ".cursorrules",
                    ".github/copilot-instructions.md")
@@ -292,9 +296,14 @@ ACCEPT_KINDS = ("verification", "validation")  # 12207's two V's
 # loads and folds inside the ledger lock, so the same latency prices
 # the critical section a concurrent writer waits behind. The linear
 # scans that remain (append's tail read is tail-seek since v0.9.29;
-# ttl-scan and reproduce walk every claim by design) are
+# reproduce walks every claim by design, and since ADR-057 the fold
+# itself walks every claim once more to apply the read-time clock) are
 # watched-by-design residuals, not sensor-covered ones: no separate
-# alarm exists for them, this constant's trip is their proxy.
+# alarm exists for them, this constant's trip is their proxy. The
+# ADR-057 pass is O(claims) with no I/O inside it, so it prices into
+# this same fold latency the gate already watches -- which is why the
+# gate did not need a second arm when the scan's per-claim git probes
+# went away.
 FOLD_LATENCY_WARN_MS = 200
 HALF_LIFE_MIN_OBS = 5  # FS-1: below this, intake suggests nothing (noise)
 

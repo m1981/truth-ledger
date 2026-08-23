@@ -1,36 +1,45 @@
 # .github/workflows/truth-scan.yml
 #
-# The heartbeat, in TWO parts since the Reproduce-on-Read refactor
-# (steps 2.4-2.6). It used to be one part: run `invalidate-scan` after every
-# push and commit the resulting invalidation records back. That scan asked a
-# SYNTACTIC question -- did this push touch a path some claim watches -- and
-# on the template's own ledger it answered yes 1997 times against 71 judged
+# The heartbeat. It has been through two contractions, and both removed a
+# WRITER rather than adding a check.
+#
+# It began as one part: run `invalidate-scan` after every push and commit
+# the resulting invalidation records back. That scan asked a SYNTACTIC
+# question -- did this push touch a path some claim watches -- and on the
+# template's own ledger it answered yes 1997 times against 71 judged
 # divergences. Positive predictive value 3.6%, and every false alarm was a
-# committed record a human then had to read. The proxy is retired.
+# committed record a human then had to read. The Reproduce-on-Read refactor
+# (steps 2.4-2.6) retired that proxy and left two parts: reproduce, and a
+# `ttl-scan` that still wrote.
 #
-#   1. REPRODUCE (blocking, writes nothing). Re-runs every LIVE claim's
-#      recorded evidence capsule here and now and asks the SEMANTIC
-#      question: does it still produce what it produced? Measured cost
-#      ~8ms per capsule. It fails the job on exit 7 (a capsule no longer
-#      reproduces -- a human must judge it, and ADR-012 says a machine
-#      must not decide mechanical-vs-genuine) and on exit 8 (the sweep
-#      examined ZERO claims, which is a failure and never a pass,
-#      ADR-042 rule 2). A green sweep leaves NO record, deliberately:
-#      there is no stored state left to advance.
+# ADR-057 removed the second. TTL expiry is a READ-TIME DERIVATION now --
+# the fold computes it from (claim ts, ttl_days, now) -- so there is
+# nothing to append, nothing to commit, and nobody to attribute it to. What
+# this job does today:
 #
-#   2. TTL-SCAN (writes, and still commits back). The one thing
-#      reproduction provably cannot detect: a claim whose ttl_days has
-#      elapsed reproduces perfectly on the day it expires. This remains
-#      the only clock reader in the system (ADR-019), so its records are
-#      still worth committing with a bot identity.
+#   REPRODUCE (blocking, writes nothing). Re-runs every LIVE claim's
+#   recorded evidence capsule here and now and asks the SEMANTIC question:
+#   does it still produce what it produced? Measured cost ~8ms per capsule.
+#   It fails the job on exit 7 (a capsule no longer reproduces -- a human
+#   must judge it, and ADR-012 says a machine must not decide
+#   mechanical-vs-genuine) and on exit 8 (the sweep examined ZERO claims,
+#   which is a failure and never a pass, ADR-042 rule 2).
 #
-# Loop safety: the commit-back uses [skip ci] AND the job guards against
-# running on the bot's own commits, so scanner commits never re-trigger
-# a scan of themselves.
+#   REPORT (never blocking, writes nothing). Prints what the clock says is
+#   expired, so expiry stays VISIBLE. This is the half that used to be
+#   done by committing records, and losing it would have been the real
+#   cost of ADR-057: a derived status nobody surfaces is a status nobody
+#   acts on. The job summary is now the surface.
 #
-# Concurrency: serialized per-branch so two rapid merges can't race on
-# the append (the ledger is append-only; a lost append is a lost
-# expiry, so we queue instead).
+# WHAT WENT AWAY WITH THE WRITER, and each of these was a liability:
+#   * `permissions: contents: write` -- this job can no longer alter the
+#     repository it audits. An L1 instrument that can commit to the branch
+#     it measures is exactly the L1/L2 leak the layer exists to refuse.
+#   * the `truth-scanner[bot]` identity, its commit, and its push.
+#   * the [skip ci] / actor guard that stopped the bot re-triggering
+#     itself. No write, no loop, no guard.
+#   * the per-branch concurrency queue, which existed so two rapid merges
+#     could not race on the append. Reads do not race.
 
 name: truth-scan
 
@@ -38,16 +47,11 @@ on:
   push:
     branches: [main]
 
-concurrency:
-  group: truth-scan-main
-  cancel-in-progress: false   # queue, never drop a scan
-
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   scan:
-    if: github.actor != 'truth-scanner[bot]' && !contains(github.event.head_commit.message, '[truth-scan]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,31 +61,26 @@ jobs:
       - name: Reproduce every live capsule (blocking, files nothing)
         run: python3 scripts/truth reproduce
 
-      - name: Expire elapsed TTLs (ADR-019, the only clock reader)
-        id: scan
-        env:
-          TRUTH_ACTOR: ci-scanner
-          TRUTH_SESSION: gha-${{ github.run_id }}
+      - name: Surface what the clock has expired (visibility, not silence)
+        # Never blocks: an expiry is a fact to re-verify, not a defect in
+        # the push that happened to reveal it (EPI-305 -- the machine
+        # measures, the human judges). It reports the COUNT even when zero,
+        # because a section that only ever appears on bad news is
+        # indistinguishable from a section that stopped working.
+        if: always()
         run: |
           set -eu
-          before=$(wc -l < .truth/claims.jsonl)
-          python3 scripts/truth ttl-scan
-          after=$(wc -l < .truth/claims.jsonl)
-          echo "new_records=$(( after - before ))" >> "$GITHUB_OUTPUT"
-
-      - name: Commit expiries back (bot identity, attributable)
-        if: steps.scan.outputs.new_records != '0'
-        run: |
-          git config user.name  "truth-scanner[bot]"
-          git config user.email "truth-scanner[bot]@users.noreply.github.com"
-          git add .truth/claims.jsonl
-          git commit -m "truth: ${{ steps.scan.outputs.new_records }} ttl expiry(ies) [truth-scan] [skip ci]"
-          git push
-
-      - name: Surface what expired (visibility, not silence)
-        if: steps.scan.outputs.new_records != '0'
-        run: |
-          echo "## Facts expired by the clock" >> "$GITHUB_STEP_SUMMARY"
-          tail -n "${{ steps.scan.outputs.new_records }}" .truth/claims.jsonl \
-            | python3 -c "import json,sys; [print('- `'+r['payload']['claim']+'` \u2014 '+r['payload'].get('reason','')) for r in map(json.loads, sys.stdin)]" \
-            >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Facts expired by the clock (ADR-019, derived at read time)"
+            python3 scripts/truth list --stale --json \
+              | python3 -c "
+import json, sys
+rows = json.load(sys.stdin)
+if not rows:
+    print('None. Every TTL-bearing claim is inside its shelf life.')
+for r in rows:
+    print('- \`' + r['id'] + '\` — ' + (r.get('text') or ''))
+print()
+print('%d claim(s) stale. Nothing was written to the ledger to say so.' % len(rows))
+"
+          } >> "$GITHUB_STEP_SUMMARY"

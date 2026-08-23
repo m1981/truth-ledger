@@ -238,7 +238,7 @@ TRUTH_SESSION=s-canary-verifier $T verdict "$CID_B" agree --basis "canary: verif
 git add .truth/claims.jsonl && git commit -qm "canary: claim B" --no-verify
 echo "changed" >> watched.txt
 git add watched.txt && git commit -qm "canary: mutate evidence" --no-verify
-$T ttl-scan --quiet
+# ADR-057: no scan step -- the read below derives expiry from the clock.
 if $T list --stale --json | grep -q "$CID_B"; then
   miss "claim $CID_B was staled by a mere path touch -- the retired path invalidator is back"
 elif $T list --live --json | grep -q "$CID_B"; then
@@ -322,24 +322,47 @@ CID_D=$(TRUTH_NOW="2026-06-01T00:00:00+00:00" $T claim \
 if [ -z "$CID_D" ] || ! grep -q "$CID_D" .truth/claims.jsonl; then
   miss "fault injection failed: the ttl claim was never filed (an empty id makes grep -q match anything)"
 else
-  $T ttl-scan --quiet
+  # ADR-057: no scan step -- the read below derives expiry from the clock.
   if $T list --stale --json | grep -q "$CID_D"; then
     ok "claim $CID_D expired after ttl elapsed"
   else
     miss "ttl_days is still a dead field: $CID_D outlived its ttl"
   fi
 fi
-# ADR-019 (H2): the fold reads no clock -- a TTL'd claim is NOT stale
-# until a scan writes the invalidation record. File one already long past
-# its ttl and do NOT scan: it must stay non-stale. An implementer whose
-# fold expired from wall-time would wrongly show it stale here.
+# ADR-057, replacing the ADR-019 (H2) arm that lived here. That arm filed
+# a long-expired claim, did NOT scan, and demanded it read non-stale --
+# pinning "the fold reads no clock". ADR-057 licenses the derivation, so
+# the old expectation is now the DEFECT and the arm is inverted.
+#
+# What must still hold is the half that was actually load-bearing: a READ
+# MAY NOT WRITE. The whole objection to a clock in the fold was that it
+# would smuggle a side effect into a projection; the answer is that the
+# clock is a parameter, and the proof is that the ledger does not grow.
+# So this arm asserts both directions -- the expiry is visible, and
+# nothing was appended to see it.
 CID_DF=$(TRUTH_NOW="2026-01-01T00:00:00+00:00" $T claim \
          "external rate limit was 50 req per min" --class INFERRED \
          --basis "vendor docs read 2026-01-01" --ttl-days 7 --tier P2)
-if $T list --stale --json | grep -q "$CID_DF"; then
-  miss "fold synthesized TTL expiry with no scan record (clock leaked into the fold)"
+DF_BEFORE=$(wc -l < .truth/claims.jsonl)
+DF_STALE=0
+$T list --stale --json | grep -q "$CID_DF" && DF_STALE=1
+$T queue --json >/dev/null 2>&1 || true
+$T stats --json >/dev/null 2>&1 || true
+DF_AFTER=$(wc -l < .truth/claims.jsonl)
+if [ "$DF_STALE" != 1 ]; then
+  miss "read-time TTL did not fire: $CID_DF is years past its ttl and reads non-stale"
+elif [ "$DF_BEFORE" != "$DF_AFTER" ]; then
+  miss "a READ verb appended to the ledger ($DF_BEFORE -> $DF_AFTER) -- expiry is being materialized, not derived (ADR-057)"
 else
-  ok "TTL'd claim stays non-stale until a scan emits the record (fold clock-free, ADR-019)"
+  ok "TTL expiry is derived at read time and writes nothing ($CID_DF, ledger stayed at $DF_AFTER)"
+fi
+# ...and the same ledger, asked about an earlier moment, must answer live:
+# the clock is a parameter of the question, not a property of the record
+# (EPI-607). An implementation that cached the expiry would fail here.
+if TRUTH_NOW="2026-01-03T00:00:00+00:00" $T list --stale --json | grep -q "$CID_DF"; then
+  miss "$CID_DF reads stale at a moment INSIDE its ttl -- expiry was materialized, not derived"
+else
+  ok "the same record reads live when asked about a moment inside its ttl (time is the question, ADR-057)"
 fi
 
 say "FAULT G (G6): nondeterministic evidence command must be refused"
@@ -679,7 +702,7 @@ fi
 git add .truth/claims.jsonl && git commit -qm "canary: empty-glob claim T" --no-verify
 mkdir -p ghost-dir && echo "# appeared" > ghost-dir/appeared.md
 git add ghost-dir/appeared.md && git commit -qm "canary: materialize ghost-dir/*.md" --no-verify
-$T ttl-scan --quiet
+# ADR-057: no scan step -- the read below derives expiry from the clock.
 if $T list --stale --json | grep -q "$CID_TG"; then
   miss "glob $CID_TG staled on a path touch -- the retired path invalidator is back"
 else
@@ -1653,7 +1676,7 @@ git add -A && git commit -qm "canary: history rewritten"
 git branch -D main -q
 git reflog expire --expire=now --expire-unreachable=now --all
 git gc --prune=now -q
-$T ttl-scan --quiet
+# ADR-057: no scan step -- the read below derives expiry from the clock.
 if $T list --stale --json | grep -q "$CID_E"; then
   miss "history rewrite staled $CID_E -- the retired _anchor_unreachable strategy is back"
 elif grep -q "anchor unreachable" .truth/claims.jsonl; then
@@ -2232,29 +2255,37 @@ fi
 CID_SD3=$(TRUTH_NOW="2026-06-01T00:00:00+00:00" $T claim \
           "f.txt plainly contains data" --class VERIFIED \
           --evidence-cmd "cat f.txt" --paths f.txt --tier P2 2>/dev/null)
-$T ttl-scan --quiet
+# ADR-057: no scan step -- the read below derives expiry from the clock.
 if $T list --stale --json | grep -q "$CID_SD3"; then
   miss "negative control failed: a plain claim got a default TTL and expired"
 else
-  ok "negative control: an equally old PLAIN claim has no default TTL, stays live after a scan"
+  ok "negative control: an equally old PLAIN claim has no default TTL, stays live at read time"
 fi
 CID_SD4=$(TRUTH_NOW="2026-06-01T00:00:00+00:00" $T claim \
           "no matches exist anywhere in the whole repo" --class VERIFIED \
           --evidence-cmd "$SD_EC" --paths f.txt --tier P1 \
           --scope-ok "$SD_SB" 2>/dev/null)
-$T ttl-scan --quiet
 # Step 2.6: the reaffirm --dry-run half is gone with the verb. What it
 # asserted -- an expired override lands in the "re-file required" arm --
 # is now structural rather than reported: TTL expiry is the ONLY route to
 # `stale`, and ADR-019 says re-verification never resets it, so re-filing
-# is the only exit. The arm keeps the half that is still mechanically
-# checkable, and gains the reason_code that proves WHICH arm staled it.
-if $T list --stale --json | grep -q "$CID_SD4" \
-   && grep "\"claim\": \"$CID_SD4\"" .truth/claims.jsonl \
-      | grep -q '"reason_code": "ttl"'; then
-  ok "expired scope-ok override is stale, by the clock arm ($CID_SD4)"
+# is the only exit.
+#
+# ADR-057 took the reason_code half too, and that is the interesting
+# change. This arm used to prove WHICH mechanism staled the claim by
+# grepping the emitted record for `"reason_code": "ttl"`. There is no
+# record now, so the proof has to come from the OTHER side: no
+# invalidation record exists for this claim at all, and the negative
+# control above (CID_SD3, an equally-old PLAIN claim) is what rules out
+# "everything went stale". Together those say the same thing the
+# reason_code said -- the clock arm did it, and nothing else could have.
+if ! $T list --stale --json | grep -q "$CID_SD4"; then
+  miss "expired scope-ok override did not stale at read time ($CID_SD4)"
+elif grep "\"claim\": \"$CID_SD4\"" .truth/claims.jsonl \
+     | grep -q '"kind": "invalidation"'; then
+  miss "an invalidation record was written for $CID_SD4 -- the retired clock WRITER is back (ADR-057)"
 else
-  miss "expired override not staled, or staled by something other than TTL"
+  ok "expired scope-ok override is stale by the read-time clock, with no record written ($CID_SD4)"
 fi
 cd "$SD_PREV" || { echo "canary: cannot cd into $SD_PREV -- refusing to continue" >&2; exit 1; }
 rm -rf "$SD"

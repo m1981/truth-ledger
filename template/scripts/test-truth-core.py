@@ -113,12 +113,20 @@ class TestFold(unittest.TestCase):
         self.assertEqual(claims["tr-00000001"]["status_ts"],
                          "2026-07-03T00:00:00+00:00")
 
-    def test_ttl_invalidation_still_stales(self):
-        """THE DOUBLE-INVALIDATION RULE, arm 2 (step 2.5/ADR-019). TTL
-        expiry is a CLOCK fact -- `truth reproduce` cannot replace it,
+    def test_ttl_invalidation_record_is_now_inert(self):
+        """THE DOUBLE-INVALIDATION RULE, arm 2, AFTER ADR-057. This arm
+        used to pin the opposite ("TTL invalidation must still stale"),
+        which was correct while the scan was the only clock reader: TTL
+        expiry is a CLOCK fact and `truth reproduce` cannot replace it,
         because a claim whose TTL runs out today still reproduces
-        perfectly today -- so this arm keeps staling. Both spellings of
-        the fact are pinned: the structured reason_code the scan stamps
+        perfectly today.
+
+        ADR-057 keeps the fact and moves the reader. The clock is now a
+        parameter of fold(), so the RECORD carries nothing the fold needs
+        -- and an inert record is the stronger position: a replayed or
+        forged expiry can no longer stale a claim the clock says is
+        fresh. Both spellings stay pinned, because both are in the ledger
+        forever: the structured reason_code the retired scan stamped
         (v0.9.12) and the free-text prefix of pre-stamp records."""
         for rid, extra in (("tr-00000002", {"reason_code": "ttl",
                                             "reason": "ttl expired (30 days)"}),
@@ -127,9 +135,9 @@ class TestFold(unittest.TestCase):
             p.update(extra)
             claims, _ = tm.fold(events(
                 rec("claim", claim_p()),
-                rec("invalidation", p, rid=rid)))
-            self.assertEqual(claims["tr-00000001"]["status"], "stale",
-                             f"TTL invalidation {extra} must still stale")
+                rec("invalidation", p, rid=rid)), now_dt=NOW)
+            self.assertEqual(claims["tr-00000001"]["status"], "unverified",
+                             f"TTL invalidation {extra} still moves status")
 
     def test_retracted_is_terminal(self):
         evs = events(
@@ -170,11 +178,18 @@ class TestFold(unittest.TestCase):
         the record kind step 2.5 removes from the fold.
 
         It pinned TODAY's algebra before it was changed, in every physical
-        order a union merge can produce, and step 2.5 MOVED it -- which is
-        what a characterization test is for. The expectations below are the
-        visible record of what the algebra change did: a path invalidation
-        that used to fold to {"stale"} now folds to {"live"}, and the TTL
-        arm added beside it folds to {"stale"} as it always did.
+        order a union merge can produce, and the algebra has now MOVED
+        TWICE -- which is what a characterization test is for. The
+        expectations below are the visible record of both moves: step 2.5
+        took the path arm from {"stale"} to {"live"}, and ADR-057 took the
+        TTL arm the same way. Neither record kind decides status any more;
+        the clock does, and it is not in this ledger.
+
+        The permutation is the part that must not be lost. `stale` still
+        exists and is still reachable -- it is derived at read time now --
+        so the question "does every physical order agree?" is still live,
+        and TestReadTimeTTL.test_confluence_survives_the_clock asks it of
+        the arm that replaced these.
 
         The ledger carries 1997 such records. They stay readable forever
         (append-only history is never rewritten), so whatever the fold
@@ -198,7 +213,7 @@ class TestFold(unittest.TestCase):
                                          "reason_code": "ttl"},
                         rid="tr-0000001c",
                         ts="2026-07-08T00:00:00.000000+00:00")
-        for inval, expected in ((path_inval, "live"), (ttl_inval, "stale")):
+        for inval, expected in ((path_inval, "live"), (ttl_inval, "live")):
             seen = set()
             for perm in itertools.permutations([claim, agree, inval]):
                 claims, _ = tm.fold(events(*perm))
@@ -208,7 +223,9 @@ class TestFold(unittest.TestCase):
                 "an invalidation later than the agree must fold to ONE status "
                 "in every physical order -- if this set has more than one "
                 "member, union-merge confluence is broken for the "
-                f"invalidation path ({inval['payload'].get('reason')})")
+                f"invalidation path ({inval['payload'].get('reason')}). "
+                "Since ADR-057 both arms expect 'live': the record kind is "
+                "inert, and this fold is called with no clock.")
 
     def test_legacy_invalidation_records_stay_readable(self):
         """BACKWARD READ (step 2.5/2.6). The write path for `invalidation`
@@ -1321,9 +1338,16 @@ class TestStats(unittest.TestCase):
         status -- fold stays authoritative; this is the drift guard, and
         in step 2.5 it is the arm that CAUGHT reports.py carrying its own
         `new = "stale" if kind == "invalidation"` opinion after the fold's
-        algebra moved. The fixture therefore exercises BOTH arms of the
-        double-invalidation rule (a path record that must stay inert, a
-        TTL record that must still stale) plus the terminal retraction."""
+        algebra moved. ADR-057 moved the algebra a second time and this
+        arm is the reason the replay moved with it.
+
+        The fixture exercises BOTH arms of the double-invalidation rule
+        (both now inert), the terminal retraction, AND -- since ADR-057
+        -- both clock modes: `stale` is no longer reachable from any
+        record, so a fixture that only folds clockless would assert
+        parity over a world in which `stale` cannot occur at all. That is
+        the dark-arm shape this suite refuses elsewhere, so the clocked
+        half below is not optional."""
         evs = self._world() + events(
             rec("claim", claim_p(text="second"), rid="tr-000000b1",
                 ts="2026-07-02T00:00:00+00:00"),
@@ -1346,16 +1370,36 @@ class TestStats(unittest.TestCase):
             rec("invalidation", {"claim": "tr-000000d1", "commit": "c",
                                  "reason": "ttl expired (30 days)",
                                  "reason_code": "ttl"},
-                rid="tr-000000d3", ts="2026-07-04T00:00:00+00:00"))
+                rid="tr-000000d3", ts="2026-07-04T00:00:00+00:00"),
+            # ADR-057: the only remaining route to `stale`. Long-elapsed
+            # ttl_days, no invalidation record anywhere -- the clock alone.
+            rec("claim", claim_p(text="fifth", ttl_days=1), rid="tr-000000e1",
+                ts="2026-07-02T00:00:00+00:00"),
+            rec("verdict", {"claim": "tr-000000e1", "verdict": "agree",
+                            "basis": "b"}, rid="tr-000000e2",
+                ts="2026-07-02T00:00:00+00:00"))
         evs = list(enumerate([e for _, e in evs], 1))
+
+        # CLOCKLESS: no record moves status, so nothing is stale.
         _, replay_status = tm.half_life_observations(evs)
         claims, _ = tm.fold(evs)
         self.assertEqual(replay_status,
                          {cid: e["status"] for cid, e in claims.items()})
-        # ... and the fixture must actually contain both outcomes, or the
-        # parity above is asserted over a world that never split.
         self.assertEqual(replay_status["tr-000000c1"], "live")
-        self.assertEqual(replay_status["tr-000000d1"], "stale")
+        self.assertEqual(replay_status["tr-000000d1"], "live",
+                         "a TTL invalidation RECORD still moves status -- "
+                         "ADR-057 made the kind wholly inert")
+        self.assertEqual(replay_status["tr-000000e1"], "live")
+
+        # CLOCKED: the two must agree here too, and the fixture must
+        # actually produce a stale, or the parity is asserted over a world
+        # in which the interesting status never occurs.
+        _, replay_now = tm.half_life_observations(evs, now_dt=NOW)
+        claims_now, _ = tm.fold(evs, now_dt=NOW)
+        self.assertEqual(replay_now,
+                         {cid: e["status"] for cid, e in claims_now.items()})
+        self.assertEqual(replay_now["tr-000000e1"], "stale")
+        self.assertIn("stale", replay_now.values())
 
     def test_stats_report_splits_mechanical(self):
         evs = self._world() + events(
@@ -1410,7 +1454,8 @@ class TestStats(unittest.TestCase):
         observation) no longer exists. The TTL exclusion FS-1/ADR-032 asked
         for is now structural rather than a special case: a TTL expiry
         produces `stale`, never `diverged`, so it cannot reach the
-        observation branch at all."""
+        observation branch at all -- and since ADR-057 it produces
+        nothing at all from a RECORD, since the clock decides it."""
         raw = (
             self._cycle("tr-000000p1", "tr-000000p2", "tr-000000p3", "P1",
                         close="invalidation", reason="path f.txt changed")
@@ -1427,11 +1472,17 @@ class TestStats(unittest.TestCase):
         obs, status = tm.half_life_observations(events(*raw))
         self.assertEqual(obs, [("P1", 4.0), ("P1", 4.0)])
         # The invalidations were not merely unobserved -- they landed the
-        # statuses the double-invalidation rule says they should, so this
-        # arm cannot pass by the records having been dropped on the floor.
+        # statuses the algebra says they should, so this arm cannot pass
+        # by the records having been dropped on the floor. Since ADR-057
+        # that is the SAME status for all three shapes: the `invalidation`
+        # kind is wholly inert and none of these claims carries a
+        # ttl_days for the clock to act on.
         self.assertEqual(status["tr-000000p1"], "live")   # path: inert
-        self.assertEqual(status["tr-000000t1"], "stale")  # ttl: reason_code
-        self.assertEqual(status["tr-000000u1"], "stale")  # ttl: prefix
+        self.assertEqual(status["tr-000000t1"], "live")   # ttl record: inert
+        self.assertEqual(status["tr-000000u1"], "live")   # ttl prefix: inert
+        # The diverge arms are what the observation count rests on, and
+        # they are the half that still moves.
+        self.assertEqual(status["tr-000000v1"], "diverged")
 
     def test_ttl_suggestion_none_when_nothing_diverged(self):
         """A stream of only ttl expiries (well past HALF_LIFE_MIN_OBS)
@@ -1491,16 +1542,35 @@ def entry(payload, status="live", ts=TS):
     return {"status": status, "status_ts": ts,
             "claim": rec("claim", payload, ts=ts)}
 
-class TestInvalidation(unittest.TestCase):
+class TestReadTimeTTL(unittest.TestCase):
+    """ADR-057. Successor to TestInvalidation, which pinned the retired
+    strategy cascade (policy._ttl_expired / INVALIDATORS /
+    decide_invalidation) and the `ttl-scan` verb that drove it.
+
+    The arms are RE-POINTED, not deleted. ADR-019's two decisions did not
+    change -- the shelf life counts from the CLAIM's own ts, and the
+    boundary is strict -- so the tests that pin them must survive the
+    move to kernel.ttl_expiry, or the move would silently take the
+    contract with it. What IS deleted is only what the seam itself
+    asserted: strategy ordering, and the `facts` dict the shell used to
+    gather per claim."""
+
+    # ---- ADR-019, preserved verbatim across the move -------------------
+
     def test_ttl_expired(self):
-        e = entry(claim_p(ttl_days=1))
-        d = tm.decide_invalidation(e, {"head": "h"}, NOW)  # NOW is 4 days later
-        self.assertEqual(d["label"], "ttl expired")
-        self.assertIn("ttl expired (1 days)", d["payload"]["reason"])
+        d = tm.ttl_expiry(rec("claim", claim_p(ttl_days=1)), NOW)  # NOW: 4d later
+        self.assertIsNotNone(d)
+        self.assertEqual(d, tm.parse_ts(TS) + timedelta(days=1))
 
     def test_ttl_not_yet(self):
-        e = entry(claim_p(ttl_days=30))
-        self.assertIsNone(tm.decide_invalidation(e, {"head": "h"}, NOW))
+        self.assertIsNone(tm.ttl_expiry(rec("claim", claim_p(ttl_days=30)), NOW))
+
+    def test_no_ttl_never_expires(self):
+        """A claim with no ttl_days has no shelf life, however old. The
+        watch-path claims (--paths) are this population, and read-time
+        expiry must not quietly acquire jurisdiction over them."""
+        old = "2000-01-01T00:00:00.000000+00:00"
+        self.assertIsNone(tm.ttl_expiry(rec("claim", verified_p(), ts=old), NOW))
 
     def test_ttl_boundary_is_strict_from_claim_ts(self):
         """ADR-019 (H2): expiry counts from the claim's own ts with a
@@ -1511,89 +1581,140 @@ class TestInvalidation(unittest.TestCase):
         claim_dt = tm.parse_ts(TS)                       # 2026-07-01T00:00:00Z
         exact = claim_dt + timedelta(days=4)             # ts + ttl_days
         just_after = exact + timedelta(seconds=1)
-        e = entry(claim_p(ttl_days=4), ts=TS)
-        self.assertIsNone(                               # strict >: boundary survives
-            tm.decide_invalidation(e, {"head": "h"}, exact))
-        d = tm.decide_invalidation(e, {"head": "h"}, just_after)
-        self.assertEqual(d["label"], "ttl expired")      # one second past: expired
-        later = entry(claim_p(ttl_days=4),
-                      ts="2026-07-02T00:00:00.000000+00:00")
-        self.assertIsNone(                               # counted from ITS ts, not a global clock
-            tm.decide_invalidation(later, {"head": "h"}, just_after))
-
-    def test_fold_never_synthesizes_ttl_expiry(self):
-        """ADR-019 (H2): the fold reads no clock. A TTL'd claim with no
-        invalidation record folds non-stale however old -- only the scan
-        (the sole clock reader) emits the record that demotes it. Guards
-        against a future edit that makes the fold expire from wall-time
-        (which would destroy purity/confluence, INV-I)."""
-        old = "2020-01-01T00:00:00.000000+00:00"         # 6+ years before NOW
-        claims, _ = tm.fold(events(rec("claim", claim_p(ttl_days=1), ts=old)))
-        self.assertEqual(claims["tr-00000001"]["status"], "unverified")
-
-    def test_path_and_anchor_signals_no_longer_decide(self):
-        """STEP 2.6, stated as a positive pin rather than a deletion.
-
-        Four arms used to live here -- test_anchor_unreachable,
-        test_paths_touched, test_diff_error_fails_toward_distrust and the
-        firing half of test_empty_glob_is_dormant_not_dead -- pinning the
-        two retired strategies. Deleting them would have left the removal
-        unpinned and a re-add silent. So the SAME fact shapes are fed in
-        and the expectation is inverted: `decide_invalidation` must now
-        abstain on every one of them, because `truth reproduce` answers
-        the question they proxied for, directly and at read time.
-
-        The 3.6%-precision reason each one used to fire is exactly why
-        (ledger measurement: 1997 records, 71 judged divergences)."""
-        e = entry(verified_p())
-        for label, facts in (
-                ("anchor unreachable",
-                 {"head": "h", "anchor_reachable": False}),
-                ("paths changed",
-                 {"head": "h", "anchor_reachable": True,
-                  "changed_files": ["f.txt", "other.py"], "diff_error": None}),
-                ("diff failed",
-                 {"head": "h", "anchor_reachable": True,
-                  "changed_files": None, "diff_error": "boom"}),
-                ("glob newly filled",
-                 {"head": "h", "anchor_reachable": True,
-                  "changed_files": ["src/ghost/appeared.py"],
-                  "diff_error": None})):
-            self.assertIsNone(
-                tm.decide_invalidation(e, facts, NOW),
-                f"'{label}' still writes an invalidation record -- the "
-                "retired path/anchor strategies are back in INVALIDATORS")
-        # ...and the clock arm is untouched by any of it.
-        self.assertEqual(tm.INVALIDATORS, (tm._ttl_expired,))
-        ttl = entry(claim_p(ttl_days=1))
-        self.assertEqual(
-            tm.decide_invalidation(ttl, {"head": "h"}, NOW)["label"],
-            "ttl expired")
-
-    def test_empty_glob_is_still_exempt_at_intake(self):
-        """ADR-023 (H5), intake half -- which survives step 2.6 intact. A
-        glob matching zero tracked files is EXEMPT from the dead-literal
-        gate because it has no single referent (INV-M / canary FAULT T).
-        Its other half -- 'and it still FIRES once its namespace fills' --
-        was a statement about the retired path invalidator and is pinned
-        as an abstention in the arm above."""
-        self.assertEqual(tm.dead_literal_paths(["src/ghost/*.py"], []), [])
-
-    def test_facts_not_gathered_means_abstain(self):
-        e = entry(verified_p())
-        self.assertIsNone(tm.decide_invalidation(e, {"head": "h"}, NOW))
-
-    def test_ttl_precedes_paths(self):
-        e = entry(verified_p(ttl_days=1))
-        d = tm.decide_invalidation(
-            e, {"head": "h", "anchor_reachable": True,
-                "changed_files": ["f.txt"], "diff_error": None}, NOW)
-        self.assertEqual(d["label"], "ttl expired")
+        c = rec("claim", claim_p(ttl_days=4), ts=TS)
+        self.assertIsNone(tm.ttl_expiry(c, exact))       # strict >: survives
+        self.assertEqual(tm.ttl_expiry(c, just_after), exact)   # 1s past: expired
+        later = rec("claim", claim_p(ttl_days=4),
+                    ts="2026-07-02T00:00:00.000000+00:00")
+        self.assertIsNone(                # counted from ITS ts, not a global clock
+            tm.ttl_expiry(later, just_after))
 
     def test_terminal_and_settled_states_skipped(self):
-        for status in ("stale", "diverged", "retracted", "cannot_verify"):
-            e = entry(verified_p(ttl_days=1), status=status)
-            self.assertIsNone(tm.decide_invalidation(e, {"head": "h"}, NOW), status)
+        """ACTIVE_STATUSES only, exactly as decide_invalidation's guard
+        did. The clock may not overwrite a judge's finding (diverged,
+        cannot_verify) nor a human's terminal veto (retracted, G12)."""
+        old = "2020-01-01T00:00:00.000000+00:00"
+        for verdict, expect in (("diverge", "diverged"),
+                                ("cannot_verify", "cannot_verify"),
+                                ("retracted", "retracted")):
+            claims, _ = tm.fold(events(
+                rec("claim", claim_p(ttl_days=1), ts=old),
+                rec("verdict", {"claim": "tr-00000001", "verdict": verdict,
+                                "basis": "b"}, rid="tr-00000002",
+                    ts="2020-01-02T00:00:00.000000+00:00")), now_dt=NOW)
+            self.assertEqual(claims["tr-00000001"]["status"], expect,
+                             f"the clock overwrote a {expect} finding")
+
+    # ---- what ADR-057 actually changed ---------------------------------
+
+    def test_fold_without_a_clock_never_synthesizes_ttl_expiry(self):
+        """The predecessor of this arm (test_fold_never_synthesizes_ttl_
+        expiry) guarded the fold against EVER reading wall-time, on the
+        grounds that it would destroy purity and confluence. ADR-057
+        licenses the derivation and refutes the grounds: the clock is a
+        PARAMETER, so fold stays a pure function of (events, now_dt) and
+        confluence is untouched (pinned below).
+
+        What survives unchanged is the default. `fold(events)` reads no
+        clock and never synthesizes an expiry -- which is what makes
+        baseline_snapshot reproducible and the unit corpus deterministic."""
+        old = "2020-01-01T00:00:00.000000+00:00"         # 6+ years before NOW
+        evs = events(rec("claim", claim_p(ttl_days=1), ts=old))
+        self.assertEqual(tm.fold(evs)[0]["tr-00000001"]["status"], "unverified")
+        self.assertEqual(tm.fold(evs, now_dt=None)[0]["tr-00000001"]["status"],
+                         "unverified")
+        # ...and WITH a clock, the same events derive the expiry.
+        self.assertEqual(tm.fold(evs, now_dt=NOW)[0]["tr-00000001"]["status"],
+                         "stale")
+
+    def test_status_ts_is_the_expiry_instant_not_now(self):
+        """status_ts must be derived from the record, not from the reader.
+        Two consequences the alternative would have broken: two readers
+        asking at different times still agree on it, and queue age
+        (age_days/queue_rows) prices from when the fact expired rather
+        than reporting a long-dead claim as zero days old."""
+        old = "2020-01-01T00:00:00.000000+00:00"
+        evs = events(rec("claim", claim_p(ttl_days=1), ts=old))
+        a = tm.fold(evs, now_dt=NOW)[0]["tr-00000001"]
+        b = tm.fold(evs, now_dt=NOW + timedelta(days=900))[0]["tr-00000001"]
+        self.assertEqual(a["status_ts"], b["status_ts"])
+        self.assertEqual(a["status_ts"],
+                         "2020-01-02T00:00:00.000000+00:00")
+
+    def test_no_record_shape_moves_status_any_more(self):
+        """STEP 2.6 inverted its four path/anchor arms into abstentions;
+        ADR-057 extends that to the LAST record shape that still moved
+        status -- the TTL invalidation. The `invalidation` kind is now
+        wholly inert, so a forged or replayed expiry record cannot stale
+        a claim the clock says is fresh. Both spellings are pinned: the
+        structured reason_code the retired scan stamped (v0.9.12) and the
+        free-text prefix of pre-stamp records."""
+        for rid, extra in (("tr-00000002", {"reason_code": "ttl",
+                                            "reason": "ttl expired (30 days)"}),
+                           ("tr-00000003", {"reason": "ttl expired (30 days)"}),
+                           ("tr-00000004", {"reason": "evidence path f.txt changed"})):
+            p = {"claim": "tr-00000001", "commit": "abc1234"}
+            p.update(extra)
+            evs = events(rec("claim", claim_p(ttl_days=3650)),
+                         rec("invalidation", p, rid=rid))
+            claims, _ = tm.fold(evs, now_dt=NOW)
+            self.assertEqual(claims["tr-00000001"]["status"], "unverified",
+                             f"invalidation {extra} still moves status")
+
+    def test_the_strategy_seam_is_gone(self):
+        """A positive pin on a REMOVAL, in the shape step 2.6 used. The
+        seam invited a writer that materializes a read-time fact as an
+        append-only record, which is the design ADR-057 rejects; leaving
+        an empty INVALIDATORS tuple would have advertised the door as
+        still open. A re-add must fail here, loudly."""
+        for gone in ("decide_invalidation", "INVALIDATORS", "_ttl_expired"):
+            self.assertFalse(hasattr(tm, gone),
+                             f"{gone} is back -- the ADR-057 removal was undone")
+        self.assertNotIn("ttl-scan", tm.WRITE_VERBS)
+        self.assertNotIn("ttl-scan", [v[0] for v in tm.VERB_TABLE])
+
+    def test_confluence_survives_the_clock(self):
+        """INV-I, re-pinned where ADR-057 could have broken it. fold is a
+        pure function of (events, now_dt): for a FIXED now, input order
+        cannot change the derived state."""
+        import itertools
+        old = "2020-01-01T00:00:00.000000+00:00"
+        recs = [rec("claim", claim_p(ttl_days=1), ts=old),
+                rec("verdict", {"claim": "tr-00000001", "verdict": "agree",
+                                "basis": "b"}, rid="tr-00000002",
+                    ts="2020-01-01T06:00:00.000000+00:00"),
+                rec("invalidation", {"claim": "tr-00000001", "reason_code": "ttl",
+                                     "reason": "ttl expired (1 days)"},
+                    rid="tr-00000003", ts="2020-01-05T00:00:00.000000+00:00")]
+        seen = set()
+        for perm in itertools.permutations(recs):
+            claims, _ = tm.fold(events(*perm), now_dt=NOW)
+            e = claims["tr-00000001"]
+            seen.add((e["status"], e["status_ts"]))
+        self.assertEqual(len(seen), 1, f"fold is order-dependent: {seen}")
+
+    def test_malformed_records_abstain_rather_than_raise(self):
+        """fold() is on EVERY read path since ADR-057, including `truth
+        validate` -- the one verb whose job is to report a malformed
+        record. A bad ttl_days must therefore not raise from inside the
+        fold, or the malformation silences its own sensor. The shapes
+        below are exactly what validate_events already refuses."""
+        old = "2020-01-01T00:00:00.000000+00:00"
+        for bad in ("30", True, 0, -5, 1.5, None, [], {}):
+            evs = events(rec("claim", claim_p(ttl_days=bad), ts=old))
+            claims, _ = tm.fold(evs, now_dt=NOW)
+            self.assertEqual(claims["tr-00000001"]["status"], "unverified",
+                             f"ttl_days={bad!r} was judged")
+        naive = rec("claim", claim_p(ttl_days=1), ts="2020-01-01T00:00:00")
+        claims, _ = tm.fold(events(naive), now_dt=NOW)   # aware `now`, naive ts
+        self.assertEqual(claims["tr-00000001"]["status"], "unverified")
+
+    def test_empty_glob_is_still_exempt_at_intake(self):
+        """ADR-023 (H5), intake half -- which survives step 2.6 and
+        ADR-057 intact. A glob matching zero tracked files is EXEMPT from
+        the dead-literal gate because it has no single referent (INV-M /
+        canary FAULT T)."""
+        self.assertEqual(tm.dead_literal_paths(["src/ghost/*.py"], []), [])
 
 # --------------------------------------------------------- consumers
 
@@ -2278,7 +2399,9 @@ class TestInverseReport(unittest.TestCase):
 class TestOverrideDecay(unittest.TestCase):
     """R12 / ADR-032: override_decay is a pure function of two args, plus a
     parity check that a defaulted TTL behaves identically under
-    _ttl_expired (ADR-019: strict boundary, counted from the claim ts)."""
+    kernel.ttl_expiry (ADR-019: strict boundary, counted from the claim
+    ts). The parity arm moved with the function in ADR-057; what it
+    asserts did not."""
 
     def test_scope_basis_no_ttl_gets_default_flagged_with_notice(self):
         ttl, flag, notice = tm.override_decay("scoped to services/", None)
@@ -2302,23 +2425,29 @@ class TestOverrideDecay(unittest.TestCase):
 
     def test_defaulted_ttl_expires_exactly_like_an_authored_one(self):
         # parity: the (30, True) default is an ordinary ttl_days to the
-        # ADR-019 scan -- strict boundary, from the claim ts, no special
-        # casing of ttl_default anywhere in the expiry path.
+        # ADR-019 read-time clock -- strict boundary, from the claim ts,
+        # no special casing of ttl_default anywhere in the expiry path.
         ttl, flag, _ = tm.override_decay("scoped", None)
         claim_dt = tm.parse_ts(TS)
-        e = entry(claim_p(ttl_days=ttl, ttl_default=flag), ts=TS)
+        c = rec("claim", claim_p(ttl_days=ttl, ttl_default=flag), ts=TS)
         exact = claim_dt + timedelta(days=ttl)
-        self.assertIsNone(tm.decide_invalidation(e, {}, exact),
+        self.assertIsNone(tm.ttl_expiry(c, exact),
                           "at exactly ts + ttl_days the claim survives")
-        d = tm.decide_invalidation(e, {}, exact + timedelta(seconds=1))
-        self.assertEqual(d["label"], "ttl expired")
-        self.assertEqual(d["payload"]["reason_code"], "ttl")
+        self.assertEqual(tm.ttl_expiry(c, exact + timedelta(seconds=1)), exact)
         # a plain claim with the SAME ttl and no default flag expires
-        # identically -- ttl_default is inert to the scan
-        plain = entry(claim_p(ttl_days=ttl), ts=TS)
+        # identically -- ttl_default is inert to the clock
+        plain = rec("claim", claim_p(ttl_days=ttl), ts=TS)
         self.assertEqual(
-            tm.decide_invalidation(plain, {}, exact + timedelta(seconds=1)),
-            d, "ttl_default must not change expiry behavior (ADR-019)")
+            tm.ttl_expiry(plain, exact + timedelta(seconds=1)),
+            tm.ttl_expiry(c, exact + timedelta(seconds=1)),
+            "ttl_default must not change expiry behavior (ADR-019)")
+        # ...and end to end through the fold, which is what consumers read.
+        self.assertEqual(
+            tm.fold(events(c), now_dt=exact)[0]["tr-00000001"]["status"],
+            "unverified")
+        self.assertEqual(
+            tm.fold(events(c), now_dt=exact + timedelta(seconds=1))[0]
+            ["tr-00000001"]["status"], "stale")
 
 
 class TestSeparationReport(unittest.TestCase):
@@ -2428,11 +2557,17 @@ class TestOverrideReport(unittest.TestCase):
 
     def test_verbatim_repeat_detected_across_an_expiry(self):
         # prior claim carries scope_basis, is TTL-expired (-> stale/dead),
-        # a later claim re-uses a token-set-identical justification
+        # a later claim re-uses a token-set-identical justification.
+        #
+        # ADR-057: the expiry is made by the CLOCK, not by the record.
+        # ttl_days=1 against NOW (four days past the claim ts) is what
+        # puts the prior claim in the dead set; the invalidation record
+        # below is kept deliberately, as proof that it contributes
+        # nothing -- delete the ttl_days and this arm must go red.
         prior = self._claim("tr-00000001",
                             "2026-07-01T00:00:00.000000+00:00",
                             scope_basis="the include filter covers the repo",
-                            ttl_days=30, ttl_default=True)
+                            ttl_days=1, ttl_default=True)
         expire = self._inval("tr-00000009", "tr-00000001",
                             "2026-07-05T00:00:00.000000+00:00",
                             reason_code="ttl")
@@ -2447,10 +2582,14 @@ class TestOverrideReport(unittest.TestCase):
         self.assertEqual(r["repeats"][0]["prior_status"], "stale")
 
     def test_not_a_repeat_when_texts_differ(self):
+        # ttl_days=1, so the prior claim IS dead at NOW (ADR-057). With
+        # the old ttl_days=30 this arm would pass for the wrong reason --
+        # a live prior is never a repeat -- and would stop testing the
+        # token comparison it exists for.
         prior = self._claim("tr-00000001",
                             "2026-07-01T00:00:00.000000+00:00",
                             scope_basis="the include filter covers the repo",
-                            ttl_days=30, ttl_default=True)
+                            ttl_days=1, ttl_default=True)
         expire = self._inval("tr-00000009", "tr-00000001",
                             "2026-07-05T00:00:00.000000+00:00",
                             reason_code="ttl")
@@ -5157,33 +5296,41 @@ class TestScopeDecayCLI(unittest.TestCase):
             self.assertNotIn("ttl_default", p,
                              "explicit ttl must not be flagged defaulted")
 
-    def test_backdated_scope_ok_expires_via_ttl_scan(self):
-        """ADR-032 override decay, end to end through the SUCCESSOR verb.
+    def test_backdated_scope_ok_expires_at_read_time(self):
+        """ADR-032 override decay, end to end, with NO WRITE ANYWHERE.
 
-        This is the arm that proves step 2.6 did not orphan ADR-019: a
-        backdated --scope-ok claim takes the defaulted ttl_days=30, and
-        `truth ttl-scan` -- all that remains of `invalidate-scan` after
-        the path and anchor strategies were retired -- still materializes
-        the expiry as a reason_code=ttl invalidation, which the fold still
-        demotes to stale under the double-invalidation rule. If the clock
-        writer had been retired with the proxy, this goes red.
+        Successor to test_backdated_scope_ok_expires_via_ttl_scan. That
+        arm proved step 2.6 had not orphaned ADR-019 by driving the
+        surviving clock verb and asserting the reason_code=ttl record it
+        appended. ADR-057 removed the verb and the record; what must
+        still hold is the DECAY ITSELF, so this arm asserts the same
+        outcome through the only surface left -- an ordinary read.
 
-        The old tail asserted `reaffirm --dry-run` reporting '1 ttl
-        (re-file)'. The verb is gone; the fact it reported is now
-        structural -- a TTL-expired claim is the ONLY kind of stale claim
-        there is, and re-filing is the only route out of it."""
+        The added assertion is the one that makes ADR-057 falsifiable
+        rather than decorative: the ledger does not grow. If a future
+        edit re-introduces a clock writer, the expiry would still show up
+        in `list --stale` and only this record count would catch it."""
         with tempfile.TemporaryDirectory() as d:
             _mk_sandbox(d)
             past = {"TRUTH_NOW": "2026-06-01T00:00:00+00:00"}  # >30d before now
             r = self._scope_claim(d, env_extra=past)
             cid = r.stdout.strip().splitlines()[-1]
-            r = _truth(d, "ttl-scan")  # real now, long past ttl 30
-            self.assertIn(cid, r.stdout)
-            self.assertIn("1 claim(s) expired", r.stdout)
-            inval = self._ledger(d)[-1]
-            self.assertEqual(inval["kind"], "invalidation")
-            self.assertEqual(inval["payload"]["reason_code"], "ttl")
+            before = len(self._ledger(d))
+
+            # Read at real now, long past the defaulted ttl of 30 days.
             r = _truth(d, "list", "--stale")
+            self.assertIn(cid, r.stdout,
+                          "the backdated override did not decay at read time")
+            self.assertEqual(len(self._ledger(d)), before,
+                             "a read verb appended to the ledger -- ADR-057 "
+                             "means expiry is DERIVED, never materialized")
+
+            # The same ledger, asked about an earlier moment, answers
+            # live: the clock is a parameter of the question (EPI-607).
+            inside = {"TRUTH_NOW": "2026-06-15T00:00:00+00:00"}  # <30d after
+            r = _truth(d, "list", "--stale", env_extra=inside)
+            self.assertNotIn(cid, r.stdout)
+            r = _truth(d, "list", "--unverified", env_extra=inside)
             self.assertIn(cid, r.stdout)
 
 

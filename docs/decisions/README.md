@@ -79,6 +79,7 @@ recorded, which is why adding the row is not optional.
 | `ADR-025` commit-gate decidability | [`ADR-054`](054-doctor-resolves-delegated-gate.md) | Amends — the hook arm resolves one hop of delegation | 2026-08-18 |
 | `ADR-039` blast forecast — advisory only | [`ADR-055`](055-churn-floor-refusal-and-structural-exemption.md) | Amends — ratifies the advisory→refusal promotion (PROPOSED: ADR-039's evidence clause is unresolved) and exempts selector targets | 2026-08-18 |
 | `ADR-041` shell-free evidence execution (PROPOSED, "NOT implemented") | [`ADR-056`](056-shell-free-evidence-execution-implemented.md) | Amends — records what actually shipped, answers its four open questions, and states that decision 3 does NOT close R4a as its text claimed (PROPOSED: the independent adversarial pass ADR-041 required has not happened) | 2026-08-18 |
+| `ADR-019` TTL expiry semantics | [`ADR-057`](057-read-time-ttl.md) | Amends — ADR-019's arithmetic is untouched (count from the claim's own `ts`, strict boundary), but its mechanism is replaced: the `ttl-scan` writer it ratified as "the sole clock reader" is removed and expiry is derived inside `fold(events, now_dt=…)` (PROPOSED: not independently reviewed) | 2026-08-23 |
 
 ## Rules
 

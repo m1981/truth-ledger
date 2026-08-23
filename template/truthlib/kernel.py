@@ -12,7 +12,7 @@ import functools
 import hashlib
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from truthlib.registry import *
 # FAZA 3 step 3.1: a watch target may carry a `#selector` suffix naming a
@@ -182,7 +182,18 @@ def ttl_invalidation(payload):
       * TTL EXPIRY (ADR-019/G10) -- a CLOCK FACT, and the one thing
         reproduce provably cannot replace: a claim whose TTL runs out
         today still reproduces perfectly today. Nothing else in the
-        system observes it, so this arm KEEPS staling.
+        system observes it, so this arm KEPT staling -- until ADR-057.
+
+    ADR-057 (READ-TIME TTL) retires the WRITER, not this predicate.
+    `stale` is now derived inside fold() from (claim ts, ttl_days,
+    now_dt); no record materializes the clock any more, so fold() reads
+    a historical TTL invalidation as INERT exactly like a path one. The
+    discriminator survives because the READERS still need it: the
+    ~1997 records already written stay in the ledger forever (EPI-501,
+    J-012 -- retiring a writer is not breaking a reader), and
+    reports.half_life_observations plus reports.staling_report still
+    have to tell the two historical meanings apart when they replay
+    them.
 
     Returns True for the second. Killing both because they share a kind
     would have quietly removed a working mechanism -- four suite arms
@@ -197,9 +208,54 @@ def ttl_invalidation(payload):
     p = payload or {}
     return p.get("reason_code") == "ttl" or is_ttl_reason(p.get("reason"))
 
+# ------------------------------------------------- the read-time clock arm
+
+def ttl_expiry(claim_record, now_dt):
+    """ADR-057: WHEN does this claim's TTL run out, and has it? Returns
+    the expiry datetime when the claim is expired AT now_dt, else None.
+    Pure -- the clock arrives as an argument, never read here.
+
+    Successor to policy._ttl_expired, and it keeps that function's two
+    load-bearing decisions verbatim (ADR-019): the shelf life counts
+    from the CLAIM'S OWN ts -- not the anchor, not the agree verdict, so
+    re-verification never silently resets it -- and the boundary is
+    STRICT, so at exactly ts + ttl_days the claim still survives. What
+    changed is only WHO asks and WHEN: the scan asked once per push and
+    wrote a record; fold() now asks on every read and writes nothing.
+
+    TWO GUARDS THAT DID NOT EXIST IN THE SCAN, and the reason they do
+    now: `_ttl_expired` ran inside ONE verb, so a malformed ttl_days or
+    a tz-naive ts could at worst crash `ttl-scan`. This runs inside
+    fold(), which every read verb and every write verb's pre-check calls
+    -- the same bad record would take the WHOLE CLI down, including
+    `truth validate`, the one verb whose job is to report it. So:
+
+      * ttl_days must be a positive non-bool int (exactly the shape
+        validate_events already enforces); anything else is not judged.
+      * a tz-naive claim ts is not judged against an aware now_dt -- the
+        subtraction would raise, and ADR-015's fixed-width aware profile
+        is what validate_events screens for.
+
+    Both are FAIL-OPEN on a record that is already invalid by the
+    mirror's own rules, which is the correct direction here: the sensor
+    that reports the malformation must not be the one the malformation
+    silences."""
+    p = (claim_record.get("payload") or {})
+    ttl = p.get("ttl_days")
+    if isinstance(ttl, bool) or not isinstance(ttl, int) or ttl < 1:
+        return None
+    claim_ts = parse_ts(claim_record.get("ts") or "")
+    if claim_ts is None:
+        return None
+    if (claim_ts.tzinfo is None) != (now_dt.tzinfo is None):
+        return None
+    if (now_dt - claim_ts).total_seconds() > ttl * 86400:
+        return claim_ts + timedelta(days=ttl)
+    return None
+
 # ----------------------------------------------------------------- fold
 
-def fold(events):
+def fold(events, now_dt=None):
     """Derive claim states (+ status timestamps) and the premise map.
 
     v0.4 semantics -- three hardenings, same shape:
@@ -215,13 +271,35 @@ def fold(events):
         across subsequent invalidate-scans instead of re-staling forever.
     `retracted` remains terminal (G12).
 
-    The refactor adds ONE algebra change (step 2.5): the
-    DOUBLE-INVALIDATION RULE. `stale` is no longer reachable from a path
-    invalidation -- only from a TTL expiry (kernel.ttl_invalidation). The
-    live path through this fold is therefore
-    `unverified -> live -> diverged/retracted`, with `stale` narrowed to
-    the clock arm, and every reader of a stale claim is reading an
-    ADR-019 expiry rather than a 3.6%-precision path proxy.
+    The refactor added ONE algebra change (step 2.5): the
+    DOUBLE-INVALIDATION RULE. `stale` stopped being reachable from a path
+    invalidation -- only from a TTL expiry (kernel.ttl_invalidation) --
+    so every reader of a stale claim reads an ADR-019 expiry rather than
+    a 3.6%-precision path proxy.
+
+    ADR-057 (READ-TIME TTL) finishes that move by changing WHERE the
+    expiry comes from, not what it means. `stale` is no longer reachable
+    from ANY record: the `invalidation` kind is wholly inert here, and
+    the clock arm is derived from `now_dt` at the end of the event pass
+    (see the ADR-057 block below). The live path through this fold is
+    `unverified -> live -> diverged/retracted`, with `stale` a PROJECTION
+    over the claim's own ts and ttl_days rather than a state anything
+    wrote down.
+
+    `now_dt` (aware datetime, ADR-015 profile) is the ONLY clock this
+    function will ever see, and it is a parameter precisely so the
+    function stays pure: same (events, now_dt) always folds to the same
+    result, so confluence is unharmed and the unit corpus stays
+    deterministic. `now_dt=None` means DO NOT ASK THE CLOCK -- TTL is not
+    evaluated at all, which is the correct reading for a reproducible
+    artifact (baseline_snapshot) and the default so that a caller that
+    has no business knowing the time cannot accidentally acquire one.
+
+    The consequence worth stating plainly, because it is the point
+    (EPI-607): a claim does not BECOME stale at some instant a scanner
+    happened to run. It reads as stale to anyone who asks after its
+    shelf life, and reads as live to a reader asking about an earlier
+    moment. Time is a function of the question, not an event in the log.
     """
     ordered = sorted(events, key=fold_key)  # ADR-016: total, content-derived
     claims, premises, edges = {}, {}, []
@@ -259,17 +337,59 @@ def fold(events):
                                             if p["verdict"] == "diverge"
                                             else None)
         elif kind == "invalidation":
-            # Step 2.5: the DOUBLE-INVALIDATION RULE. Only a TTL
-            # expiry -- a clock fact nothing else observes -- still stales.
-            # A path invalidation is INERT here: it neither sets status nor
-            # advances status_ts, so the claim reads exactly as its verdicts
-            # left it and `truth reproduce` answers the drift question
-            # directly at read time. See kernel.ttl_invalidation.
-            c = p.get("claim")
-            if c in claims and ttl_invalidation(p):
-                set_status(c, "stale", ev.get("ts"))
+            # ADR-057: the kind is now WHOLLY INERT for status, and this
+            # branch is written out rather than dropped so that stays a
+            # decision on the page instead of an omission.
+            #
+            # Step 2.5 had already made the PATH arm inert (`truth
+            # reproduce` answers drift semantically at read time). ADR-057
+            # takes the TTL arm the same way, from the other side: the
+            # clock is not an event that happened to the claim, it is a
+            # function of when you ask (EPI-607). Materializing it as a
+            # record made a read-time fact look like a write-time one, and
+            # cost a scan, a bot commit and a push to say something the
+            # fold can derive in microseconds.
+            #
+            # The ~1997 records already written STAY, and stay readable
+            # (EPI-501). They are skipped here, not deleted -- indifferent
+            # history, exactly as a superseded record is.
+            if ttl_invalidation(p):
+                continue
         elif kind == "premise":
             premises.setdefault(p["issue"], []).append(p["claim"])
+    # ADR-057: THE CLOCK, applied here and in no other place in the
+    # system. `now_dt is None` means "do not ask the clock" -- the honest
+    # reading for artifacts that must be reproducible byte-for-byte
+    # (baseline_snapshot) and for the pure unit corpus, which would
+    # otherwise change answer with the calendar.
+    #
+    # POSITION IS SEMANTICS, and this position is chosen for PARITY with
+    # the mechanism it replaces: the retired scan wrote an invalidation
+    # record, so `stale` was already set when the DISPUTED post-pass ran
+    # below and an expired endpoint left its contradiction edge dormant.
+    # Deriving TTL after that pass would have quietly reversed it -- an
+    # expired claim would keep disputing -- so the clock runs first and
+    # the post-pass reads it exactly as it read the record.
+    #
+    # ACTIVE_STATUSES only (live | unverified): `retracted` is terminal
+    # (G12), and `diverged` already carries a judge's finding that the
+    # clock must not overwrite with a weaker one.
+    if now_dt is not None:
+        for e in claims.values():
+            if e["status"] not in ACTIVE_STATUSES:
+                continue
+            expired_at = ttl_expiry(e["claim"], now_dt)
+            if expired_at is None:
+                continue
+            e["status"] = "stale"
+            # status_ts is the EXPIRY INSTANT, not `now`. Two reasons, both
+            # measurable: it is derived from the record (claim ts + ttl),
+            # so two readers asking at different times still agree on it
+            # and the fold stays confluent; and age_days/queue_rows price
+            # the queue off status_ts, so stamping `now` would report a
+            # claim that expired a hundred days ago as zero days old --
+            # the clock erasing the very staleness it just detected.
+            e["status_ts"] = expired_at.isoformat(timespec="microseconds")
     # Issue #4 (v0.9.0): the DISPUTED post-pass. Every edge is judged
     # against the UNDERLYING statuses computed above -- never against
     # statuses this pass itself changes -- so the result is independent

@@ -1,10 +1,15 @@
 """truthlib.policy -- intake predicates and the ADR-001 matrix (C3).
 
 Pure refusal decisions: premise_check/join_ready, the ADR-013 supersede
-and issue-#4 contradicts intake ladders, the G8/ADR-007/INV-M/ADR-032
-claim-intake predicates, and the invalidation strategies the scan
-consults (decide_invalidation).  Returns refusal strings; only the cli
+and issue-#4 contradicts intake ladders, and the G8/ADR-007/INV-M/
+ADR-032 claim-intake predicates.  Returns refusal strings; only the cli
 turns them into exits.
+
+The INVALIDATION STRATEGIES that used to live here are gone (ADR-057):
+the path and anchor arms were retired in refactor step 2.6, and the
+clock arm -- the last one -- moved into kernel.ttl_expiry, where fold()
+derives expiry at READ time instead of a scan materializing it as a
+record. Nothing in this module reads a clock any more.
 """
 import re
 
@@ -445,34 +450,24 @@ def override_decay(scope_basis, ttl_days, flag="--scope-ok"):
                 "visible opt-out) to choose a different shelf life.")
     return (ttl_days, False, None)
 
-# ------------------------------- invalidation strategies (OCP seam, G10/14)
-# Each strategy: (entry, facts, now) -> None, or
-#   {"payload": <fields merged into the invalidation record>,
-#    "label":   <short reason for scan output>}
-# `facts` is gathered by the shell per claim; missing keys mean the fact
-# was not gathered, and a strategy needing them abstains.
-# the Reproduce-on-Read refactor (step 2.6) narrowed this to the CLOCK arm alone -- see the note
-# where the two path/anchor strategies used to live.
-
-def _ttl_expired(entry, facts, now):
-    """ADR-019: TTL counts from the claim's own ts (not the anchor, not
-    the agree verdict) and the boundary is STRICT -- expired only when
-    (now - ts) > ttl_days, so at exactly ts + ttl_days it survives. Runs
-    inside the scan (an INVALIDATOR), which is the only clock reader; it
-    emits an invalidation record, and the fold demotes to stale off that
-    record. The fold never evaluates TTL itself -- purity/confluence."""
-    p = entry["claim"]["payload"]
-    ttl = p.get("ttl_days")
-    claim_ts = parse_ts(entry["claim"].get("ts") or "")
-    if ttl and claim_ts and (now - claim_ts).total_seconds() > ttl * 86400:
-        # reason_code (v0.9.12 red-team F3): the STRUCTURED twin of the
-        # human reason, so consumers (reaffirm's TTL arm) need not parse
-        # free text. Schema/mirror payloads are open; older records
-        # simply lack it and readers fall back to the reason prefix.
-        return {"payload": {"reason": f"ttl expired ({ttl} days)",
-                            "reason_code": "ttl"},
-                "label": "ttl expired"}
-    return None
+# ----------------------------- the invalidation strategies: ALL RETIRED
+# THE SEAM IS GONE, not empty (ADR-057). It used to be an OCP hook --
+# strategies of shape (entry, facts, now) -> decision, tried in order by
+# decide_invalidation, each emitting the payload of an `invalidation`
+# record the fold then read as status. Its last inhabitant, _ttl_expired,
+# moved to kernel.ttl_expiry and changed shape with the move: it answers
+# WHEN the shelf life ran out, and fold() applies that at read time.
+#
+# WHY THE HOOK ITSELF DOES NOT SURVIVE AS AN EMPTY TUPLE. A seat kept
+# warm for "a future clock-shaped invalidator" is a seat for the exact
+# design ADR-057 rejects -- a writer that materializes a read-time fact
+# as an append-only record. Leaving the tuple would have advertised that
+# door as still open. The successor extension point is kernel.ttl_expiry:
+# pure, clock-in-a-parameter, and it writes nothing.
+#
+# ADR-019 survives whole; only its mechanism moved. The two decisions it
+# actually makes -- count from the CLAIM's ts, STRICT boundary -- are
+# preserved verbatim in kernel.ttl_expiry's body and docstring.
 
 # _anchor_unreachable and _evidence_paths_touched were RETIRED in the Reproduce-on-Read refactor
 # (refactor step 2.6). Both answered the SYNTACTIC question -- did git
@@ -585,20 +580,11 @@ def generated_blind_spot(globs, tracked, probes=GENERATED_DIR_PROBES):
     return sorted(f for f in tracked
                   if match_paths(f, probes) and not match_paths(f, globs))
 
-# ONE strategy since refactor step 2.6. The cascade's order used to be part of the
-# contract (TTL, then anchor, then paths); with the other two retired
-# there is nothing left to order, and the tuple stays a tuple so a future
-# clock-shaped invalidator has an obvious seat rather than a rewrite.
-INVALIDATORS = (_ttl_expired,)
-
-def decide_invalidation(entry, facts, now):
-    if entry["status"] not in ACTIVE_STATUSES:
-        return None
-    for strategy in INVALIDATORS:
-        decision = strategy(entry, facts, now)
-        if decision:
-            return decision
-    return None
+# INVALIDATORS and decide_invalidation were REMOVED by ADR-057, together
+# with the `ttl-scan` verb that was their only caller. See the note above
+# where the strategies lived; the ACTIVE_STATUSES guard decide_invalidation
+# applied now lives in fold()'s ADR-057 block, which is the only remaining
+# place a claim's status meets a clock.
 
 def premise_check(status, tier):
     """ADR-001 matrix. Returns (passes, warning-or-None)."""
