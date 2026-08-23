@@ -11,35 +11,163 @@ release adds its entry here AND bumps the docstring version line.
 v0.10.0 (the clock stops being an event; two verbs retired, one added.
   No schema change -- the record $id stays `truth-ledger-record.v0.18`.):
 
-  -- THIS ENTRY IS INCOMPLETE, AND DELIBERATELY SAYS SO --------------------
+  -- WHAT THIS ENTRY RESTS ON ---------------------------------------------
   * `v0.9.38` was tagged before the Reproduce-on-Read refactor's later
-    steps, FAZA 3 and FAZA 4 landed. 122 commits sit between that tag and
-    this entry (`git rev-list --count v0.9.38..HEAD`), and MOST OF THEM
-    HAVE NO ENTRY HERE. What is
-    written below is what was verified against the code while writing it:
-    the ADR-057/058/059 work, and the CLI surface delta computed
-    mechanically from the tagged tree. The rest is listed by commit so the
-    gap is countable rather than invisible:
+    steps, FAZA 3 and FAZA 4 landed; 122 commits sit between that tag and
+    this entry (`git rev-list --count v0.9.38..HEAD`). Of those, 23 touch
+    code a consumer receives -- everything else is this repo's own ledger,
+    governance and journals.
+  * Every figure below is quoted from the commit that produced it or from
+    the ADR it implements, not reconstructed by reading the code. Where a
+    change is recorded only as code, it is named and left undescribed
+    rather than guessed at.
 
-        c0ff7f3  Reproduce-on-Read steps 2.5/2.6 -- the double-invalidation
-                 rule; `invalidate-scan` narrowed to `ttl-scan`; `reaffirm`
-                 retired
-        4198ed2  ADR-041 -- shell-free evidence execution (see ADR-056 for
-                 what shipped and what it does NOT close)
-        ee7902a  FAZA 3 step 3.1 -- named watch policies
-        79750ed  step 3.2 -- the watch budget as a hard refusal
-        0dbfc87  step 3.2, second arm -- the WIDTH budget on ADR-039
-        be0b4da  FAZA 3 steps 3.1/3.3 -- structural selectors in policy,
-                 gates and reproduce
-        2822d8e  structural anchors -- sub-tree selectors
-        0131a92  FAZA 4 steps 4.1/4.2 -- one projection over the fold, and
-                 the `truth health` verb
-        c84bfcd  ADR-054 -- doctor resolves a delegated gate
-        39e1052  ADR-055 -- churn floor as a refusal, structural exemption
+  -- BEHAVIOUR CHANGES, read these first ----------------------------------
+  * **Evidence commands no longer run through a shell (ADR-041, `4198ed2`;
+    what shipped and what it does NOT close: the meta-repo's ADR-056).**
+    The screen tokenized with `shlex` while the executor handed the same
+    string to `subprocess.run(shell=True)`: two interpreters reading one
+    string, and every divergence between them was a channel. ADR-021 closed
+    the newline; the 2026-08-01 audit found three more (`uniq *` is one word
+    to shlex and N to `/bin/sh`; `cat <>F` CREATES the file the `<` branch
+    read as input; `>1` writes a file named `1` behind the fd-dup carve-out).
+    Enumerating them does not terminate, because only `/bin/sh` implements
+    `/bin/sh`. The screen's parse IS the execution now:
+    `evidence.parse_evidence_command` emits argv arrays with resolved
+    descriptors and glob patterns, and `shellio.run_evidence` runs them with
+    `shell=False`, plumbing pipelines, and-or lists, `>/dev/null`, `2>&1`
+    and `<FILE` itself. Below the parser there is no string, so "the
+    screen's model diverges from the executor's" is inexpressible here, not
+    merely false. Evidence: all 196 distinct evidence commands in this
+    ledger yield an identical `(output_hash, returncode)` pair under
+    `/bin/sh` and under the runner; `scripts/adr041-hash-stability.py`
+    ships with the template so a consumer can re-run that comparison on
+    their own corpus before upgrading.
+  * **TTL expiry is derived at read time, not written (ADR-057, `68ef221`).**
+    See the dedicated section below.
 
-    A release TAG should not be cut until those have entries written by
-    people who can vouch for them. Writing them from a code read would be
-    the restated-fact failure this project has a sweep for.
+  -- SECURITY -------------------------------------------------------------
+  * **A write channel the evidence screen accepted (SEC-0, `8970f5d`).**
+    `tok.isdigit()`, present so `2>&1` could name descriptor `1`, also
+    admitted `>2` -- a write to a file named `2`. Confirmed in a sandbox:
+    `>2` and `>22` created files. The lexer had always distinguished them;
+    the screener had not. Now a token ending in `&` is a dup redirect
+    (target: a digit or `-`), and plain `>`/`>>` is an out redirect whose
+    only legal target is `/dev/null`. The `>/dev/null 2>&1` convention is
+    untouched. Two regression arms pin both sides.
+  * **Two Tier A gates were DEAD, not degraded (step 0.1, `8970f5d`).**
+    `truth list --json` is 145576 B against a `MAX_ARG_STRLEN` of 131072 B,
+    so `execve` refused the whole environment and `fact-health.sh` and
+    `spec-health.sh` -- both shipped to consumers -- never ran. The ledger
+    JSON now travels by FILE (`CLAIMS_FILE`/`ISSUES_FILE`, mktemp + trap),
+    not by environment variable. `spec-health`'s header had been measuring
+    the wrong constant (`ARG_MAX` ~1 MB instead of `MAX_ARG_STRLEN` 128 KiB),
+    which is why nobody reacted in time.
+
+  -- NEW: WATCH SETS STOP BEING ASSEMBLED BY HAND -------------------------
+  * **Named watch policies, `claim --watch-policy NAME` / `list
+    --watch-policy NAME` (FAZA 3 step 3.1, `ee7902a`).** Measured on this
+    ledger: 75 active claims carrying a watch set produced 60 DISTINCT sets
+    -- reuse near zero. The file format is one `<name> -- <glob>[, <glob>]`
+    line per policy, deliberately NOT YAML: the CLI is stdlib-only and a
+    `.yml` extension would promise a generality the loader must refuse. A
+    policy RESOLVES the set rather than annotating it, before the
+    `INTAKE_GATES` table, so INV-M, the ADR-039 forecast and the ADR-038
+    advisory judge its globs exactly like a hand-written list. The payload
+    carries the name AND the resolved globs, because the ledger is
+    append-only and editing the policy file must not rewrite what past
+    claims consider themselves to be watching. An unknown name ENUMERATES
+    the defined ones: a typo must not quietly file a claim watching
+    nothing, which is the INV-M defect reached by a spelling mistake.
+  * **The watch budget as a hard refusal (step 3.2, `79750ed` + `0dbfc87`).**
+    Two rows in `INTAKE_GATES`. `paths-budget-max`
+    (`MAX_FREEHAND_WATCH_PATHS=1`) asks whether a set was CHOSEN or
+    accumulated; `paths-churn-budget` refuses a set whose ADR-039
+    `blast_forecast` reaches the self-calibrating floor. Two exits, both
+    leaving a trace, and no silent third: `--watch-policy <name>`, or
+    `--paths-ok "<sentence>"` (stored as `paths_basis`, decaying at 30 days
+    per ADR-032, counted in the override report). Refusals are symmetric
+    with the ADR-035 precedent: `--paths-ok` beside a single path, or
+    beside `--watch-policy`, is itself refused -- a basis that excuses
+    nothing is schema noise. ORDER IS LOAD-BEARING and is pinned: all 17
+    freehand claims at or above the churn threshold carry >=2 paths, so
+    with the count row first the churn row would NEVER have fired -- a dead
+    row impersonating coverage.
+  * **Structural anchors: a watch target may name a sub-tree
+    (`2822d8e` + `be0b4da`).** `package.json#/dependencies/stripe` is
+    insensitive to a `version` bump; `pyproject.toml#tool.ruff.lint` to
+    edits in `[tool.pytest]`; `docs/spec.md#2-jwt` to edits in other
+    sections; a bare path is an ordinary whole-file digest. `.json`,
+    `.toml` and `.md` only. SCOPE IS DELIBERATELY NARROW -- RFC 6901 and a
+    dotted path, no wildcards, no array slices, no predicates: point
+    addressing, not a query language. The hash is canonical (`sort_keys`,
+    tight separators, `ensure_ascii=False`), and JSON and TOML share one
+    domain, so equal values hash equally across formats and migrating a
+    dependency between the two files keeps the anchor. Mutation score
+    95.6% (129 of 135 killed; the surviving 6 are argued equivalent).
+    Wired through exactly two seams -- `kernel.watch_target_path` for the
+    file half, so all six readers of `evidence_paths` are selector-correct
+    without knowing selectors exist, and `shellio.structural_hash` as the
+    only place a file is read for a selector. A `package.json` that no
+    longer parses reports `malformed`, never drift: it says nothing about
+    `/dependencies/stripe`, and calling that drift would be the false
+    alarm this feature exists to remove.
+
+  -- NEW: `truth health` --------------------------------------------------
+  * **`truth health [--json] [--reproduce]` (FAZA 4 steps 4.1/4.2,
+    `0131a92`).** Reports, refuses nothing. The reason is not speed --
+    measured, five instruments are five processes, five folds and 0.55s
+    against 0.15s for one fold -- it is that `instruments/` IS NOT
+    TEMPLATED. ADR-046 moved five pure ledger projections into meta-repo
+    instruments, which left a generated consumer repo seeing `truth stats`
+    and nothing else: no override velocity, no verifier-separation
+    evidence, no churn report, no retraction causes, no staling breakdown.
+    The measurements that say whether someone's ledger is being kept
+    honestly existed only in the repo that publishes the tool. `health` is
+    composition, not a rewrite: every section is an existing pure function
+    called with one shared `folded`. The watch-adoption section lands here
+    rather than in `stats`, which resolves the tension step 3.1 hit --
+    ADR-046 ruled that `stats` carries the Tier B core, and `health` is the
+    "elsewhere" that ships.
+
+  -- INTERNAL: no behaviour change, stated because the shape moved --------
+  * `truthlib` A-series (`fed4a1f` A1, `44f4ec8` A4, `37c0071` A2,
+    `d76bda3` A3, `0dd321f` V1): refusals RETURN and the shell exits
+    (`run_intake_stage` had broken its own table's contract one frame up);
+    `main()` becomes a verb table instead of 370 lines of hand-copied
+    argparse for 23 verbs; `advisory` is split BY CRITERION into
+    `reports.py` and `contract.py` (932 lines -> 236) because a module
+    defined negatively is where the next drift lands; and the ADR-044
+    entry-point monkeypatch mirror -- a `_MirrorModule.__setattr__` plus a
+    `gc.get_referrers()` walk in the production loading path -- is retired,
+    its equivalence proof having been delivered. Every refusal byte and
+    exit code is unchanged.
+  * `doctor` resolves a delegated gate (ADR-054, `c84bfcd`). `find_gate_hook`
+    stops testing the whole file and requires the needle at a CALL POSITION
+    -- a non-comment line of the hook, or of a file the hook delegates to,
+    one hop. ADR-054 had claimed "implementation lands with this record"
+    since `39e1052`; until this commit that was untrue.
+  * Recipe lint for fail-open shapes (`182f1fa`). WARNS, never refuses --
+    a gate that refuses legal filings teaches its own workaround (the
+    ADR-014 lesson). It fires when a `grep` recipe carries a flag making
+    its output a SET OR ITS SIZE (`-c`, `-o`, `-l`, `-L`, long and bundled
+    forms), because such a recipe counts what its pattern RECOGNIZES rather
+    than what exists: a form invented later simply does not appear, the
+    number stays plausible, and the capsule reproduces green after its fact
+    has drifted.
+  * The canary guards its own sandbox (`441de48`). `mkrepo()` did a bare
+    `cd "$1"` with no `|| exit` under `set -u` and no `set -e`, so a failed
+    cd let `git init -b main .` run wherever the shell was standing. The
+    2026-08-20 answer to that was a SENTENCE in AGENTS.md; this repo has
+    its own measurement that sentences do not hold, so it is a mechanism now.
+
+  -- STILL UNWRITTEN ------------------------------------------------------
+  * Reproduce-on-Read steps 0.1/1.x/2.1-2.3 and the FAZA 3 step 3.3 pilot
+    migration have no entry here beyond what is quoted above. So does
+    `f53ee93` (a dead flag choice removed from scope-decay, 5 mutants
+    killed) and `a5aa4b7` (`arm-index` wired as a battery arm). None
+    changes a shipped contract; all are recorded in `docs/refactor/`
+    and in their commit messages.
 
   -- CLI SURFACE DELTA SINCE v0.9.38 (computed, not remembered) ------------
   * REMOVED: `invalidate-scan`, `reaffirm`. Both were write paths for a

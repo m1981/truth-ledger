@@ -132,21 +132,25 @@ positive pin on the removal itself (`decide_invalidation`, `INVALIDATORS`,
 
 ## Residual
 
-**The version was bumped to v0.10.0 by operator ruling (2026-08-23), and
-the bump is bigger than this record.** All six ADR-026 lockstep surfaces
-now state `v0.10.0`; the schema `$id` is untouched at
-`truth-ledger-record.v0.18`, because no record SHAPE changed.
+**The version was bumped to v0.10.0 by operator ruling (2026-08-23).**
+All six ADR-026 lockstep surfaces state `v0.10.0`; the schema `$id` is
+untouched at `truth-ledger-record.v0.18`, because no record SHAPE changed.
 
 Checking what the last version actually was turned up the real state:
-`v0.9.38` is the newest tag and 122 commits sit between it and this work.
-The delta is not this record — it carries the Reproduce-on-Read refactor's
-steps 2.5/2.6, ADR-041, FAZA 3 and FAZA 4, none of which has a CHANGELOG
-entry. The v0.10.0 entry says so in its first section and lists them by
-commit, because an entry that quietly documented only the last change
-would read as complete.
+`v0.9.38` is the newest tag and 122 commits sit between it and this work,
+of which 23 touch code a consumer receives. The delta is not this record --
+it carries the Reproduce-on-Read refactor's later steps, ADR-041, FAZA 3
+and FAZA 4.
 
-**A TAG SHOULD NOT BE CUT YET.** The release battery WARNs when the CLI's
-stated version has no git tag, which is the correct state to sit in until
-those entries are written by people who can vouch for them. Writing them
-from a code read would be the restated-fact failure this repository keeps
-a sweep for.
+The CHANGELOG entry for v0.10.0 now covers them, written from the commit
+messages and ADRs of the people who did the work rather than from a code
+read, with every figure quoted from its source. The two changes left
+undescribed are named there rather than omitted.
+
+**Cutting the tag is still an operator act**, and one thing argues for
+doing it deliberately rather than promptly: none of the work in this
+release except ADR-054/055/056 has an accepted decision record, and this
+record plus ADR-058 and ADR-059 are all PROPOSED, none independently
+reviewed. The release battery WARNs while the stated version has no tag,
+which is the correct state to sit in until someone decides those three
+statuses.
