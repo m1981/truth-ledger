@@ -14,8 +14,17 @@
 # THE RULE THE SWEEP ENFORCES: a retracted literal may still appear in code or
 # policy, but only NEXT TO its replacement -- that is what a correction looks
 # like ("the first pass read 2329/6.8, but ..."). A lone occurrence is a stale
-# restatement, and that is the failure. Window is 8 lines either way, which is
-# a comment block.
+# restatement, and that is the failure. Window is 600 CHARACTERS either way
+# -- the old 8-line window expressed in the unit the matcher now has.
+#
+# MATCHING IS OVER WHITESPACE-NORMALISED TEXT, NOT LINE BY LINE, and that
+# is what makes the advice below safe. The first version matched per line,
+# so a multi-token literal broken across a line boundary was invisible --
+# fail-open, in a sweep built to catch stale figures. Leading comment
+# markers (`#`, `//`, ` *`, `--`) are stripped first, because the common
+# case is prose wrapped INSIDE a comment block, where plain whitespace
+# normalisation still leaves `six # arms`. Both halves were verified by
+# planting a wrapped literal and confirming the old logic scored zero.
 #
 # NOT SWEPT: docs/ (where the retraction is legitimately discussed at length)
 # and .truth/claims.jsonl (append-only history -- an old record quoting a
@@ -23,7 +32,8 @@
 #
 # CHOOSE SPECIFIC LITERALS. Matching is on word boundaries, so a short or
 # common number will collide with versions, hashes and ids. If a literal is
-# noisy, make it longer rather than loosening the sweep.
+# noisy, make it longer rather than loosening the sweep -- a longer literal
+# is now genuinely safe, which it was not before (see the note above).
 
 2329 -- 1670 -- J-040 (whisper lines over 200 commits; first pass summed per FILE)
 6.8 -- 22.6 -- J-040 (claims named per edit; same recount)

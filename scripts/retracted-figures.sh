@@ -14,7 +14,12 @@ exec "$PY" - <<'PYEOF'
 import os, re, subprocess, sys
 
 POLICY = ".truth/retracted-figures"
-WINDOW = 8
+
+# WINDOW IS IN CHARACTERS, NOT LINES, because matching is over
+# whitespace-normalised text (see normalise below) where lines no longer
+# exist. 600 chars is the old 8-line window at this repo's ~75-column
+# prose -- same reach, expressed in the unit the matcher actually has.
+WINDOW = 600
 
 if not os.path.exists(POLICY):
     print(f"retracted-figures: no {POLICY} -- nothing to sweep")
@@ -42,6 +47,53 @@ files = [f for f in tracked
          if f != ".truth/claims.jsonl" and f != POLICY
          and not f.endswith((".png", ".jpg", ".pyc"))]
 
+# A comment marker opening a continuation line, in the languages this
+# repository actually sweeps: shell/python `#`, C/JS `//` and ` *`, SQL/Lua
+# `--`. Kept deliberately short -- a marker earns its place when a wrapped
+# phrase has actually hidden behind it here.
+_LEADING_MARKER_RE = re.compile(r"(?m)^[ \t]*(?:#+|//+|\*|--)[ \t]?")
+
+
+def normalise(text):
+    """Collapse every whitespace run to one space, and return the mapping
+    back to source line numbers so a hit can still be reported at a line.
+
+    THIS IS THE WHOLE FIX. The first version of this sweep matched
+    line-by-line, so a multi-token retracted literal broken across a line
+    boundary was invisible to the tool built to catch stale figures --
+    fail-open, in the safe-looking direction, exactly like a `grep` for a
+    prose phrase wrapped at 76 columns. Two such misses were measured in
+    one week elsewhere in this repo (AGENTS.md's "six arms"; a correction
+    check that read 0 for a phrase that was present). Harmless here only
+    because both entries then in .truth/retracted-figures were single
+    tokens -- while that file's own header advised making a noisy literal
+    LONGER, walking the reader straight into the gap."""
+    # STRIP THE CONTINUATION MARKER FIRST, or the fix is half a fix.
+    # Whitespace-normalising alone handles prose wrapped in Markdown, but
+    # the commonest case here is prose wrapped inside a COMMENT BLOCK:
+    #     # the battery has six
+    #     # arms, historically
+    # which normalises to "six # arms" and still does not match. Found by
+    # testing the fix instead of assuming it -- the planted case was the
+    # one the first version still missed. Only a marker at the START of a
+    # line is removed, so inline text is never merged.
+    text = _LEADING_MARKER_RE.sub("", text)
+    out, line_of, line, prev_ws = [], [], 1, False
+    for ch in text:
+        if ch.isspace():
+            if not prev_ws:
+                out.append(" ")
+                line_of.append(line)
+            prev_ws = True
+        else:
+            out.append(ch)
+            line_of.append(line)
+            prev_ws = False
+        if ch == "\n":
+            line += 1
+    return "".join(out), line_of
+
+
 failures = 0
 checked = 0
 for retracted, replacement, where in entries:
@@ -49,19 +101,20 @@ for retracted, replacement, where in entries:
     rep = re.compile(r"\b" + re.escape(replacement) + r"\b")
     for path in files:
         try:
-            lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
+            raw = open(path, encoding="utf-8", errors="replace").read()
         except OSError:
             continue
-        for i, line in enumerate(lines):
-            if not rx.search(line):
-                continue
+        norm, line_of = normalise(raw)
+        for m in rx.finditer(norm):
             checked += 1
-            lo, hi = max(0, i - WINDOW), min(len(lines), i + WINDOW + 1)
-            if any(rep.search(l) for l in lines[lo:hi]):
+            lo = max(0, m.start() - WINDOW)
+            hi = min(len(norm), m.end() + WINDOW)
+            if rep.search(norm[lo:hi]):
                 continue
             failures += 1
-            print(f"  FAIL  {path}:{i+1}  quotes retracted {retracted!r} with "
-                  f"no {replacement!r} within {WINDOW} lines")
+            line = line_of[m.start()] if m.start() < len(line_of) else 0
+            print(f"  FAIL  {path}:{line}  quotes retracted {retracted!r} with "
+                  f"no {replacement!r} within {WINDOW} characters")
             print(f"        retracted in {where}; either cite the correction "
                   f"beside it or replace it with {replacement!r}")
 
