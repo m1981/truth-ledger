@@ -115,7 +115,7 @@ cleanup_mutants
 # itself. A subset prints `SUBSET n of m` where the digits would be, so the
 # sed captures nothing, the meta-gate reads zero, and the battery FAILS.
 # Partial verification cannot masquerade as full verification.
-TOTAL_ARMS=16
+TOTAL_ARMS=17
 WANT=""
 usage() {
   printf 'usage: %s [--arm N | N] ...\n' "${0##*/}" >&2
@@ -551,6 +551,40 @@ if mutate 's|instruments/arm-index\.py|instruments/.arm16-no-such-instrument.py|
   fi
 else
   miss "ARM 16 could not mutate the arm-index invocation -- section 8c drifted, so this arm was checking nothing"
+fi
+
+fi
+
+if want 17; then
+echo "ARM 17: a failing retracted-figures sweep must block, and an EMPTY policy must not read as health"
+# Section 3b. Two assertions, because this sweep has two ways to be
+# useless and only one of them looks like a failure.
+#
+# Assertion on this arm's OWN verdict line, never on the battery's global
+# outcome -- ARM 16 was written the other way first and reported CAUGHT
+# while an unrelated arm was red, i.e. it held for someone else's reason.
+MUT="scripts/.arm17-dead-sweep.sh"
+if mutate 's|bash scripts/retracted-figures\.sh|bash scripts/.arm17-no-such-sweep.sh|' "$MUT"; then
+  run "$MUT"; O="$OUT"; R="$RC"
+  rm -f "$MUT"
+  if ! printf '%s\n' "$O" | grep -q "^  FAIL  retracted-figures"; then
+    miss "battery did not report retracted-figures as FAILING while its sweep could not run at all"
+  elif [ "$R" != "1" ]; then
+    miss "battery exited $R with a dead sweep -- a governance failure must exit 1"
+  else
+    ok "a dead retracted-figures sweep is reported FAIL by name and blocks"
+  fi
+else
+  miss "ARM 17 could not mutate the retracted-figures invocation -- section 3b drifted, so this arm was checking nothing"
+fi
+
+# The DARK case: an empty policy file exits 0 having examined nothing, which
+# reads exactly like health. The battery must SAY so rather than print a
+# clean summary -- the same rule section 3 applies to a zero-citation corpus.
+if ! grep -q 'no figure retracted yet' scripts/release-battery.sh; then
+  miss "section 3b no longer distinguishes an EMPTY policy from a swept one -- a dark sweep now reads as health"
+else
+  ok "section 3b names the empty-policy case instead of reporting it as a clean sweep"
 fi
 
 fi

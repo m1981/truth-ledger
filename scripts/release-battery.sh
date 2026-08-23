@@ -135,6 +135,33 @@ else
   pass "fact-health" "$SUM"
 fi
 
+# --- 3b. retracted figures (the complement of section 3) -----------------
+# fact-health sweeps *.md for ledger IDS. This sweeps CODE AND POLICY for
+# NUMBERS the project has withdrawn -- a figure restated in a .py string is
+# invisible to fact-health twice over, wrong file type and wrong token type.
+# Measured 2026-08-18: J-040 recounted the whisper metric, the correction
+# reached the journal, the runbook and the dossier, and four LIVE surfaces
+# kept quoting the withdrawn pair for a day -- including gates.py's REFUSAL
+# text, so the gate argued from a number the project had already withdrawn.
+#
+# A DARK SWEEP IS THE FAILURE MODE HERE, not a red one: with an empty
+# .truth/retracted-figures this exits 0 having examined nothing, and that
+# reads exactly like health. So the zero-occurrence case is judged, the
+# same way section 3 refuses a zero-citation corpus.
+OUT=$(bash scripts/retracted-figures.sh 2>&1); RC=$?
+SUM=$(printf '%s' "$OUT" | tail -1)
+FIGS=$(printf '%s' "$SUM" | sed -n 's/^retracted-figures: \([0-9]*\) figure.*/\1/p')
+if [ "$RC" -ne 0 ]; then
+  bad "retracted-figures" "$SUM:
+$(printf '%s\n' "$OUT" | grep -E '^  FAIL' | head -3)"
+elif [ -z "$SUM" ]; then
+  bad "retracted-figures" "the sweep printed no summary (rc=$RC) -- it examined an unknown amount"
+elif [ "${FIGS:-0}" -eq 0 ]; then
+  pass "retracted-figures" "no figure retracted yet -- nothing to sweep (not a finding)"
+else
+  pass "retracted-figures" "$SUM"
+fi
+
 # --- 4. doc hygiene -----------------------------------------------------
 # NOTE a known blind spot, recorded rather than hidden: doc-health runs
 # rooted at template/, so the meta-repo's own docs/ tree is outside its
