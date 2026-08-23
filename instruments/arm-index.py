@@ -64,8 +64,36 @@ from runtime ones -- the canary's if/else pairs mean 280 `ok` call sites
 produce 283 exercised arms -- so both numbers are reported and neither is
 silently preferred.
 
-Exit: 0 clean, 1 subject-less families in an enforced species, 8 zero arms
-examined (ADR-042 rule 2 -- an index that indexed nothing has not passed).
+--- THE RECONCILIATION PASS (2026-08-24) ---------------------------------
+The subject rule above is ONE-DIRECTIONAL: it asks whether an arm declares
+a subject, never whether the register that names the arm still agrees. That
+gap has a measured cost. Four Appendix A rows were found describing retired
+machinery, and the mechanism of the break is visible in this file's own
+docstring example:
+
+    was:  say "FAULT B  (INV-C):   commit touching evidence paths ..."
+    now:  say "FAULT B (step 2.5): a commit touching evidence paths must NOT ..."
+
+At the moment the arm was INVERTED its subject was rewritten from the
+invariant to the refactor step -- locally correct, since the arm's subject
+really did change -- and the paper row kept promising a protection that no
+longer exists. A row that is MISSING is visible to a review; a row that
+outlived its mechanism reads like a working guarantee.
+
+So this pass reads Appendix A and reconciles it against the arms, in three
+classes: a row naming no recognisable arm, a row naming an arm that does
+not exist, and a row whose named arm does not point back. The third is the
+one that catches an inversion.
+
+Reported against a baseline, never enforced wholesale: today's state is
+recorded so the sweep refuses the NEXT divergence rather than relitigating
+the current backlog -- the same discipline label-coupling uses. Matching is
+deliberately conservative: an unrecognised token is ignored rather than
+guessed at, so this pass under-reports by construction.
+
+Exit: 0 clean, 1 subject-less families in an enforced species OR an
+unrecorded paper/arm divergence, 8 zero arms examined (ADR-042 rule 2 --
+an index that indexed nothing has not passed).
 
 Usage: python3 instruments/arm-index.py [--json] [--subject ADR-051]
 Gate:  NONE yet -- wire it once the enforced backlog is closed, or this
@@ -78,6 +106,8 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OPT_OUT_REL = ".truth/arm-subject-opt-out"
+PAPER_REL = "docs/truth-ledger-paper-v3.md"
+BASELINE_REL = ".truth/arm-index-paper-baseline"
 EXIT_SUBJECTLESS = 1
 EXIT_EMPTY = 8
 
@@ -86,6 +116,16 @@ EXIT_EMPTY = 8
 # named decision, not to one register.
 SUBJECT_RE = re.compile(
     r"\b(ADR-\d+|INV-[A-Z]\b|G\d+\b|FS-\d+|TL-\d+|SI-\d+|R\d+\b|issue #\d+)")
+
+# An Appendix A row: `| INV-x | property | falsified by | gate |`.
+INV_ROW_RE = re.compile(r"^\|\s*(INV-[A-Z]{1,3})\s*\|(.*)\|\s*$")
+# The arm code a family header opens with: `FAULT AC1 (...)` -> `AC1`.
+ARM_CODE_RE = re.compile(r"^(?:FAULT|ARM|CASE|LANE|DOCTOR)S?\s+([A-Z][A-Z0-9]*)")
+# A candidate reference inside a Gate cell. Filtered against real arm codes
+# afterwards, so an unknown token costs a miss, never an invented edge.
+REF_RE = re.compile(r"\b([A-Z]{1,3}\d{0,2})\b")
+# `AC1-AC8`, `V1--V3`: expanded, then filtered the same way.
+RANGE_RE = re.compile(r"\b([A-Z]{1,3})(\d{1,2})\s*[-\u2013\u2014]+\s*(?:([A-Z]{1,3}))?(\d{1,2})\b")
 
 SOURCES = (
     # (path, species, enforced)
@@ -218,6 +258,93 @@ def build():
     return arms
 
 
+def paper_rows():
+    """(invariant, gate-cell) for every Appendix A row, or [] if absent."""
+    path = os.path.join(ROOT, PAPER_REL)
+    if not os.path.exists(path):
+        return []
+    rows, inside = [], False
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if line.startswith("## Appendix A"):
+                inside = True
+                continue
+            if inside and line.startswith("## "):
+                break
+            if not inside:
+                continue
+            m = INV_ROW_RE.match(line.rstrip("\n"))
+            if m:
+                cells = [c.strip() for c in m.group(2).split("|")]
+                rows.append((m.group(1), cells[-1] if cells else ""))
+    return rows
+
+
+def arm_codes(families):
+    """code -> the family that opens with it, for the enforced species."""
+    out = {}
+    for fam in families.values():
+        if not fam["enforced"]:
+            continue
+        m = ARM_CODE_RE.match(fam["family"])
+        if m:
+            out.setdefault(m.group(1), fam)
+    return out
+
+
+def _referenced(gate, known):
+    """Arm codes a Gate cell names. Unrecognised tokens are dropped."""
+    hits = set()
+    for pre, lo, pre2, hi in RANGE_RE.findall(gate):
+        if pre2 and pre2 != pre:
+            continue
+        for n in range(int(lo), int(hi) + 1):
+            hits.add(f"{pre}{n}")
+    hits.update(REF_RE.findall(gate))
+    return sorted(h for h in hits if h in known)
+
+
+def load_baseline():
+    """`INV-x <class> <detail>` per line; '#' comments and blanks ignored."""
+    path = os.path.join(ROOT, BASELINE_REL)
+    if not os.path.exists(path):
+        return "absent", set()
+    recorded, state = set(), "empty"
+    with open(path, encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            state = "populated"
+            recorded.add(line.split("  ")[0].strip())
+    return state, recorded
+
+
+def reconcile(families):
+    """Appendix A against the arms. Findings, not verdicts -- see docstring."""
+    rows = paper_rows()
+    if not rows:
+        return None, []
+    known = arm_codes(families)
+    findings = []
+    for inv, gate in rows:
+        refs = _referenced(gate, known)
+        if not refs:
+            findings.append((f"{inv} no-arm",
+                             f"{inv}: its Gate names no arm this sweep can "
+                             f"recognise -- {gate[:60]!r}"))
+            continue
+        for code in refs:
+            fam = known[code]
+            if fam["subject"] != inv:
+                findings.append((f"{inv} back-pointer {code}",
+                                 f"{inv}: names arm {code}, but that arm "
+                                 f"declares {fam['subject']!r} -- the link is "
+                                 f"one-way, so an inversion of {code} would "
+                                 f"leave this row promising a retired guarantee"))
+    return rows, findings
+
+
 def main(argv):
     arms = build()
     opt_state, opt_entries = load_opt_out()
@@ -252,6 +379,14 @@ def main(argv):
                 f"{key} is exempted in {OPT_OUT_REL} but no family by that "
                 "name exists -- the exemption outlived its arm")
 
+    rows, findings = reconcile(families)
+    base_state, baseline = load_baseline()
+    for key, text in findings:
+        (warnings if key in baseline else failures).append(text)
+    if rows is not None and not rows:
+        warnings.append(f"{PAPER_REL} has no Appendix A rows -- the "
+                        "reconciliation pass examined nothing")
+
     if not arms:
         print("arm-index: indexed ZERO arms -- an index that indexed nothing "
               "has not passed (ADR-042 rule 2). Check the SOURCES table.",
@@ -280,6 +415,9 @@ def main(argv):
         return 0
 
     report = {"arms": len(arms), "families": len(families),
+              "paper_rows": len(rows) if rows else 0,
+              "reconciliation": [t for _, t in findings],
+              "baseline_state": base_state,
               "by_species": by_species,
               "subjects": len(reverse),
               "opt_out_state": opt_state,
@@ -302,6 +440,9 @@ def main(argv):
               "no declared subject in a REPORTED (non-enforced) species")
     for f in failures:
         print("FAIL  " + f)
+    if rows:
+        print(f"  {'appendix A':14} {len(rows):5} row(s), {len(findings)} "
+              f"unreconciled [{BASELINE_REL}: {base_state}]")
     print(f"arm-index: {len(arms)} arm(s) in {len(families)} families over "
           f"{len(SOURCES)} instruments -- {len(failures)} failure(s) "
           f"[{OPT_OUT_REL}: {opt_state}]")

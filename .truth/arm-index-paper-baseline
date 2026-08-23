@@ -1,0 +1,65 @@
+# arm-index: baseline uzgodnienia Appendix A <-> ramiona
+#
+# Format:  <klucz>  <powod>
+# Klucz to `INV-x no-arm` albo `INV-x back-pointer <KOD>`.
+#
+# BASELINE 2026-08-24, NIEROZSTRZYGNIETY. Ponizsze pozycje sa zapisem stanu
+# w chwili wprowadzenia przebiegu uzgadniajacego, nie werdyktem, ze sa
+# poprawne. Sens tego pliku jest taki, zeby NASTEPNY rozjazd nie przeszedl
+# niezauwazony -- ten sam uklad, ktory .truth/label-coupling-opt-out stosuje
+# do par modulow.
+#
+# Klasa `back-pointer` jest liczna z powodu strukturalnego, nie z powodu
+# zaniedbania: ramie deklaruje podmiot z JEDNEGO rejestru (zwykle ADR albo
+# issue), a wiersz Appendix A wskazuje je z drugiego. Dowiazanie jest
+# jednokierunkowe w obie strony poprawnie nazwane -- i wlasnie dlatego
+# odwrocenie ramienia nie dociera do wiersza. Rozstrzygniecie kazdej pozycji
+# to osobna praca: albo ramie dopisuje INV-x do naglowka, albo wiersz
+# przestaje je nazywac.
+#
+# Klasa `no-arm` to wiersze, ktorych bramka nie nazywa ramienia rozpoznawalnie.
+# INV-U wskazuje FAULT OV, ktore jest RETIRED (ADR-046) -- to nie jest szum
+# dopasowania, tylko wiersz wskazujacy wycofane ramie.
+
+INV-A no-arm  baseline 2026-08-24, nierozstrzygniete
+INV-B no-arm  baseline 2026-08-24, nierozstrzygniete
+INV-C back-pointer B  baseline 2026-08-24, nierozstrzygniete
+INV-D back-pointer C  baseline 2026-08-24, nierozstrzygniete
+INV-E back-pointer D  baseline 2026-08-24, nierozstrzygniete
+INV-F back-pointer E  baseline 2026-08-24, nierozstrzygniete
+INV-G back-pointer B1  baseline 2026-08-24, nierozstrzygniete
+INV-G back-pointer B3  baseline 2026-08-24, nierozstrzygniete
+INV-G back-pointer B4  baseline 2026-08-24, nierozstrzygniete
+INV-G back-pointer B5  baseline 2026-08-24, nierozstrzygniete
+INV-G back-pointer K2  baseline 2026-08-24, nierozstrzygniete
+INV-G back-pointer R11  baseline 2026-08-24, nierozstrzygniete
+INV-H back-pointer C1  baseline 2026-08-24, nierozstrzygniete
+INV-H back-pointer J  baseline 2026-08-24, nierozstrzygniete
+INV-I back-pointer B6  baseline 2026-08-24, nierozstrzygniete
+INV-J back-pointer L  baseline 2026-08-24, nierozstrzygniete
+INV-K back-pointer H  baseline 2026-08-24, nierozstrzygniete
+INV-L no-arm  baseline 2026-08-24, nierozstrzygniete
+INV-M back-pointer A  baseline 2026-08-24, nierozstrzygniete
+INV-N back-pointer G  baseline 2026-08-24, nierozstrzygniete
+INV-N back-pointer R9  baseline 2026-08-24, nierozstrzygniete
+INV-O back-pointer V1  baseline 2026-08-24, nierozstrzygniete
+INV-O back-pointer V2  baseline 2026-08-24, nierozstrzygniete
+INV-O back-pointer V3  baseline 2026-08-24, nierozstrzygniete
+INV-P back-pointer R10  baseline 2026-08-24, nierozstrzygniete
+INV-P back-pointer R11  baseline 2026-08-24, nierozstrzygniete
+INV-Q back-pointer AC1  baseline 2026-08-24, nierozstrzygniete
+INV-Q back-pointer AC2  baseline 2026-08-24, nierozstrzygniete
+INV-Q back-pointer AC3  baseline 2026-08-24, nierozstrzygniete
+INV-Q back-pointer AC4  baseline 2026-08-24, nierozstrzygniete
+INV-Q back-pointer AC5  baseline 2026-08-24, nierozstrzygniete
+INV-Q back-pointer AC6  baseline 2026-08-24, nierozstrzygniete
+INV-Q back-pointer AC7  baseline 2026-08-24, nierozstrzygniete
+INV-Q back-pointer AC8  baseline 2026-08-24, nierozstrzygniete
+INV-R back-pointer C1  baseline 2026-08-24, nierozstrzygniete
+INV-R back-pointer C2  baseline 2026-08-24, nierozstrzygniete
+INV-R back-pointer C3  baseline 2026-08-24, nierozstrzygniete
+INV-R back-pointer C4  baseline 2026-08-24, nierozstrzygniete
+INV-R back-pointer C5  baseline 2026-08-24, nierozstrzygniete
+INV-S back-pointer RA  baseline 2026-08-24, nierozstrzygniete
+INV-T back-pointer SD  baseline 2026-08-24, nierozstrzygniete
+INV-U no-arm  baseline 2026-08-24, nierozstrzygniete
