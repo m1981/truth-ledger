@@ -80,7 +80,12 @@ set -u
 # exit path, not just the happy one.
 cleanup_mutants() {
   local m found=0
-  for m in scripts/.arm*.sh scripts/.skip-stub.py scripts/test-zz-dark-arm.sh; do
+  # The stub is created ONCE at the top and removed only here, so its
+  # presence at exit is normal and must not be announced -- a cleanup
+  # notice that fires on every healthy run is a notice nobody reads, and
+  # then the one run with real debris looks like all the others.
+  rm -f scripts/.skip-stub.py
+  for m in scripts/.arm*.sh scripts/test-zz-dark-arm.sh; do
     [ -e "$m" ] || continue
     rm -f "$m"; found=1
   done
@@ -89,6 +94,58 @@ cleanup_mutants() {
 }
 trap cleanup_mutants EXIT INT TERM
 cleanup_mutants
+
+# --- arm selector (RULING 7, 2026-08-22) ---------------------------------
+# `AGENTS.md` requires "do not add an arm you have not seen fail", and until
+# now one red-check cost a full run -- ~10 minutes of CPU and twenty-odd
+# battery invocations. A rule nobody can afford to re-run decays into a
+# norm, which is the class J-047 names. So: run one arm.
+#
+#   bash scripts/test-release-battery.sh              # all of them
+#   bash scripts/test-release-battery.sh --arm 5      # just ARM 5
+#   bash scripts/test-release-battery.sh 5 13         # bare numbers too
+#
+# THE SUBSET SUMMARY IS DELIBERATELY UNPARSEABLE BY THE META-GATE, and that
+# is the whole safety of this feature. Section 11 of the battery reads this
+# file's last line with
+#   sed -n 's/^test-release-battery: \([0-9]*\) caught.*/\1/p'
+# and passes when the count is above zero. A subset run that printed the
+# ordinary summary would let one green arm certify all fifteen -- the
+# fail-open shape this suite exists to refuse, installed in the suite
+# itself. A subset prints `SUBSET n of m` where the digits would be, so the
+# sed captures nothing, the meta-gate reads zero, and the battery FAILS.
+# Partial verification cannot masquerade as full verification.
+TOTAL_ARMS=15
+WANT=""
+usage() {
+  printf 'usage: %s [--arm N | N] ...\n' "${0##*/}" >&2
+  printf '  no argument runs all %s arms; any argument runs only those.\n' \
+         "$TOTAL_ARMS" >&2
+}
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --arm) shift; [ $# -gt 0 ] || { usage; exit 2; }; WANT="$WANT $1" ;;
+    --arm=*) WANT="$WANT ${1#--arm=}" ;;
+    -h|--help) usage; exit 0 ;;
+    -*) printf 'unknown option: %s\n' "$1" >&2; usage; exit 2 ;;
+    *) WANT="$WANT $1" ;;
+  esac
+  shift
+done
+# An unknown arm is exit 2 -- environment/usage, never a governance verdict.
+# Silently ignoring it would report "0 caught" and read as a passing subset.
+for _a in $WANT; do
+  case "$_a" in
+    [1-9]|1[0-5]) ;;
+    *) printf 'no such arm: %s (arms are 1..%s)\n' "$_a" "$TOTAL_ARMS" >&2
+       exit 2 ;;
+  esac
+done
+want() {
+  [ -z "$WANT" ] && return 0
+  case " $WANT " in *" $1 "*) return 0 ;; esac
+  return 1
+}
 
 PASS=0; FAIL=0
 ok()   { PASS=$((PASS+1)); printf '  CAUGHT: %s\n' "$*"; }
@@ -131,8 +188,46 @@ run() {  # run <script> [env assignments...] -> sets OUT and RC as GLOBALS
   RC=$?
 }
 
+# --- the skip-awareness arms --------------------------------------------
+# "OK (skipped=k)" is what a suite prints when it examined less than it
+# claims, and until 2026-08-01 the battery read it as a pass. These arms
+# feed the battery SYNTHETIC suite output through a stub, because the
+# alternative is mutating the suites themselves, which live in template/
+# and answer to the canary.
+STUB="scripts/.skip-stub.py"
+cat > "$STUB" <<'PY'
+#!/usr/bin/env python3
+"""Synthetic suite output for the skip-awareness arms: prints whatever
+SUITE_OUT holds and exits 0, exactly as unittest does on a green run."""
+import os
+print(os.environ.get("SUITE_OUT", ""))
+PY
+
+skip_arm() {  # skip_arm <n> <sedscript> <badlabel> <oklabel> <skipout> <cleanout> <desc>
+  local n="$1" sedscript="$2" badlabel="$3" oklabel="$4"
+  local skipout="$5" cleanout="$6" desc="$7"
+  local MUT="scripts/.arm${n}-skip.sh"
+  if mutate "$sedscript" "$MUT"; then
+    local O1 O2 R1
+    O1=$(env TRUTH_ALLOW_NO_JSONSCHEMA=1 TRUTH_BATTERY_SCOPE="$SCOPED" \
+         SUITE_OUT="$skipout" bash "$MUT" 2>&1); R1=$?
+    O2=$(env TRUTH_ALLOW_NO_JSONSCHEMA=1 TRUTH_BATTERY_SCOPE="$SCOPED" \
+         SUITE_OUT="$cleanout" bash "$MUT" 2>&1)
+    rm -f "$MUT"
+    if printf '%s' "$O1" | grep -q "FAIL  $badlabel" && [ "$R1" != "0" ] \
+       && printf '%s' "$O2" | grep -q "ok    $oklabel"; then
+      ok "$desc"
+    else
+      miss "the $badlabel arm accepted a skipped run (rc=$R1) -- $desc did not hold"
+    fi
+  else
+    miss "ARM $n could not mutate the $badlabel invocation -- the pattern drifted, so this arm was checking nothing"
+  fi
+}
+
 # --- scope arms ----------------------------------------------------------
 
+if want 1; then
 echo "ARM 1: an out-of-scope push must SKIP the 45s canary"
 run "$B"; O="$OUT"
 if printf '%s' "$O" | grep -q "skip  canary"; then
@@ -149,6 +244,9 @@ fi
 # ARM 12 below covers the battery's reading of its summary.
 CANARY_STUB='s|OUT=$(cd template/scripts \&\& bash truth-canary\.sh 2>&1)|OUT=$(printf "canary result: 7 caught, 0 missed\\\\nALL CANARIES CAUGHT\\\\n")|'
 
+fi
+
+if want 2; then
 echo "ARM 2: a push touching the CLI must RUN the canary"
 MUT="scripts/.arm2-scope.sh"
 if mutate "$CANARY_STUB" "$MUT"; then
@@ -164,6 +262,9 @@ else
   miss "ARM 2 could not stub the canary invocation -- the pattern drifted, so this arm was checking nothing"
 fi
 
+fi
+
+if want 3; then
 echo "ARM 3: unknown scope must widen to ALL, never narrow"
 MUT="scripts/.arm3-scope.sh"
 if mutate "$CANARY_STUB" "$MUT"; then
@@ -180,6 +281,9 @@ fi
 
 # --- environment vs governance ------------------------------------------
 
+fi
+
+if want 4; then
 echo "ARM 4: a missing jsonschema is named as an ENVIRONMENT problem, not swallowed"
 # NB: this script runs under `set -u` only. Do NOT `set -e` -- arms 4, 5
 # and others deliberately run a battery that exits non-zero, and errexit
@@ -221,6 +325,9 @@ else
   miss "ARM 4 could not disable the venv activation -- the pattern drifted, so this arm was checking nothing"
 fi
 
+fi
+
+if want 5; then
 echo "ARM 5: a battery with ANY failing arm must not report green, and must exit 1"
 # This arm was VACUOUS as first written (2026-08-01): it asked whether a
 # healthy battery printed both FAIL and green, which a healthy battery
@@ -241,6 +348,9 @@ else
   miss "ARM 5 could not inject a failing arm -- the banner line drifted, so this arm was checking nothing"
 fi
 
+fi
+
+if want 6; then
 echo "ARM 6: the pre-push hook keeps its tag-check arm ahead of the battery"
 if grep -q "tag-check" .githooks/pre-push && grep -q "release-battery.sh" .githooks/pre-push; then
   ok "pre-push carries both the tag check and the battery"
@@ -248,74 +358,55 @@ else
   miss "pre-push lost an arm -- release coherence or content checking is dark"
 fi
 
-# --- the skip-awareness arms --------------------------------------------
-# "OK (skipped=k)" is what a suite prints when it examined less than it
-# claims, and until 2026-08-01 the battery read it as a pass. These arms
-# feed the battery SYNTHETIC suite output through a stub, because the
-# alternative is mutating the suites themselves, which live in template/
-# and answer to the canary.
-STUB="scripts/.skip-stub.py"
-cat > "$STUB" <<'PY'
-#!/usr/bin/env python3
-"""Synthetic suite output for the skip-awareness arms: prints whatever
-SUITE_OUT holds and exits 0, exactly as unittest does on a green run."""
-import os
-print(os.environ.get("SUITE_OUT", ""))
-PY
 
-skip_arm() {  # skip_arm <n> <sedscript> <badlabel> <oklabel> <skipout> <cleanout> <desc>
-  local n="$1" sedscript="$2" badlabel="$3" oklabel="$4"
-  local skipout="$5" cleanout="$6" desc="$7"
-  local MUT="scripts/.arm${n}-skip.sh"
-  if mutate "$sedscript" "$MUT"; then
-    local O1 O2 R1
-    O1=$(env TRUTH_ALLOW_NO_JSONSCHEMA=1 TRUTH_BATTERY_SCOPE="$SCOPED" \
-         SUITE_OUT="$skipout" bash "$MUT" 2>&1); R1=$?
-    O2=$(env TRUTH_ALLOW_NO_JSONSCHEMA=1 TRUTH_BATTERY_SCOPE="$SCOPED" \
-         SUITE_OUT="$cleanout" bash "$MUT" 2>&1)
-    rm -f "$MUT"
-    if printf '%s' "$O1" | grep -q "FAIL  $badlabel" && [ "$R1" != "0" ] \
-       && printf '%s' "$O2" | grep -q "ok    $oklabel"; then
-      ok "$desc"
-    else
-      miss "the $badlabel arm accepted a skipped run (rc=$R1) -- $desc did not hold"
-    fi
-  else
-    miss "ARM $n could not mutate the $badlabel invocation -- the pattern drifted, so this arm was checking nothing"
-  fi
-}
+fi
 
+if want 7; then
 echo "ARM 7: a SKIPPED pinned surface must fail the version-lockstep arm"
 skip_arm 7 's|python3 template/scripts/test-truth-core\.py TestCrossSurfaceVersions|python3 scripts/.skip-stub.py|' \
   "version lockstep" "version lockstep" \
   $'Ran 7 tests in 0.010s\n\nOK (skipped=1)' $'Ran 7 tests in 0.010s\n\nOK' \
   "a skipped pinned surface fails lockstep, and the same surfaces pass when none is skipped"
 
+fi
+
+if want 8; then
 echo "ARM 8: ANY skip in the core suite must fail"
 skip_arm 8 's|python3 template/scripts/test-truth-core\.py 2>&1|python3 scripts/.skip-stub.py 2>\&1|' \
   "core suite" "core suite" \
   $'Ran 531 tests in 1.000s\n\nOK (skipped=1)' $'Ran 531 tests in 1.000s\n\nOK' \
   "a skipped core test fails the arm, and an unskipped run still passes"
 
+fi
+
+if want 9; then
 echo "ARM 9: ANY skip in the v04 suite must fail (no baseline there)"
 skip_arm 9 's|python3 template/scripts/test-truth-v04\.py|python3 scripts/.skip-stub.py|' \
   "v04 suite" "v04 suite" \
   $'Ran 13 tests in 0.100s\n\nOK (skipped=1)' $'Ran 13 tests in 0.100s\n\nOK' \
   "a skipped fold invariant fails the v04 arm, and an unskipped run still passes"
 
+fi
+
+if want 10; then
 echo "ARM 10: ANY skip in the structural suite must fail"
 skip_arm 10 's|python3 template/scripts/test-structural\.py|python3 scripts/.skip-stub.py|' \
   "structural suite" "structural suite" \
   $'Ran 116 tests in 0.500s\n\nOK (skipped=1)' $'Ran 116 tests in 0.500s\n\nOK' \
   "a skipped selector test fails the structural arm, and an unskipped run still passes"
 
+fi
+
+if want 11; then
 echo "ARM 11: ANY skip in the integration suite must fail"
 skip_arm 11 's|python3 template/scripts/test-integrations\.py|python3 scripts/.skip-stub.py|' \
   "integrations" "integrations" \
   $'Ran 28 tests in 1.000s\n\nOK (skipped=1)' $'Ran 28 tests in 1.000s\n\nOK' \
   "a skipped integration arm fails the arm, and an unskipped run still passes"
-rm -f "$STUB"
 
+fi
+
+if want 12; then
 echo "ARM 12: a suite reporting ZERO examined must FAIL, not pass quietly"
 # Re-pointed 2026-08-21. The original judged the session-digest gate,
 # which `32022c6` removed from the battery; the canary arm carries the
@@ -335,6 +426,9 @@ else
   miss "ARM 12 could not mutate the canary invocation -- is the suite still wired into the battery?"
 fi
 
+fi
+
+if want 13; then
 echo "ARM 13: the reachability sweep must ride the battery, and a dark check must block"
 run "$B"; O="$OUT"
 DARK="scripts/test-zz-dark-arm.sh"        # an orphan nothing invokes
@@ -349,6 +443,9 @@ else
   miss "a check no root invokes passed the battery (rc=$R2) -- the sweep is decorative"
 fi
 
+fi
+
+if want 14; then
 echo "ARM 14: the battery must run THIS gate when the battery moves -- and only then"
 # Exercised through a stub, because the honest version (letting the arm
 # run the real gate) is this file calling itself. The stub stands in for
@@ -382,6 +479,9 @@ else
   miss "ARM 14 could not mutate the meta-gate invocation -- is this file still wired into the battery?"
 fi
 
+fi
+
+if want 15; then
 echo "ARM 15: the canary summary contract must hold at its SOURCE, not just in the stub"
 # ARMS 2, 3 and 12 feed the battery a SYNTHETIC canary summary, which makes
 # them fast but also makes them a SECOND implementation of one contract.
@@ -404,6 +504,15 @@ else
   ok "the canary's summary contract holds at the producer, so the stub still stands for something real"
 fi
 
-printf '\ntest-release-battery: %d caught, %d missed\n' "$PASS" "$FAIL"
-[ "$FAIL" -eq 0 ] || exit 1
-echo "ALL BATTERY ARMS CAUGHT."
+fi
+
+if [ -z "$WANT" ]; then
+  printf '\ntest-release-battery: %d caught, %d missed\n' "$PASS" "$FAIL"
+  [ "$FAIL" -eq 0 ] || exit 1
+  echo "ALL BATTERY ARMS CAUGHT."
+else
+  printf '\ntest-release-battery: SUBSET %s of %s arm(s) -- %d caught, %d missed\n' \
+    "$(printf '%s' "$WANT" | wc -w | tr -d ' ')" "$TOTAL_ARMS" "$PASS" "$FAIL"
+  [ "$FAIL" -eq 0 ] || exit 1
+  echo "SUBSET CAUGHT -- this is NOT a full run and does not certify the suite."
+fi
