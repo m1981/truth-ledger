@@ -13,9 +13,15 @@
 # (SI-1), so exclusions cannot be expressed and the live corpus is
 # enumerated positively instead.
 #
-# SCOPE = the live prose corpus, kept in LOCKSTEP with scripts/fact-health.sh.
+# SCOPE = the live prose corpus. scripts/fact-health.sh EXPANDS THIS FILE
+# for its inclusion list (since 2026-08-23, wk-1d000ad4), so the lockstep
+# is now structural: edit this file and the sweep follows, because it has
+# no list of its own to forget.
 # Both answer one question — "which prose is a reader meant to act on today?"
-# — so they must not drift apart. Excluded here for the same reason they are
+# — so they must not drift apart. Until the refactor that sentence was a
+# claim about consistency that nothing checked, and it was false by ten
+# files; the exclusions below stay in fact-health.sh, because SI-1 forbids
+# spelling them here. Excluded here for the same reason they are
 # excluded there: docs/archive/ (frozen verbatim), docs/reviews/ (a dated
 # review record), docs/roadmap-v3.md (a history log) and docs/field-notes*
 # (dated session records) correctly name ids that were live THEN, and must
@@ -37,3 +43,29 @@ docs/truth-ledger-paper-v3.md
 docs/truth-ledger-tutorial.md
 docs/diagrams/*.md
 docs/growth-gate/*.md
+
+# --- LOCKSTEP repair, wk-1d000ad4, 2026-08-23 ----------------------------
+# This file's own header calls itself "kept in LOCKSTEP with
+# scripts/fact-health.sh"; it was not, and nothing checked the sentence.
+# Measured before repairing: fact-health swept 31 files, this scope
+# expanded to 21, and the TEN below were swept-but-unprotected -- a
+# retraction could pass the ADR-036 gate and turn the sweep red, which is
+# what happened on 2026-08-22. (The handoff measured nine; the tenth is
+# docs/refactor/00-RUNBOOK.md.)
+#
+# fact-health now EXPANDS THIS FILE instead of carrying its own list, so
+# the LOCKSTEP is structural rather than a promise. These entries exist so
+# that switch does not silently SHRINK the corpus by ten files -- among
+# them all of docs/decisions/, whose own README states that a claim id
+# cited there "is judged against the ledger like any other living
+# document". Dropping it would have made that sentence false.
+#
+# Widening this scope widens the RETRACTION GATE too: an id cited in a
+# decision record or a governance note now blocks its tombstone until the
+# citation is released. That is the intended direction -- those documents
+# are live prose, not frozen reference.
+docs/decisions/*.md
+docs/governance/*.md
+docs/specs/*.md
+docs/agent-onboarding.md
+docs/refactor/00-RUNBOOK.md

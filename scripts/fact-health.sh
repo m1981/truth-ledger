@@ -95,8 +95,47 @@ if ! VOCAB_JSON="$(python3 template/scripts/truth vocab --json)"; then
   echo "fact-health: 'truth vocab --json' failed -- the citation-blocking set is unavailable; refusing to sweep with a guessed vocabulary (exit 2: environment, not governance)" >&2
   exit 2
 fi
+# --- the corpus, in LOCKSTEP by construction (wk-1d000ad4) ---------------
+# INCLUSION comes from .truth/citation-scope, EXCLUSION stays here. That
+# split is the operator's ruling and it follows from SI-1: the scope file
+# refuses lines beginning ':', '-' or '!', so exclusions cannot be spelled
+# there at all. Inclusion states which prose the project stands behind --
+# shared with the ADR-036 retraction gate. Exclusion is a property of THIS
+# sweep: which of that prose is frozen reference and so cannot go stale.
+#
+# Until 2026-08-23 the inclusion list was hardcoded here while the scope
+# file's own header called the two "kept in LOCKSTEP". They were not: the
+# sweep saw 31 files, the gate 21, and the ten in between could be cited
+# by a document, block nothing at retraction, then redden the sweep. That
+# happened on 2026-08-22. A claim about consistency that nothing checked,
+# in the file that says "an armed-looking gate that checks nothing is
+# worse than no gate".
+#
+# The globs are read through the CLI's OWN loader, never re-parsed here: a
+# second implementation of the comment/blank/SI-1 rules is the drift this
+# repo refuses, and it would drift silently because both copies would look
+# right in isolation. chr(10) rather than a backslash escape so this block
+# survives being edited through a shell heredoc.
+SCOPE_GLOBS="$(python3 -c '
+import sys
+sys.path.insert(0, "template")
+from truthlib.shellio import load_citation_scope
+globs, source, err = load_citation_scope()
+if err:
+    sys.stderr.write(err + chr(10))
+    raise SystemExit(2)
+if source != "file":
+    sys.stderr.write("fact-health: .truth/citation-scope is " + source +
+                     " -- the corpus would be EMPTY and the sweep would "
+                     "report health having read nothing (exit 2: "
+                     "environment, not governance)" + chr(10))
+    raise SystemExit(2)
+print(chr(10).join(globs))
+')" || exit 2
+
 # Frozen reference (see SCOPE above): excluded from the live corpus.
-FILES="$(git ls-files 'README.md' 'AGENTS.md' 'docs/*.md' 'docs/**/*.md' \
+FILES="$(printf '%s\n' "$SCOPE_GLOBS" \
+  | while IFS= read -r _g; do [ -n "$_g" ] && git ls-files -- "$_g"; done \
   | grep -v '^docs/archive/' \
   | grep -v '^docs/reviews/' \
   | grep -v '^docs/roadmap-v3\.md$' \
