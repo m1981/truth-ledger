@@ -92,8 +92,9 @@ deliberately conservative: an unrecognised token is ignored rather than
 guessed at, so this pass under-reports by construction.
 
 Exit: 0 clean, 1 subject-less families in an enforced species OR an
-unrecorded paper/arm divergence, 8 zero arms examined (ADR-042 rule 2 --
-an index that indexed nothing has not passed).
+unrecorded paper/arm divergence OR a SOURCES entry that no longer exists,
+8 zero arms examined (ADR-042 rule 2 -- an index that indexed nothing has
+not passed).
 
 Usage: python3 instruments/arm-index.py [--json] [--subject ADR-051]
 Gate:  NONE yet -- wire it once the enforced backlog is closed, or this
@@ -121,9 +122,19 @@ SUBJECT_RE = re.compile(
 INV_ROW_RE = re.compile(r"^\|\s*(INV-[A-Z]{1,3})\s*\|(.*)\|\s*$")
 # The arm code a family header opens with: `FAULT AC1 (...)` -> `AC1`.
 ARM_CODE_RE = re.compile(r"^(?:FAULT|ARM|CASE|LANE|DOCTOR)S?\s+([A-Z][A-Z0-9]*)")
-# A candidate reference inside a Gate cell. Filtered against real arm codes
-# afterwards, so an unknown token costs a miss, never an invented edge.
-REF_RE = re.compile(r"\b([A-Z]{1,3}\d{0,2})\b")
+# A candidate reference inside a Gate cell. Two shapes, both filtered against
+# real arm codes afterwards, so an unknown token costs a miss and never an
+# invented edge. A BARE single letter is not accepted: "Tier C" would
+# otherwise read as arm `C`, which is how this matcher first mis-fired.
+# The keyword may repeat ("Seeded canary FAULT SD-decay"), so it is a group
+# with a +: matching only the first would capture the word FAULT itself.
+REF_KEYWORD_RE = re.compile(
+    r"\b(?:(?:FAULTS?|ARM|CASE|LANE|DOCTOR|canary|Seeded)\s+)+`?([A-Z][A-Z0-9]{0,3})`?")
+# The code sometimes leads instead: "Seeded H-faults".
+REF_SUFFIX_RE = re.compile(r"\b([A-Z][A-Z0-9]{0,3})-faults?\b")
+REF_BARE_RE = re.compile(r"\b([A-Z]{1,3}\d{1,2})\b")
+# A Python arm is named by its method, not by a code.
+REF_TEST_RE = re.compile(r"\b(test_\w+)\b")
 # `AC1-AC8`, `V1--V3`: expanded, then filtered the same way.
 RANGE_RE = re.compile(r"\b([A-Z]{1,3})(\d{1,2})\s*[-\u2013\u2014]+\s*(?:([A-Z]{1,3}))?(\d{1,2})\b")
 
@@ -131,13 +142,14 @@ SOURCES = (
     # (path, species, enforced)
     ("template/scripts/truth-canary.sh", "seeded-fault", True),
     ("scripts/test-release-battery.sh", "meta-arm", False),
-    ("scripts/test-fact-health.sh", "meta-arm", False),
-    ("scripts/test-session-digest.sh", "meta-arm", False),
-    ("scripts/test-whisper-hook.sh", "meta-arm", False),
-    ("scripts/test-instruments.sh", "meta-arm", False),
+    # 32022c6 (2026-08-15) replaced the bash scaffolding -- fingerprint.sh,
+    # test-instruments.sh, test-fact-health.sh, test-session-digest.sh and
+    # test-whisper-hook.sh -- with ONE stdlib runner. This table kept naming
+    # the five dead files for nine days while build() skipped them silently,
+    # so the sweep reported "over 9 instruments" while reading four.
+    ("template/scripts/test-integrations.py", "integration", False),
     ("template/scripts/test-truth-core.py", "unit-test", False),
     ("template/scripts/test-truth-v04.py", "unit-test", False),
-    ("instruments/fingerprint.sh", "probe", False),
 )
 
 # The header vocabulary is an ENUMERATION, and an enumeration over spellings
@@ -210,8 +222,13 @@ def scan_shell(path, species, rel):
 
 
 def scan_python(path, species, rel):
-    """Unit suites: the class is the family, each test_* is an arm; the
-    subject may be in the class name or its docstring."""
+    """Unit suites: the class is the family, each test_* is an arm.
+
+    The subject may sit in the class name or docstring -- but a class can
+    cover several registers (TestTierCInstruments spans five instruments),
+    so a METHOD docstring naming a subject wins for that arm. Without this,
+    a per-arm back-pointer has nowhere to live.
+    """
     import ast
     src = open(path, encoding="utf-8").read()
     arms = []
@@ -224,7 +241,8 @@ def scan_python(path, species, rel):
                 arms.append({"instrument": rel, "species": species,
                              "family": node.name, "label": sub.name,
                              "line": sub.lineno, "family_line": node.lineno,
-                             "subject": subj or _subject(sub.name)})
+                             "subject": (_subject(ast.get_docstring(sub) or "")
+                                         or subj or _subject(sub.name))})
     return arms
 
 
@@ -245,17 +263,25 @@ def load_opt_out():
 
 
 def build():
-    arms = []
+    """Arms, plus the sources that have gone missing.
+
+    A source that vanished used to be skipped, which let the sweep report a
+    count of instruments it had not read -- the same fail-open shape ADR-042
+    rule 2 refuses one level up. Missing sources are returned so the caller
+    can fail on them.
+    """
+    arms, missing = [], []
     for rel, species, enforced in SOURCES:
         path = os.path.join(ROOT, rel)
         if not os.path.exists(path):
+            missing.append(rel)
             continue
         got = (scan_python(path, species, rel) if path.endswith(".py")
                else scan_shell(path, species, rel))
         for a in got:
             a["enforced"] = enforced
         arms += got
-    return arms
+    return arms, missing
 
 
 def paper_rows():
@@ -280,8 +306,14 @@ def paper_rows():
     return rows
 
 
-def arm_codes(families):
-    """code -> the family that opens with it, for the enforced species."""
+def arm_codes(families, arms):
+    """Every name a Gate cell may legitimately point at.
+
+    Two registers, because the machinery has two arm shapes: a canary family
+    opens with a code (`FAULT AC1`), a Python arm is a test method. A row may
+    name either, and after 32022c6 several properties are gated only by the
+    second.
+    """
     out = {}
     for fam in families.values():
         if not fam["enforced"]:
@@ -289,18 +321,31 @@ def arm_codes(families):
         m = ARM_CODE_RE.match(fam["family"])
         if m:
             out.setdefault(m.group(1), fam)
+    for a in arms:
+        if a["species"] in ("integration", "unit-test") and a["label"].startswith("test_"):
+            out.setdefault(a["label"], {"family": a["family"], "subject": a["subject"],
+                                      "instrument": a["instrument"], "enforced": False})
     return out
 
 
 def _referenced(gate, known):
-    """Arm codes a Gate cell names. Unrecognised tokens are dropped."""
+    """Arm codes a Gate cell names. Unrecognised tokens are dropped.
+
+    Backticks are normalised away first: the register is written both as
+    ``Seeded `FAULT B` `` and as ``Seeded FAULT B``, and a matcher that sees
+    only one of them reports the other as unreferenced.
+    """
+    gate = gate.replace("`", " ")
     hits = set()
     for pre, lo, pre2, hi in RANGE_RE.findall(gate):
         if pre2 and pre2 != pre:
             continue
         for n in range(int(lo), int(hi) + 1):
             hits.add(f"{pre}{n}")
-    hits.update(REF_RE.findall(gate))
+    hits.update(REF_KEYWORD_RE.findall(gate))
+    hits.update(REF_SUFFIX_RE.findall(gate))
+    hits.update(REF_BARE_RE.findall(gate))
+    hits.update(REF_TEST_RE.findall(gate))
     return sorted(h for h in hits if h in known)
 
 
@@ -320,12 +365,12 @@ def load_baseline():
     return state, recorded
 
 
-def reconcile(families):
+def reconcile(families, arms):
     """Appendix A against the arms. Findings, not verdicts -- see docstring."""
     rows = paper_rows()
     if not rows:
         return None, []
-    known = arm_codes(families)
+    known = arm_codes(families, arms)
     findings = []
     for inv, gate in rows:
         refs = _referenced(gate, known)
@@ -346,10 +391,14 @@ def reconcile(families):
 
 
 def main(argv):
-    arms = build()
+    arms, missing = build()
     opt_state, opt_entries = load_opt_out()
 
     families, failures, warnings = {}, [], []
+    for rel in missing:
+        failures.append(
+            f"{rel} is named in SOURCES but does not exist -- the sweep would "
+            f"otherwise report an instrument count it never read (fail-open)")
     for a in arms:
         key = (a["instrument"], a["family"])
         fam = families.setdefault(key, {"instrument": a["instrument"],
@@ -379,10 +428,18 @@ def main(argv):
                 f"{key} is exempted in {OPT_OUT_REL} but no family by that "
                 "name exists -- the exemption outlived its arm")
 
-    rows, findings = reconcile(families)
+    rows, findings = reconcile(families, arms)
     base_state, baseline = load_baseline()
+    live_keys = {k for k, _ in findings}
     for key, text in findings:
         (warnings if key in baseline else failures).append(text)
+    # Same rule the opt-out already carries: an exemption that outlived what
+    # it excused is itself decay, and a baseline nobody prunes stops meaning
+    # "today's backlog" and starts meaning "whatever used to be true".
+    for key in sorted(baseline - live_keys):
+        failures.append(
+            f"{key} is recorded in {BASELINE_REL} but no longer diverges -- "
+            f"the baseline entry outlived its finding; drop the line")
     if rows is not None and not rows:
         warnings.append(f"{PAPER_REL} has no Appendix A rows -- the "
                         "reconciliation pass examined nothing")

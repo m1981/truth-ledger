@@ -18,8 +18,9 @@
 # przestaje je nazywac.
 #
 # Klasa `no-arm` to wiersze, ktorych bramka nie nazywa ramienia rozpoznawalnie.
-# INV-U wskazuje FAULT OV, ktore jest RETIRED (ADR-046) -- to nie jest szum
-# dopasowania, tylko wiersz wskazujacy wycofane ramie.
+# INV-U bylo tu jako no-arm; wskazywalo FAULT OV, wycofane przez ADR-046.
+# Naprawione: wiersz wskazuje dzis TestTierCInstruments.test_override_velocity
+# _real_and_sandbox, a ten test deklaruje INV-U z powrotem. Pozycja usunieta.
 
 INV-A no-arm  baseline 2026-08-24, nierozstrzygniete
 INV-B no-arm  baseline 2026-08-24, nierozstrzygniete
@@ -34,13 +35,10 @@ INV-G back-pointer B5  baseline 2026-08-24, nierozstrzygniete
 INV-G back-pointer K2  baseline 2026-08-24, nierozstrzygniete
 INV-G back-pointer R11  baseline 2026-08-24, nierozstrzygniete
 INV-H back-pointer C1  baseline 2026-08-24, nierozstrzygniete
-INV-H back-pointer J  baseline 2026-08-24, nierozstrzygniete
 INV-I back-pointer B6  baseline 2026-08-24, nierozstrzygniete
 INV-J back-pointer L  baseline 2026-08-24, nierozstrzygniete
 INV-K back-pointer H  baseline 2026-08-24, nierozstrzygniete
 INV-L no-arm  baseline 2026-08-24, nierozstrzygniete
-INV-M back-pointer A  baseline 2026-08-24, nierozstrzygniete
-INV-N back-pointer G  baseline 2026-08-24, nierozstrzygniete
 INV-N back-pointer R9  baseline 2026-08-24, nierozstrzygniete
 INV-O back-pointer V1  baseline 2026-08-24, nierozstrzygniete
 INV-O back-pointer V2  baseline 2026-08-24, nierozstrzygniete
@@ -62,4 +60,3 @@ INV-R back-pointer C4  baseline 2026-08-24, nierozstrzygniete
 INV-R back-pointer C5  baseline 2026-08-24, nierozstrzygniete
 INV-S back-pointer RA  baseline 2026-08-24, nierozstrzygniete
 INV-T back-pointer SD  baseline 2026-08-24, nierozstrzygniete
-INV-U no-arm  baseline 2026-08-24, nierozstrzygniete

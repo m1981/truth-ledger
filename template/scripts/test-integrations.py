@@ -549,7 +549,12 @@ class TestTierCInstruments(unittest.TestCase):
             sb.cleanup()
 
     def test_override_velocity_real_and_sandbox(self):
-        """override-velocity.py parses JSON and detects scope re-justifications."""
+        """override-velocity.py parses JSON and detects scope re-justifications (INV-U).
+
+        Named subject on purpose: this arm is INV-U's only gate since ADR-046
+        moved the section out of the template CLI and 32022c6 replaced the
+        scaffolding it had moved to. arm-index reconciles both directions.
+        """
         inst = os.path.join(INSTRUMENTS_DIR, "override-velocity.py")
         res = subprocess.run([sys.executable, inst, "--json"], cwd=REPO_ROOT, capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, res.stderr)
