@@ -46,6 +46,7 @@ Order is load-bearing: L2 is meaningless without L1, and L1 without L0.
 
 | # | layer | what | cost | why it matters |
 |---|---|---|---|---|
+| 0 | **L0/nav** | **register index with a currency column** — one row per register (ADR, INV, arms, roadmap, briefs, ledger): purpose, location, status, **and what its currency is measured by**. The index is itself an administered item (ISO/IEC 11179: the registry is registered). Relations *between* registers are declared, not prose (SKOS `ConceptScheme` mappings; GSN away-goals from the argument side) | one file + ~30 lines | answers both halves of the problem this session hit last: a cold session reads one row and learns the plan exists, and learns not to trust it. `docs/roadmap-v3.md` was last touched 2026-07-29, names ADR-033, repo is at ADR-061 — **28 decisions behind, every visible batch marked DONE** |
 | 1 | L1(a) | `doc-health` checks backtick paths, not only links — the gap §7 row 4 names | ~20 lines + baseline | **20 of 183 backtick paths are dead (11%)**, two of them inside the paper itself |
 | 2 | L0 | `.truth/moved` forwarding table with enforced integrity (dead target = FAIL; resurrected source = FAIL) | one file + ~40 lines | inverts the economics of relocation: one line instead of N edits. `FAULT OV` moved twice with no forward |
 | 3 | L3 | registration status per Appendix A row: `Active` / `Superseded-by` / `Retired` (ISO/IEC 11179) | one column + one rule | a row currently cannot die; it can only keep promising. The four rows in `ee2f541` had to be rewritten instead of retired |
@@ -136,3 +137,43 @@ reproduction instructions are where the exemption bites."*
 rewrites both hash files. Run it **after** reading the suspect rows and
 paragraphs, never instead of reading them — refreshing first destroys the
 signal the layer exists to produce.
+
+
+---
+
+## Item 0 in ADR-061 form
+
+**Named failure condition.** A register's currency evidence disagrees with the
+repository: the highest ADR a register cites is more than N behind
+`docs/decisions/`, or a register named in the index has no file, or a file
+under `docs/` belongs to no register in the index.
+
+**Gate.** The index is swept on the same run as the other instruments. Today's
+state goes to a baseline; the sweep refuses the next divergence, as
+`label-coupling` and `arm-index` already do.
+
+**Demonstration required before this is DONE.** Point a register row at a
+missing file and confirm red; restore and confirm green. Per ADR-061, a gate
+that has not been made to fail is not evidence.
+
+**Not DONE but DECLARED, if it comes to that:** if currency for some register
+cannot be measured mechanically, the row says so in its own column rather than
+claiming freshness.
+
+### Why this item is ranked 0
+
+`roadmap-v3.md` is the one register that says what to do next, and it is the
+one nobody checked. It carries batches marked DONE — including *"Batch 3 —
+self-consistency — DONE"* — inside the exact scope where this session found
+four Appendix A rows describing retired machinery, an instrument reading four
+of nine sources, and 20 dead paths.
+
+The plan is not a planning failure. It is the same class as every other finding
+here: a register true when written, with no mechanism to demote it. It ranks
+first because it is the register a successor reads before deciding anything.
+
+**Recommended shape, from the standards already cited in this session:**
+treat the plan as EU consolidated law treats consolidated text — either
+**amended by instrument**, or **generated** from the ADRs that are
+authoritative. Hand-maintained *and* trusted is the combination that produces a
+28-decision gap. For a single author, generated is the cheaper of the two.
