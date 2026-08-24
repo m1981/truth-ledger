@@ -47,6 +47,7 @@ Order is load-bearing: L2 is meaningless without L1, and L1 without L0.
 | # | layer | what | cost | why it matters |
 |---|---|---|---|---|
 | 0 | **L0/nav** | **register index with a currency column** — one row per register (ADR, INV, arms, roadmap, briefs, ledger): purpose, location, status, **and what its currency is measured by**. The index is itself an administered item (ISO/IEC 11179: the registry is registered). Relations *between* registers are declared, not prose (SKOS `ConceptScheme` mappings; GSN away-goals from the argument side) | one file + ~30 lines | answers both halves of the problem this session hit last: a cold session reads one row and learns the plan exists, and learns not to trust it. `docs/roadmap-v3.md` was last touched 2026-07-29, names ADR-033, repo is at ADR-061 — **28 decisions behind, every visible batch marked DONE** |
+| 0b | **L0/nav** | **waiver register** — one row per `--*-ok` override: the flag, the gate it lifts, the `basis` field it stamps, whether it decays, where it is documented. Checked BOTH ways: a flag the table omits, and a table row with no flag | one table + ~25 lines | there are **8** override flags, ~6 differently-named basis stamps, aggregate reporting for 4 of 8 (INV-U), decay on exactly 1 (`--scope-ok`, ADR-032/055), and **no canonical list** — so `--exit-ok`, which does not exist, is carried by `AGENTS.md`, ADR-059 and `instruments/semantic-audit.py` alike |
 | 1 | L1(a) | `doc-health` checks backtick paths, not only links — the gap §7 row 4 names | ~20 lines + baseline | **20 of 183 backtick paths are dead (11%)**, two of them inside the paper itself |
 | 2 | L0 | `.truth/moved` forwarding table with enforced integrity (dead target = FAIL; resurrected source = FAIL) | one file + ~40 lines | inverts the economics of relocation: one line instead of N edits. `FAULT OV` moved twice with no forward |
 | 3 | L3 | registration status per Appendix A row: `Active` / `Superseded-by` / `Retired` (ISO/IEC 11179) | one column + one rule | a row currently cannot die; it can only keep promising. The four rows in `ee2f541` had to be rewritten instead of retired |
@@ -177,3 +178,58 @@ treat the plan as EU consolidated law treats consolidated text — either
 **amended by instrument**, or **generated** from the ADRs that are
 authoritative. Hand-maintained *and* trusted is the combination that produces a
 28-decision gap. For a single author, generated is the cheaper of the two.
+
+
+---
+
+## Item 0b in ADR-061 form — the waiver register
+
+**Named failure condition.** A `--*-ok` flag exists in the CLI parser that the
+register does not list, or the register lists one the parser does not accept.
+Both directions, because one direction is how every other register here rotted.
+
+**Gate.** Swept with the other instruments; today's eight recorded as the
+baseline, the next divergence refused.
+
+**Demonstration required before DONE.** Add `--foo-ok` to the parser, confirm
+red naming it; remove it, confirm green. Then delete a row, confirm red the
+other way.
+
+### Why this is a register, not a pile of flags
+
+```
+--accept-unsafe-ok  --duplicate-ok   --evidence-exit-ok  --evidence-unsafe-ok
+--generated-ok      --orphan-ok      --paths-ok          --scope-ok
+```
+
+Eight entries. Six basis stamps under **two naming conventions** in one schema
+(`scope_basis`, `paths_basis`, `orphan_basis`, `evidence_exit_basis`,
+`generated_ok_basis`, beside `overridden_duplicates` and `screened=false`).
+Aggregate reporting covers four of the eight. **One** decays; seven are
+perpetual. The set appears across six documents and is canonical in none.
+
+This is the sixth register in a repository that has never declared its
+registers — and it is the worst one to leave unadministered. An individual
+waiver is auditable: every one stamps a `basis`. Four categories are countable.
+**The escape surface is not enumerable at all** — nobody can answer "which
+gates can be bypassed, by what, and how many bypasses are live", which is the
+first question an adversary asks.
+
+The paper states the security posture: *"agent-facing refusal text is itself
+attack surface — the gates refuse without teaching the override."* Eight
+overrides documented across six files teach them thoroughly; the scattering
+only ensures that agents learn them and auditors do not.
+
+**Standards name for it:** an unregistered waiver surface. DO-178C, IEC 61508
+and ISO 26262 all require a deviation from a required objective to be recorded
+with rationale, scope, owner and **expiry**, and the population of open
+deviations to be reviewed as a population. Here the rationale exists per record,
+the expiry exists on one of eight, and the population review cannot exist
+because there is no population — only eight independent flags.
+
+**Evidence the diagnosis is right, not merely tidy:** `--exit-ok` does not
+exist. The flag is `--evidence-exit-ok`. The wrong name is carried by
+`AGENTS.md`, ADR-059 and `instruments/semantic-audit.py`. A name drifted across
+three surfaces because there was no list for it to drift against — and a
+two-way register would have caught it on the day it was written, by counting
+eight where the prose named a ninth.
