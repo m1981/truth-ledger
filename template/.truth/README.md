@@ -476,8 +476,7 @@ legitimately-failing positive proof (a differential `diff`, exit 1
 by design) files with `--evidence-exit-ok "<sentence>"` — stored as
 `evidence_exit_basis` (schema v0.12), silences the advisory, counted
 in the override report; the basis is refused beside an exit of 0
-(nothing to excuse), at intake and by `validate`. Canary FAULT X
-(8 arms) gates the behavior.
+(nothing to excuse), at intake and by `validate`. Canary FAULT X gates the behavior.
 
 **The tombstone citation gate** (ADR-036, v0.9.22): `verdict <id>
 retracted` and `done --cancel` -- after the ADR-011 human ceremony,
@@ -496,8 +495,7 @@ orphaning: `--orphan-ok "<sentence>"`, stored as `orphan_basis`
 cited) -- a batch sweep runs one preflight, then per-id ceremonial
 verdicts; a multi-id ack stays refused on principle (ADR-011: one
 typed id authorizes one tombstone). git-grep unavailable fails CLOSED
-(the one earned exception -- the verb is terminal). Canary FAULT TG
-(11 arms).
+(the one earned exception -- the verb is terminal). Canary FAULT TG.
 
 **Recipe lints + generated-paths** (ADR-037, v0.9.23): filing a
 VERIFIED claim lints the recipe on the screen's own token stream (one
@@ -512,7 +510,7 @@ generated file restales on each regeneration; watch the source);
 v0.14), is counted, and decays like `--scope-ok` (ADR-032) so the
 judgment is re-asked. The template ships the list EMPTY (= conscious
 "nothing is generated", silent); deleting it leaves the check dark
-with one advisory line saying so. Canary FAULT RC (10 arms).
+with one advisory line saying so. Canary FAULT RC.
 
 **The dirty-watch advisory** (ADR-038, v0.9.24): filing a claim whose
 watched path is dirty in the working tree -- modified or staged, an
@@ -522,7 +520,7 @@ side), or a merge-conflict state (UU et al.) -- voices one
 stale on the very commit that lands its content (restale-at-birth;
 commit first, then file). Advisory only, never a refusal (a gate here
 would teach `git stash` as its bypass), machine-visible via --json
-advisories. Canary FAULT DW (7 arms).
+advisories. Canary FAULT DW.
 
 **The blast forecast** (ADR-039, v0.9.25; computed on read since
 v0.9.30/ADR-046): filing a path claim computes the forecast -- the
@@ -540,7 +538,7 @@ invalidation `touched` lists, the effective floor) is Tier C: the
 meta-repo's `instruments/blast-report.py`, no longer a stats section.
 A refusal gate deliberately does NOT ship -- it returns only as its
 own ADR once a field window of forecast-vs-observed data and the
-reaffirm-trial read exist. Canary FAULT BF (6 arms; BF4 pins that the
+reaffirm-trial read exist. Canary FAULT BF (BF4 pins that the
 payload stays clean while the advisory voices).
 
 **The separation instrument** (ADR-010; Tier C since v0.9.30/ADR-046):
@@ -583,7 +581,7 @@ the walk used is stamped on the output). A read verb, in the CLI rather
 than in Tier C (ADR-046's
 argued exception: this prices the kernel's own rule, and only the
 consumer can run it). Never a gate — a false-stale rate is a number to
-decide on, not a defect to refuse. Canary FAULT ST (6 arms, two
+decide on, not a defect to refuse. Canary FAULT ST (two
 negative controls and two order arms).
 
 ## Daily operation

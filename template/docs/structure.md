@@ -124,7 +124,7 @@ flowchart LR
         B2["ADR-047: metric · Tier C source · review date"]
     end
 
-    subgraph C["Tier C — instruments<br/>META-REPO ONLY, 5 files"]
+    subgraph C["Tier C — instruments<br/>META-REPO ONLY"]
         C1["separation-report · override-velocity"]
         C2["blast-report · retraction-causes · concern-tag"]
         C3["gate-reachability · release-battery"]
@@ -147,7 +147,7 @@ append-only history keeps validating.
 
 **The asymmetry is deliberate and is the system's largest single risk.**
 Tier C is where the question *"is Tier B worth its cost?"* gets answered, and
-Tier C does not ship. A consumer receives eleven gates and no instrument for
+Tier C does not ship. A consumer receives every gate and no instrument for
 retiring any of them.
 
 ---
