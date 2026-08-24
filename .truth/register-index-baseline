@@ -1,6 +1,16 @@
-# register-index: baseline for check (c), docs/*.md covered by no register.
+# register-index: the baseline for checks (b) and (c).
 #
-# Format:  <path>  <reason>.  The shape .truth/label-coupling-opt-out uses.
+# Format:  <key>  <reason>.  The shape .truth/label-coupling-opt-out uses.
+# Two key spaces share this file and cannot collide:
+#   check (c)   a docs/... path, covered by no register's location
+#   check (b)   adr-unaccounted:ADR-nnn, a filed decision the roadmap
+#               mentions nowhere
+#
+# MIRROR RULE, both key spaces: an entry here with no corresponding finding
+# is ITSELF a failure -- drop the line. A baseline nobody prunes stops
+# meaning "today's backlog" and starts meaning "whatever used to be true".
+
+# --- check (c): docs/*.md covered by no register -------------------------
 #
 # BASELINE 2026-08-24, UNRESOLVED. These entries record the state at the
 # moment the coverage check was introduced -- not a verdict that the files
@@ -8,10 +18,6 @@
 # claims it, or a new register is added to docs/registers.md with a location
 # that contains it. The point of this file is that the NEXT uncovered
 # document does not pass unnoticed.
-#
-# MIRROR RULE: an entry here whose file is no longer uncovered is ITSELF a
-# failure -- drop the line. A baseline nobody prunes stops meaning "today's
-# backlog" and starts meaning "whatever used to be true".
 
 docs/agent-onboarding.md  baseline 2026-08-24, unresolved: covered by no register
 docs/beads-integration-guide.md  baseline 2026-08-24, unresolved: covered by no register
@@ -38,3 +44,55 @@ docs/governance/operator-actions-2026-08.md  baseline 2026-08-24, unresolved: co
 docs/refactor/00-RUNBOOK.md  baseline 2026-08-24, unresolved: covered by no register
 docs/refactor/01-JOURNAL.md  baseline 2026-08-24, unresolved: covered by no register
 docs/specs/structural-selectors.md  baseline 2026-08-24, unresolved: covered by no register
+
+# --- check (b): filed decisions the roadmap accounts for nowhere ---------
+#
+# BASELINE 2026-08-24, UNRESOLVED. A backlog, not a verdict: each id below
+# has a file in docs/decisions or docs/archive/adr and is mentioned nowhere
+# in docs/roadmap-v3.md. Resolving one means citing it in the roadmap where
+# it bears on the plan -- which is why this baseline is honest where the
+# ADR-gap check it replaced was not: it freezes a backlog, not a wrong
+# measure. The point is that the NEXT unaccounted decision does not pass.
+
+adr-unaccounted:ADR-001  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-002  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-003  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-004  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-005  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-006  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-013  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-015  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-020  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-021  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-022  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-023  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-027  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-029  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-034  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-035  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-036  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-037  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-038  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-039  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-040  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-041  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-042  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-043  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-044  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-045  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-046  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-047  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-048  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-049  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-050  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-051  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-052  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-053  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-054  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-055  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-056  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-057  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-058  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-059  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-060  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-061  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
