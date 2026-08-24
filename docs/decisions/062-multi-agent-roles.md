@@ -52,10 +52,26 @@ Three rules follow, each earned:
    INV-O exists to prevent.
 3. **The review travels with the change.** Commit them together, so the
    evidence against a change cannot be separated from it.
+4. **A measurement is persisted before the next role is dispatched.** A finding
+   that lives only in a task notification cannot be cited, because there is
+   nothing for a later reader to check it against. Write it to
+   `docs/reviews/` first, then dispatch.
 
 **Delegate implementation when your own context is thin, not only when the task
 is large.** Thin context produces blind patches, and this session has a Tier A
 gate it broke to prove it.
+
+Rule 4 was learned the expensive way, after this ADR was first written. An
+audit of `AGENTS.md` found four false claims and was never written to disk. The
+redrafting agent dispatched next cited *"the 2026-08-24 audit of this file"* —
+a document that exists nowhere — and that phantom citation is what licensed its
+whole restructuring. The audit was real; the record was not.
+
+That is the same class as every other finding this effort has produced — a true
+statement with nothing holding it — **reproduced inside the workflow built to
+prevent it**, by the dispatcher, one exchange after writing the rules down.
+See `docs/reviews/agents-md-audit-and-review-2026-08-24.md`, which is that
+persistence performed after the fact.
 
 ## Rejected
 
@@ -75,7 +91,9 @@ gate it broke to prove it.
   parallel with the work that produces it.
 - Mechanisable residue, for whoever wants it: a commit that adds or edits a
   file under `instruments/` without an accompanying review document is a
-  candidate finding. That is the part of this decision a gate can hold.
+  candidate finding. So is a change whose message cites an analysis that no
+  file in `docs/reviews/` provides. Those are the parts of this decision a gate
+  can hold; the rest is norm, and is marked as such.
 - Cost is real. Two review cycles on one small instrument produced fifteen
   distinct defects and no finished artifact. The alternative was committing the
   first version, which contained the exact bug class the session had spent its
