@@ -97,6 +97,7 @@ unrecorded paper/arm divergence OR a SOURCES entry that no longer exists,
 not passed).
 
 Usage: python3 instruments/arm-index.py [--json] [--subject ADR-051]
+                                       [--record-links]
 Gate:  NONE yet -- wire it once the enforced backlog is closed, or this
        file becomes the thing it was built to detect.
 """
@@ -109,6 +110,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OPT_OUT_REL = ".truth/arm-subject-opt-out"
 PAPER_REL = "docs/truth-ledger-paper-v3.md"
 BASELINE_REL = ".truth/arm-index-paper-baseline"
+HASHES_REL = ".truth/arm-index-link-hashes"
 EXIT_SUBJECTLESS = 1
 EXIT_EMPTY = 8
 
@@ -349,6 +351,59 @@ def _referenced(gate, known):
     return sorted(h for h in hits if h in known)
 
 
+def arm_text(fam, arms):
+    """The text a link points at: the family header plus its arm labels.
+
+    Hashed rather than compared, because the question is not "did anything
+    change" but "did THIS link's target change" -- and a header rewritten at
+    an inversion is exactly the change that must be seen.
+    """
+    labels = sorted(a["label"] for a in arms
+                    if a["instrument"] == fam["instrument"] and a["family"] == fam["family"])
+    return fam["family"] + "\n" + "\n".join(labels)
+
+
+def load_hashes():
+    """`INV-x CODE  sha256` per line -- the recorded state of each link."""
+    path = os.path.join(ROOT, HASHES_REL)
+    if not os.path.exists(path):
+        return "absent", {}
+    out = {}
+    with open(path, encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            key, _, digest = line.rpartition("  ")
+            out[key.strip()] = digest.strip()
+    return ("populated" if out else "empty"), out
+
+
+def suspect_links(rows, known, arms, recorded):
+    """Links whose target changed since the hash was recorded (L2).
+
+    A resolvable link is not a fresh one. FAULT B and FAULT E stayed
+    resolvable through their inversion; what moved was their MEANING, and only
+    the target's text carries that. Reported as SUSPECT, never as broken: an
+    inversion is often correct, and the row is what needs re-reading.
+    """
+    import hashlib
+    suspects, current = [], {}
+    for inv, gate in rows:
+        for code in _referenced(gate, known):
+            key = f"{inv} {code}"
+            digest = hashlib.sha256(
+                arm_text(known[code], arms).encode("utf-8")).hexdigest()[:16]
+            current[key] = digest
+            was = recorded.get(key)
+            if was is not None and was != digest:
+                suspects.append(
+                    (key, f"{inv}: the arm {code} it names has CHANGED since the "
+                          f"link was recorded ({was} -> {digest}) -- re-read the "
+                          f"row, then refresh with --record-links"))
+    return suspects, current
+
+
 def load_baseline():
     """`INV-x <class> <detail>` per line; '#' comments and blanks ignored."""
     path = os.path.join(ROOT, BASELINE_REL)
@@ -430,6 +485,21 @@ def main(argv):
 
     rows, findings = reconcile(families, arms)
     base_state, baseline = load_baseline()
+    hash_state, recorded = load_hashes()
+    known = arm_codes(families, arms)
+    suspects, current_hashes = suspect_links(rows or [], known, arms, recorded)
+    if "--record-links" in argv:
+        with open(os.path.join(ROOT, HASHES_REL), "w", encoding="utf-8") as f:
+            f.write("# arm-index: hash celu kazdego dowiazania wiersz Appendix A <-> ramie.\n"
+                    "# Zmiana hasha czyni wiersz SUSPECT -- nie zepsutym. Inwersja bywa\n"
+                    "# poprawna; to WIERSZ wymaga wtedy ponownego przeczytania.\n"
+                    "# Odswiez ta lista dopiero PO przeczytaniu wierszy, nie zamiast.\n\n")
+            for k in sorted(current_hashes):
+                f.write(f"{k}  {current_hashes[k]}\n")
+        print(f"arm-index: zapisano {len(current_hashes)} hash(y) do {HASHES_REL}")
+        return 0
+    for key, text in suspects:
+        failures.append(text)
     live_keys = {k for k, _ in findings}
     for key, text in findings:
         (warnings if key in baseline else failures).append(text)
@@ -475,6 +545,8 @@ def main(argv):
               "paper_rows": len(rows) if rows else 0,
               "reconciliation": [t for _, t in findings],
               "baseline_state": base_state,
+              "link_hash_state": hash_state,
+              "suspect_links": [t for _, t in suspects],
               "by_species": by_species,
               "subjects": len(reverse),
               "opt_out_state": opt_state,
@@ -500,6 +572,8 @@ def main(argv):
     if rows:
         print(f"  {'appendix A':14} {len(rows):5} row(s), {len(findings)} "
               f"unreconciled [{BASELINE_REL}: {base_state}]")
+        print(f"  {'links':14} {len(current_hashes):5} hashed, {len(suspects)} "
+              f"suspect [{HASHES_REL}: {hash_state}]")
     print(f"arm-index: {len(arms)} arm(s) in {len(families)} families over "
           f"{len(SOURCES)} instruments -- {len(failures)} failure(s) "
           f"[{OPT_OUT_REL}: {opt_state}]")

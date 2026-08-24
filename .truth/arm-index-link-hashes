@@ -1,0 +1,42 @@
+# arm-index: hash celu kazdego dowiazania wiersz Appendix A <-> ramie.
+# Zmiana hasha czyni wiersz SUSPECT -- nie zepsutym. Inwersja bywa
+# poprawna; to WIERSZ wymaga wtedy ponownego przeczytania.
+# Odswiez ta lista dopiero PO przeczytaniu wierszy, nie zamiast.
+
+INV-C B  aceb9c638f33baa5
+INV-D C  cb753ec9818896e5
+INV-E D  deacf88bd5e55e85
+INV-F E  bc2439c179098c96
+INV-G B1  b26e550dcf146850
+INV-G B3  b1bdd3f8ecbedf05
+INV-G B4  fdf8604bbeb82bf9
+INV-G B5  be1daa4ec0b0bb9f
+INV-G K2  215eaf7dac249929
+INV-G R11  23bb1ad408c01781
+INV-H C1  f8e16ac31265cc93
+INV-I B6  16b7acf157fd2d1b
+INV-J L  e69f33fdb4a9eae7
+INV-K H  903ac38fdd0d76d5
+INV-M T  7b185f93d12edc1f
+INV-N R9  2bfe9dbe7aa872e7
+INV-O V1  f1761e0cda20606c
+INV-O V2  95097aecef784d65
+INV-O V3  b7cf27d6c1352523
+INV-P R10  1a27efc699108b00
+INV-P R11  23bb1ad408c01781
+INV-Q AC1  8a3b44676c4ddb06
+INV-Q AC2  84701157d56e6407
+INV-Q AC3  85b4f2e2ee7d4479
+INV-Q AC4  a8d2d56233eb663a
+INV-Q AC5  f2d8e2fcd7ad1646
+INV-Q AC6  5e5df40a203d7f0e
+INV-Q AC7  48ecbfbd69a42d85
+INV-Q AC8  67be8afe000d8738
+INV-R C1  f8e16ac31265cc93
+INV-R C2  1114da339acac5fe
+INV-R C3  fe7c5d7122886c1c
+INV-R C4  2a7e0c2d62f68a88
+INV-R C5  e48f2d5f473d65d5
+INV-S RA  c6466e5722d2a6de
+INV-T SD  229010b9ccb4c93c
+INV-U test_override_velocity_real_and_sandbox  842ba140362346fd
