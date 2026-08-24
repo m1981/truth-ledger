@@ -1,0 +1,40 @@
+# register-index: baseline for check (c), docs/*.md covered by no register.
+#
+# Format:  <path>  <reason>.  The shape .truth/label-coupling-opt-out uses.
+#
+# BASELINE 2026-08-24, UNRESOLVED. These entries record the state at the
+# moment the coverage check was introduced -- not a verdict that the files
+# below belong nowhere. Resolving one is separate work: either a register
+# claims it, or a new register is added to docs/registers.md with a location
+# that contains it. The point of this file is that the NEXT uncovered
+# document does not pass unnoticed.
+#
+# MIRROR RULE: an entry here whose file is no longer uncovered is ITSELF a
+# failure -- drop the line. A baseline nobody prunes stops meaning "today's
+# backlog" and starts meaning "whatever used to be true".
+
+docs/agent-onboarding.md  baseline 2026-08-24, unresolved: covered by no register
+docs/beads-integration-guide.md  baseline 2026-08-24, unresolved: covered by no register
+docs/candidate-adoption-analysis-prompt.md  baseline 2026-08-24, unresolved: covered by no register
+docs/field-notes-2026-08-01-coverage-session.md  baseline 2026-08-24, unresolved: covered by no register
+docs/field-notes-batch-m-verification-session.md  baseline 2026-08-24, unresolved: covered by no register
+docs/field-notes-kuchnie-multiagent.md  baseline 2026-08-24, unresolved: covered by no register
+docs/field-notes-migration-p0-p6.md  baseline 2026-08-24, unresolved: covered by no register
+docs/field-notes-sdk-session.md  baseline 2026-08-24, unresolved: covered by no register
+docs/independent-review.md  baseline 2026-08-24, unresolved: covered by no register
+docs/truth-ledger-explained.md  baseline 2026-08-24, unresolved: covered by no register
+docs/truth-ledger-loophole-map.md  baseline 2026-08-24, unresolved: covered by no register
+docs/truth-ledger-operations-guide.md  baseline 2026-08-24, unresolved: covered by no register
+docs/truth-ledger-tutorial.md  baseline 2026-08-24, unresolved: covered by no register
+docs/diagnosis-2026-08/00-STATE.md  baseline 2026-08-24, unresolved: covered by no register
+docs/diagnosis-2026-08/01-findings.md  baseline 2026-08-24, unresolved: covered by no register
+docs/diagnosis-2026-08/02-portfolio.md  baseline 2026-08-24, unresolved: covered by no register
+docs/diagrams/architecture-review-2026-07-20.md  baseline 2026-08-24, unresolved: covered by no register
+docs/diagrams/asbuilt-architecture.md  baseline 2026-08-24, unresolved: covered by no register
+docs/diagrams/concept-map.md  baseline 2026-08-24, unresolved: covered by no register
+docs/diagrams/target-design-2026-07-20.md  baseline 2026-08-24, unresolved: covered by no register
+docs/governance/operator-actions-2026-08-22.md  baseline 2026-08-24, unresolved: covered by no register
+docs/governance/operator-actions-2026-08.md  baseline 2026-08-24, unresolved: covered by no register
+docs/refactor/00-RUNBOOK.md  baseline 2026-08-24, unresolved: covered by no register
+docs/refactor/01-JOURNAL.md  baseline 2026-08-24, unresolved: covered by no register
+docs/specs/structural-selectors.md  baseline 2026-08-24, unresolved: covered by no register
