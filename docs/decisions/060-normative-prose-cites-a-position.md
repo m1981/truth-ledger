@@ -1,73 +1,79 @@
-# ADR-060: Proza normatywna cytuje pozycję, a cytowanie podlega kontroli świeżości
+# ADR-060: Normative prose cites a position, and the citation is freshness-checked
 
-Status: **PROPOSED** (2026-08-24, agent-authored). Reguła sortująca jest do
-zastosowania w punkcie bólu, nie wstecz; druga połowa (kontrola świeżości
-cytowań w prozie) nie jest jeszcze zaimplementowana.
+Status: **PROPOSED** (2026-08-24, agent-authored). The sorting rule applies at
+the point of pain, never retroactively; half two is implemented separately and
+is the binding half.
 
-Amends: ADR-057 (nie w treści, lecz w tym, czego jego wdrożenie dowiodło)
+Amends: **ADR-057** — not in substance, but in what its implementation exposed
 
-## Kontekst
+## Context
 
-`kernel.py` pod ADR-057 wyprowadza wygaśnięcie z `now_dt`. Paper §1 mówi:
+Under ADR-057 `kernel.py` derives expiry from `now_dt`. The paper's §1 says:
 
 > The clock's effect is **frozen into a record, never recomputed on read**
 > (ADR-019).
 
-Zdanie jest dziś nieprawdziwe. Wersja robocza tej decyzji zakładała, że
-przyczyną jest brak adresu — że proza normatywna nie wskazuje pozycji, więc
-nie da się jej sprawdzić. **Pomiar to obalił:**
+That sentence is false today. The draft of this decision assumed the cause was
+a missing address — that normative prose names no position, so nothing can
+check it. **Measurement killed that:**
 
 ```
-§1: 18 akapitów | z modalnością normatywną: 13 | BEZ cytowania pozycji: 3
+§1: 18 paragraphs | carrying a normative modal: 13 | citing no position: 3
 ```
 
-Zdanie o zegarze **cytuje ADR-019**. Adres istniał i był poprawny w chwili
-pisania. Rozjazd powstał, bo ADR-057 zmienił semantykę cytowanej pozycji, a
-**nic nie oznaczyło prozy, która ją cytuje**.
+The clock sentence **cites ADR-019**. The address existed and was correct when
+written. The divergence arose because ADR-057 changed what the cited position
+means, and **nothing marked the prose that cites it**.
 
-To jest ta sama klasa, którą suspect links (834b210) zamknęły dla dowiązań
-wiersz↔ramię: dowiązanie, które się rozwiązuje, nie musi być świeże.
+This is the class suspect links (`834b210`) closed for row↔arm links: a link
+that still resolves is not therefore fresh.
 
-## Decyzja
+## Decision
 
-Dwie połowy, i druga jest tą wiążącą.
+Two halves. The second is the binding one.
 
-**1. Reguła sortująca.** Zdanie, które ma falsyfikator, jest **artykułem** —
-należy do pozycji z `Gate`. Zdanie bez falsyfikatora jest **motywem** i zostaje
-prozą, której nikt nie pilnuje. Stosowana **w punkcie bólu**: gdy zdanie
-normatywne okaże się nieprawdziwe, nie poprawia się go w prozie — promuje się
-je do pozycji. Nie wstecz, nie jako projekt przepisania.
+**1. The sorting rule.** A sentence carrying a falsifier is an **article** — it
+belongs in a position with a `Gate`. A sentence without one is a **recital**:
+it stays prose and nothing polices it. Applied **at the point of pain**: when a
+normative sentence turns out to be false, it is not corrected in prose, it is
+promoted to a position. Not retroactively, not as a rewriting project.
 
-**2. Kontrola świeżości cytowań.** Cytowanie pozycji z prozy normatywnej
-podlega tej samej regule co dowiązanie wiersz↔ramię: zmiana treści cytowanej
-pozycji czyni **cytujący akapit SUSPECT**, do czasu ludzkiego potwierdzenia.
-Mechanicznie to rozszerzenie `suspect_links` z tabeli na akapity: klucz
-`plik:akapit -> pozycja`, hash treści pozycji.
+**2. Citation freshness.** A citation from normative prose obeys the same rule
+as a row↔arm link: when what the cited position *means* changes, the citing
+paragraph becomes **SUSPECT** until a human confirms it. Mechanically this
+extends `suspect_links` from table rows to paragraphs.
 
-## Odrzucone
+The trigger is deliberately not the cited file's own bytes. ADR-019 was never
+edited; ADR-057 superseded it from outside. So the hashed target is the cited
+position **together with the set of positions that amend or supersede it** —
+the thing that actually moved.
 
-- **Detektor znaczeniowy.** Rozpoznawanie „zdań normatywnych" modelem łamie
-  regułę, którą to repo już ma: *„No NLP, by design -- the moment a gate needs
-  a model to fire, it is a review, not a refusal"* (ADR o `contradicts`).
-  Modalność (`must`, `never`, `only`) plus obecność cytowania to lint
-  powierzchniowy, nadreportujący z konstrukcji i bramkowany baseline'em.
-- **Przepisanie §1 na tabelę pozycji.** 13 z 18 akapitów już cytuje; koszt
-  przepisania jest wysoki, a zysk pokrywa 3 akapity. §8 item 2 mierzy churn
-  jako koszt dominujący — to by go dołożyło bez proporcjonalnego zwrotu.
-- **Sama reguła sortująca.** Nie złapałaby zdania o zegarze, bo ono adres ma.
-  Reguła bez połowy drugiej byłaby normą wyglądającą na mechanizm.
+## Rejected
 
-## Konsekwencje
+- **A meaning-based detector.** Recognising "normative sentences" with a model
+  breaks a rule this repository already holds: *"No NLP, by design — the moment
+  a gate needs a model to fire, it is a review, not a refusal."* A surface lint
+  over modals plus citation presence over-reports by construction and is
+  baseline-gated; a model does neither.
+- **Rewriting §1 as a table of positions.** 13 of 18 paragraphs already cite;
+  the cost is high and the gain covers three paragraphs. §8 item 2 measures
+  churn as the dominant cost, and this would add to it without proportional
+  return.
+- **The sorting rule alone.** It would not have caught the clock sentence,
+  which has an address. Half one without half two is a norm shaped like a
+  mechanism.
 
-- Trzy akapity §1 bez cytowania są kandydatami do promocji, nie defektem.
-- Zdanie o zegarze wymaga rozstrzygnięcia niezależnego od tej decyzji: ADR-057
-  jest `PROPOSED` i nierecenzowany, więc **kod może wyprzedzać rekord**, a nie
-  rekord kod. Naprawa prozy przed rozstrzygnięciem statusu utrwaliłaby stan
-  nieprzyjęty.
-- Residuum R1/R2 z `.local/warstwy-mechanizmow.md` kurczy się dopiero po
-  wdrożeniu połowy drugiej. Do tego czasu proza↔kod pozostaje niepokryta i
-  jest to stan zadeklarowany, nie przeoczony.
+## Consequences
 
-**Falsyfikator:** jeśli po wdrożeniu połowy drugiej akapit prozy normatywnej
-znów przeżyje zmianę pozycji, którą cytuje, ta decyzja jest błędna — rozjazd
-nie siedzi w świeżości cytowania.
+- The three uncited paragraphs in §1 are promotion candidates, not defects.
+- The clock sentence needs a decision this ADR does not make: ADR-057 is
+  `PROPOSED` and unreviewed, so here **the code may be ahead of the record**
+  rather than the record behind the code. Repairing the prose before the status
+  is settled would freeze an unaccepted state.
+- Residue R1/R2 in `.local/warstwy-mechanizmow.md` shrinks only once half two
+  ships. Until then prose↔code is uncovered, and that is a declared state
+  rather than an oversight.
+
+**Falsifier:** if, after half two ships, a normative paragraph again outlives a
+change to the position it cites, this decision is wrong — the drift does not
+live in citation freshness.

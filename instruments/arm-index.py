@@ -111,6 +111,13 @@ OPT_OUT_REL = ".truth/arm-subject-opt-out"
 PAPER_REL = "docs/truth-ledger-paper-v3.md"
 BASELINE_REL = ".truth/arm-index-paper-baseline"
 HASHES_REL = ".truth/arm-index-link-hashes"
+PROSE_HASHES_REL = ".truth/arm-index-prose-hashes"
+# Documents whose normative prose cites positions (ADR-060 half two).
+PROSE_DOCS = ("docs/truth-ledger-paper-v3.md", "docs/truth-ledger-explained.md")
+# A paragraph is normative when it carries a modal, per ADR-060: a surface
+# lint, never a model -- "no NLP, by design".
+MODAL_RE = re.compile(r"\b(must|never|always|only|cannot)\b", re.I)
+POSITION_RE = re.compile(r"\b(ADR-\d{1,4}|INV-[A-Z]{1,3})\b")
 EXIT_SUBJECTLESS = 1
 EXIT_EMPTY = 8
 
@@ -363,6 +370,21 @@ def arm_text(fam, arms):
     return fam["family"] + "\n" + "\n".join(labels)
 
 
+def load_hashes_at(rel):
+    path = os.path.join(ROOT, rel)
+    if not os.path.exists(path):
+        return "absent", {}
+    out = {}
+    with open(path, encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            key, _, digest = line.rpartition("  ")
+            out[key.strip()] = digest.strip()
+    return ("populated" if out else "empty"), out
+
+
 def load_hashes():
     """`INV-x CODE  sha256` per line -- the recorded state of each link."""
     path = os.path.join(ROOT, HASHES_REL)
@@ -401,6 +423,74 @@ def suspect_links(rows, known, arms, recorded):
                     (key, f"{inv}: the arm {code} it names has CHANGED since the "
                           f"link was recorded ({was} -> {digest}) -- re-read the "
                           f"row, then refresh with --record-links"))
+    return suspects, current
+
+
+def position_state(pos):
+    """What a cited position MEANS, as bytes.
+
+    Deliberately not the cited file alone. ADR-019 was never edited; ADR-057
+    superseded it from outside, so a hash over ADR-019 would never move. The
+    target is therefore the position's own text PLUS every position that amends
+    or supersedes it -- the thing that actually changed under the citing prose.
+    """
+    parts = []
+    if pos.startswith("ADR-"):
+        num = pos.split("-")[1]
+        for d in ("docs/archive/adr", "docs/decisions"):
+            for name in sorted(os.listdir(os.path.join(ROOT, d))
+                               if os.path.isdir(os.path.join(ROOT, d)) else []):
+                if not name.startswith(num) or not name.endswith(".md"):
+                    continue
+                with open(os.path.join(ROOT, d, name), encoding="utf-8",
+                          errors="replace") as f:
+                    parts.append(f.read()[:4000])
+    for d in ("docs/archive/adr", "docs/decisions"):
+        full = os.path.join(ROOT, d)
+        if not os.path.isdir(full):
+            continue
+        for name in sorted(os.listdir(full)):
+            if not name.endswith(".md"):
+                continue
+            with open(os.path.join(full, name), encoding="utf-8", errors="replace") as f:
+                head = f.read()[:3000]
+            if re.search(r"^(Amends|Supersedes)\s*:.*\b" + re.escape(pos) + r"\b",
+                         head, re.M):
+                parts.append(f"AMENDED-BY {name}")
+    return "\n".join(parts)
+
+
+def prose_citations():
+    """(doc, paragraph index, position) for normative paragraphs that cite."""
+    out = []
+    for rel in PROSE_DOCS:
+        path = os.path.join(ROOT, rel)
+        if not os.path.exists(path):
+            continue
+        with open(path, encoding="utf-8", errors="replace") as f:
+            paras = re.split(r"\n\s*\n", f.read())
+        for i, para in enumerate(paras):
+            if para.lstrip().startswith(("|", "```")) or not MODAL_RE.search(para):
+                continue
+            for pos in sorted(set(POSITION_RE.findall(para))):
+                out.append((rel, i, pos))
+    return out
+
+
+def suspect_prose(recorded):
+    """Normative paragraphs whose cited position moved (ADR-060 half two)."""
+    import hashlib
+    suspects, current = [], {}
+    for rel, idx, pos in prose_citations():
+        key = f"{rel}#{idx} {pos}"
+        digest = hashlib.sha256(position_state(pos).encode("utf-8")).hexdigest()[:16]
+        current[key] = digest
+        was = recorded.get(key)
+        if was is not None and was != digest:
+            suspects.append(
+                (key, f"{rel} paragraph {idx}: the position {pos} it cites has "
+                      f"MOVED since the citation was recorded ({was} -> {digest}) "
+                      f"-- re-read the paragraph, then refresh with --record-links"))
     return suspects, current
 
 
@@ -488,6 +578,9 @@ def main(argv):
     hash_state, recorded = load_hashes()
     known = arm_codes(families, arms)
     suspects, current_hashes = suspect_links(rows or [], known, arms, recorded)
+    _, prose_recorded = load_hashes_at(PROSE_HASHES_REL)
+    prose_susp, prose_current = suspect_prose(prose_recorded)
+    suspects += prose_susp
     if "--record-links" in argv:
         with open(os.path.join(ROOT, HASHES_REL), "w", encoding="utf-8") as f:
             f.write("# arm-index: hash celu kazdego dowiazania wiersz Appendix A <-> ramie.\n"
@@ -496,7 +589,15 @@ def main(argv):
                     "# Odswiez ta lista dopiero PO przeczytaniu wierszy, nie zamiast.\n\n")
             for k in sorted(current_hashes):
                 f.write(f"{k}  {current_hashes[k]}\n")
-        print(f"arm-index: zapisano {len(current_hashes)} hash(y) do {HASHES_REL}")
+        with open(os.path.join(ROOT, PROSE_HASHES_REL), "w", encoding="utf-8") as f:
+            f.write("# arm-index: the hash of each cited POSITION, per normative\n"
+                    "# paragraph that cites it (ADR-060 half two). The hash covers the\n"
+                    "# position plus everything that amends or supersedes it, because a\n"
+                    "# position can be invalidated from outside without being edited.\n\n")
+            for k in sorted(prose_current):
+                f.write(f"{k}  {prose_current[k]}\n")
+        print(f"arm-index: recorded {len(current_hashes)} link and "
+              f"{len(prose_current)} prose hash(es)")
         return 0
     for key, text in suspects:
         failures.append(text)
@@ -574,6 +675,8 @@ def main(argv):
               f"unreconciled [{BASELINE_REL}: {base_state}]")
         print(f"  {'links':14} {len(current_hashes):5} hashed, {len(suspects)} "
               f"suspect [{HASHES_REL}: {hash_state}]")
+        print(f"  {'prose cites':14} {len(prose_current):5} hashed "
+              f"[{PROSE_HASHES_REL}]")
     print(f"arm-index: {len(arms)} arm(s) in {len(families)} families over "
           f"{len(SOURCES)} instruments -- {len(failures)} failure(s) "
           f"[{OPT_OUT_REL}: {opt_state}]")

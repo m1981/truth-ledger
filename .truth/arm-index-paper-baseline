@@ -1,26 +1,20 @@
-# arm-index: baseline uzgodnienia Appendix A <-> ramiona
+# arm-index: baseline for the Appendix A <-> arm reconciliation.
 #
-# Format:  <klucz>  <powod>
-# Klucz to `INV-x no-arm` albo `INV-x back-pointer <KOD>`.
+# Format:  <key>  <reason>.  Key is `INV-x no-arm` or `INV-x back-pointer <CODE>`.
 #
-# BASELINE 2026-08-24, NIEROZSTRZYGNIETY. Ponizsze pozycje sa zapisem stanu
-# w chwili wprowadzenia przebiegu uzgadniajacego, nie werdyktem, ze sa
-# poprawne. Sens tego pliku jest taki, zeby NASTEPNY rozjazd nie przeszedl
-# niezauwazony -- ten sam uklad, ktory .truth/label-coupling-opt-out stosuje
-# do par modulow.
+# BASELINE 2026-08-24, UNRESOLVED. These entries record the state at the moment
+# the reconciliation pass was introduced -- not a verdict that they are correct.
+# The point of this file is that the NEXT divergence does not pass unnoticed, the
+# same arrangement .truth/label-coupling-opt-out uses for module pairs.
 #
-# Klasa `back-pointer` jest liczna z powodu strukturalnego, nie z powodu
-# zaniedbania: ramie deklaruje podmiot z JEDNEGO rejestru (zwykle ADR albo
-# issue), a wiersz Appendix A wskazuje je z drugiego. Dowiazanie jest
-# jednokierunkowe w obie strony poprawnie nazwane -- i wlasnie dlatego
-# odwrocenie ramienia nie dociera do wiersza. Rozstrzygniecie kazdej pozycji
-# to osobna praca: albo ramie dopisuje INV-x do naglowka, albo wiersz
-# przestaje je nazywac.
+# The back-pointer class is populous for a structural reason, not from neglect:
+# an arm declares a subject from ONE register (usually an ADR or an issue) while
+# an Appendix A row points at it from another. Both names are correct, and the
+# link is still one-way -- which is precisely why inverting an arm never reaches
+# the row. Resolving each entry is separate work: either the arm names INV-x in
+# its header, or the row stops naming it.
 #
-# Klasa `no-arm` to wiersze, ktorych bramka nie nazywa ramienia rozpoznawalnie.
-# INV-U bylo tu jako no-arm; wskazywalo FAULT OV, wycofane przez ADR-046.
-# Naprawione: wiersz wskazuje dzis TestTierCInstruments.test_override_velocity
-# _real_and_sandbox, a ten test deklaruje INV-U z powrotem. Pozycja usunieta.
+# The no-arm class is rows whose Gate names no arm this sweep can recognise.
 
 INV-A no-arm  baseline 2026-08-24, nierozstrzygniete
 INV-B no-arm  baseline 2026-08-24, nierozstrzygniete
