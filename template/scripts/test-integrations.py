@@ -6,7 +6,10 @@ Covers:
   1. CLI Contract & Refusals (exit codes 0-8, refusal patterns, ADR-051).
   2. Claude PreToolUse Whisper Hook (worktree support, fail-closed deny).
   3. Claude SessionStart Digest (dirty/stale vs. empty silence).
-  4. Tier C Instruments (real ledger & sandbox red proofs for all 5 instruments).
+  4. Tier C Instruments (real-ledger and throwaway-tree red proofs; WHICH
+     instruments is declared in TestTierCInstruments and reconciled against
+     instruments/ by test_every_instrument_is_classified -- this line used
+     to carry a count, and carried "all 5" for a set of nine).
   5. Markdown & Spec Health (fact-health sweep and session-close survival gate).
 
 Enforces the F1 Failure Rule: 0 tests run or any skipped test is a FAILURE.
@@ -517,13 +520,55 @@ class TestClaudeSessionDigest(unittest.TestCase):
 class TestTierCInstruments(unittest.TestCase):
     """Tier C instruments on the real ledger plus a sandbox red proof.
 
-    Covers 6 of the 10 scripts in instruments/ -- separation-report,
-    override-velocity, blast-report, concern-tag, retraction-causes and
-    semantic-audit. The gap is real and filed (wk-15dfc164); this
-    docstring states the number it actually examines rather than the
-    number of files in the directory, because the previous wording
-    ("all 5 instruments") read as full coverage of a set that had grown
-    to nine."""
+    Coverage is DECLARED below and checked in both directions, rather
+    than described in this docstring. A prose count is the thing this
+    repository keeps catching itself getting wrong: the wording here was
+    once "all 5 instruments" for a set that had grown to nine, then
+    "6 of the 10 scripts" for a directory of eleven. So the two sets are
+    data, `test_every_instrument_is_classified` reconciles them against
+    the directory, and adding an instrument fails this suite until
+    somebody says which set it belongs to. The gap itself is real and
+    filed (wk-15dfc164)."""
+
+    # Instruments with an arm in this class.
+    COVERED_INSTRUMENTS = frozenset((
+        "separation-report.py", "override-velocity.py", "blast-report.py",
+        "concern-tag.py", "retraction-causes.py", "semantic-audit.py",
+        "register-index.py",
+    ))
+    # Instruments with no arm here. Listed, not omitted: an unexamined
+    # instrument that nobody wrote down is indistinguishable from one
+    # nobody noticed.
+    UNCOVERED_INSTRUMENTS = frozenset((
+        "arm-index.py", "capsule-blindness.py", "field-consumers.py",
+        "label-coupling.py", "watch-derivation.py",
+    ))
+
+    def test_every_instrument_is_classified(self):
+        """Neither set may drift from the directory.
+
+        Forward: every name declared above is a file that exists -- a
+        stale name reads as coverage of something that is gone. Reverse:
+        every *.py in instruments/ appears in exactly one set -- a new
+        instrument must be classified, not silently uncovered. This is
+        the same both-directions rule register-index.py was rebuilt for,
+        applied to this suite's own account of itself.
+        """
+        on_disk = set(n for n in os.listdir(INSTRUMENTS_DIR)
+                      if n.endswith(".py"))
+        declared = self.COVERED_INSTRUMENTS | self.UNCOVERED_INSTRUMENTS
+        self.assertEqual(
+            self.COVERED_INSTRUMENTS & self.UNCOVERED_INSTRUMENTS, set(),
+            "an instrument is declared both covered and uncovered")
+        self.assertEqual(
+            declared - on_disk, set(),
+            "declared instrument(s) no longer in instruments/ -- the "
+            "declaration outlived its subject")
+        self.assertEqual(
+            on_disk - declared, set(),
+            "instrument(s) in instruments/ classified neither covered nor "
+            "uncovered here -- add an arm, or name it in "
+            "UNCOVERED_INSTRUMENTS so the gap is on the page")
 
     def test_separation_report_real_and_sandbox(self):
         """separation-report.py parses JSON and detects sub-second agree."""
@@ -838,6 +883,486 @@ class TestTierCInstruments(unittest.TestCase):
             self.assertIn("orphan_basis=1", out.stderr)
         finally:
             sb.cleanup()
+
+    # ---- register-index (ADR-061: this gate is here because it was made
+    # to go red for each condition below, not because it compiles) --------
+
+    @staticmethod
+    def _mini_register_tree(root, decisions, archived, roadmap, baseline=""):
+        """A throwaway repository shaped like the meta-repo's registers.
+
+        register-index resolves its ROOT from its own __file__, so the
+        instrument is COPIED in rather than pointed at this tree: running
+        the real file against a fake root would silently sweep the real
+        repository instead, which is the class of mistake this instrument
+        exists to catch.
+        """
+        os.makedirs(os.path.join(root, "instruments"))
+        os.makedirs(os.path.join(root, "docs", "decisions"))
+        os.makedirs(os.path.join(root, "docs", "archive", "adr"))
+        os.makedirs(os.path.join(root, ".truth"))
+        shutil.copy2(os.path.join(INSTRUMENTS_DIR, "register-index.py"),
+                     os.path.join(root, "instruments", "register-index.py"))
+        for name in decisions:
+            with open(os.path.join(root, "docs", "decisions", name), "w") as f:
+                f.write("# probe\n")
+        for name in archived:
+            with open(os.path.join(root, "docs", "archive", "adr", name),
+                      "w") as f:
+                f.write("# probe\n")
+        with open(os.path.join(root, "docs", "roadmap-v3.md"), "w") as f:
+            f.write(roadmap)
+        # Every location exists and every live doc under docs/ falls inside
+        # one, so a clean tree is genuinely clean and every failure below is
+        # the seeded one rather than scenery.
+        with open(os.path.join(root, "docs", "registers.md"), "w") as f:
+            f.write(
+                "| register | purpose | location | status | currency evidence |\n"
+                "|---|---|---|---|---|\n"
+                "| index | itself | `docs/registers.md` | live | `instruments/register-index.py` check (a) |\n"
+                "| ADR | decisions | `docs/decisions` and `docs/archive/adr` | live | `instruments/register-index.py` check (b) |\n"
+                "| roadmap | the plan | `docs/roadmap-v3.md` | live | `instruments/register-index.py` check (b) |\n")
+        with open(os.path.join(root, ".truth", "register-index-baseline"),
+                  "w") as f:
+            f.write(baseline)
+        return os.path.join(root, "instruments", "register-index.py")
+
+    def _ri(self, inst, root):
+        return subprocess.run([sys.executable, inst], cwd=root,
+                              capture_output=True, text=True)
+
+    def test_register_index_on_the_real_repository(self):
+        """register-index.py reads THIS repository and measures something.
+
+        Deliberately not asserting exit 0: check (b) carries a real
+        backlog, and a test that demanded green here would be satisfied by
+        somebody baselining the backlog away. What it does demand is that
+        the sweep RAN -- exit 8 (examined nothing) and exit 3 (could not
+        read an input) both fail this arm, which is ADR-042 rule 2 applied
+        to the gate rather than to the instrument.
+        """
+        inst = os.path.join(INSTRUMENTS_DIR, "register-index.py")
+        res = subprocess.run([sys.executable, inst, "--json"], cwd=REPO_ROOT,
+                             capture_output=True, text=True)
+        self.assertIn(res.returncode, (0, 1),
+                      "register-index neither passed nor found: %s"
+                      % res.stderr)
+        data = json.loads(res.stdout)
+        self.assertGreater(data["registers"], 0)
+        self.assertGreater(data["locations"], 0)
+        self.assertGreater(data["docs_examined"], 0)
+        self.assertTrue(data["adr_accounting"]["measured"],
+                        "the ADR accounting check did not run")
+        # A location the index names that is not on disk is never excusable.
+        self.assertEqual(data["missing_locations"], [])
+        self.assertEqual(data["malformed_locations"], [])
+        self.assertEqual(data["unlocated_rows"], [])
+        self.assertEqual(data["currency_findings"], [])
+        self.assertEqual(data["unreasoned_baseline_keys"], [])
+
+    def test_register_index_check_b_runs_in_both_directions(self):
+        """The defeat this instrument was rebuilt for: an id the plan names
+        that has no record. One comment naming ADR-063..ADR-200 used to
+        pre-account every future decision in silence, because ids
+        mentioned-but-not-filed were never examined."""
+        tmp = tempfile.mkdtemp(prefix="register-index-")
+        try:
+            inst = self._mini_register_tree(
+                tmp, ["002-b.md"], ["001-a.md"], "ADR-001 ADR-002\n")
+            clean = self._ri(inst, tmp)
+            self.assertEqual(clean.returncode, 0,
+                             "the control tree is not clean: %s%s"
+                             % (clean.stdout, clean.stderr))
+
+            # forward: a filed decision the plan mentions nowhere
+            with open(os.path.join(tmp, "docs", "roadmap-v3.md"), "w") as f:
+                f.write("ADR-001\n")
+            fwd = self._ri(inst, tmp)
+            self.assertEqual(fwd.returncode, 1)
+            self.assertIn("ADR-002 has a file in the decision register",
+                          fwd.stdout)
+
+            # reverse: an id the plan names that has no record at all
+            with open(os.path.join(tmp, "docs", "roadmap-v3.md"), "w") as f:
+                f.write("ADR-001 ADR-002 ADR-099\n")
+            rev = self._ri(inst, tmp)
+            self.assertEqual(rev.returncode, 1)
+            self.assertIn("ADR-099 is mentioned in", rev.stdout)
+            self.assertIn("has no decision record", rev.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_register_index_tells_a_deleted_record_from_a_resolution(self):
+        """A baselined id stops being a finding for two opposite reasons.
+
+        Reporting both as "the roadmap now mentions it" made the
+        prescribed remedy -- drop the line -- the regression itself: a
+        deleted decision record became exit 0. The number-space arm below
+        is why dropping the line no longer buries it either.
+        """
+        tmp = tempfile.mkdtemp(prefix="register-index-")
+        try:
+            inst = self._mini_register_tree(
+                tmp, ["002-b.md", "003-c.md"], ["001-a.md"], "ADR-001\n",
+                baseline=("adr-unaccounted:ADR-002  baseline 2026-01-01, "
+                          "unresolved: probe\n"
+                          "adr-unaccounted:ADR-003  baseline 2026-01-01, "
+                          "unresolved: probe\n"))
+            self.assertEqual(self._ri(inst, tmp).returncode, 0)
+
+            # (i) resolution: the roadmap now mentions ADR-002
+            with open(os.path.join(tmp, "docs", "roadmap-v3.md"), "w") as f:
+                f.write("ADR-001 ADR-002\n")
+            res = self._ri(inst, tmp)
+            self.assertEqual(res.returncode, 1)
+            self.assertIn("now mentions it", res.stdout)
+            self.assertIn("drop the line", res.stdout)
+
+            # (ii) regression: the RECORD vanished. Same baseline entry,
+            # opposite cause, and the remedy must be the opposite too.
+            with open(os.path.join(tmp, "docs", "roadmap-v3.md"), "w") as f:
+                f.write("ADR-001\n")
+            os.remove(os.path.join(tmp, "docs", "decisions", "002-b.md"))
+            gone = self._ri(inst, tmp)
+            self.assertEqual(gone.returncode, 1)
+            self.assertIn("RECORD VANISHED", gone.stdout)
+            self.assertIn("Do NOT drop the line", gone.stdout)
+            self.assertNotIn("now mentions it", gone.stdout)
+
+            # and following the OLD remedy still does not bury it: the
+            # number space has a hole where ADR-002 was.
+            with open(os.path.join(tmp, ".truth", "register-index-baseline"),
+                      "w") as f:
+                f.write("adr-unaccounted:ADR-003  baseline 2026-01-01, "
+                        "unresolved: probe\n")
+            dropped = self._ri(inst, tmp)
+            self.assertEqual(dropped.returncode, 1)
+            self.assertIn("ADR-002 has no record in", dropped.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_register_index_reads_the_index_as_a_block_not_a_filter(self):
+        """One deleted trailing pipe used to un-administer a register.
+
+        GFM renders a body row without its trailing pipe identically, so
+        the index looks unchanged to a reader and to doc-health's link
+        check. The old parser skipped the line, and a skipped row is
+        invisible by construction: nothing distinguishes "rejected" from
+        "never there". The only trace was a register count that no arm
+        asserted. Registers whose location is outside docs/ went fully
+        dark, because the coverage check never sees them.
+        """
+        tmp = tempfile.mkdtemp(prefix="register-index-")
+        try:
+            inst = self._mini_register_tree(
+                tmp, ["002-b.md"], ["001-a.md"], "ADR-001 ADR-002\n")
+            clean = self._ri(inst, tmp)
+            self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
+            before = clean.stdout.count("OK   ")
+
+            index = os.path.join(tmp, "docs", "registers.md")
+            with open(index, encoding="utf-8") as f:
+                table = f.read()
+
+            # (a) a body row missing its trailing pipe
+            with open(index, "w", encoding="utf-8") as f:
+                f.write(table.replace(
+                    "| roadmap | the plan | `docs/roadmap-v3.md` | live | "
+                    "`instruments/register-index.py` check (b) |",
+                    "| roadmap | the plan | `docs/roadmap-v3.md` | live | "
+                    "`instruments/register-index.py` check (b)", 1))
+            bare = self._ri(inst, tmp)
+            self.assertEqual(bare.returncode, 1,
+                             "a row missing its trailing pipe passed: %s"
+                             % bare.stdout)
+            self.assertIn("is not a row", bare.stdout)
+            self.assertLess(bare.stdout.count("OK   "), before,
+                            "the register really did leave the sweep")
+
+            # (b) the wrong column count, which the old parser did catch --
+            # kept so the block rewrite cannot have lost it
+            with open(index, "w", encoding="utf-8") as f:
+                f.write(table.replace("| live | `instruments/register-index.py` "
+                                      "check (b) |",
+                                      "| live | `instruments/register-index.py` "
+                                      "check (b) | sixth |", 1))
+            wide = self._ri(inst, tmp)
+            self.assertEqual(wide.returncode, 1)
+            self.assertIn("columns, not the five", wide.stdout)
+
+            # (c) a stray non-row line inside the block
+            with open(index, "w", encoding="utf-8") as f:
+                f.write(table.replace("| roadmap |", "stray text\n| roadmap |", 1))
+            stray = self._ri(inst, tmp)
+            self.assertEqual(stray.returncode, 1)
+            self.assertIn("is not a row", stray.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_register_index_coverage_runs_in_both_directions(self):
+        """Check (c): the reverse sweep the instrument was built for.
+
+        Forward: a live doc under docs/ that no register's location
+        contains. Reverse: a baseline entry whose finding has gone, and a
+        baseline entry whose SUBJECT has gone -- the second used to be
+        reported as the first, whose remedy deletes a real finding.
+        """
+        tmp = tempfile.mkdtemp(prefix="register-index-")
+        try:
+            inst = self._mini_register_tree(
+                tmp, ["002-b.md"], ["001-a.md"], "ADR-001 ADR-002\n")
+            self.assertEqual(self._ri(inst, tmp).returncode, 0)
+
+            stray = os.path.join(tmp, "docs", "loose-note.md")
+            with open(stray, "w") as f:
+                f.write("# covered by nothing\n")
+            fwd = self._ri(inst, tmp)
+            self.assertEqual(fwd.returncode, 1)
+            self.assertIn("docs/loose-note.md is covered by no register",
+                          fwd.stdout)
+
+            base = os.path.join(tmp, ".truth", "register-index-baseline")
+            with open(base, "w") as f:
+                f.write("docs/loose-note.md  baseline 2026-01-01, "
+                        "unresolved: probe\n")
+            self.assertEqual(self._ri(inst, tmp).returncode, 0,
+                             "baselining the uncovered doc did not excuse it")
+
+            # reverse (i): it is covered now, so the entry outlived its
+            # finding
+            os.remove(stray)
+            os.makedirs(os.path.join(tmp, "docs", "notes"))
+            with open(os.path.join(tmp, "docs", "notes", "x.md"), "w") as f:
+                f.write("# x\n")
+            with open(base, "w") as f:
+                f.write("docs/notes/x.md  baseline 2026-01-01, "
+                        "unresolved: probe\n")
+            index = os.path.join(tmp, "docs", "registers.md")
+            with open(index, encoding="utf-8") as f:
+                table = f.read()
+            with open(index, "w", encoding="utf-8") as f:
+                f.write(table.replace("`docs/registers.md`",
+                                      "`docs/registers.md` and `docs/notes`", 1))
+            resolved = self._ri(inst, tmp)
+            self.assertEqual(resolved.returncode, 1)
+            self.assertIn("no longer uncovered", resolved.stdout)
+
+            # reverse (ii): the subject itself is gone -- a different
+            # message, because the remedy is different
+            with open(index, "w", encoding="utf-8") as f:
+                f.write(table)
+            os.remove(os.path.join(tmp, "docs", "notes", "x.md"))
+            gone = self._ri(inst, tmp)
+            self.assertEqual(gone.returncode, 1)
+            self.assertIn("no longer exists", gone.stdout)
+            self.assertNotIn("no longer uncovered", gone.stdout)
+
+            # ADR-042 rule 2: zero docs to judge is not a pass
+            shutil.rmtree(os.path.join(tmp, "docs", "notes"))
+            for leftover in ("registers.md", "roadmap-v3.md"):
+                os.rename(os.path.join(tmp, "docs", leftover),
+                          os.path.join(tmp, leftover))
+            empty = self._ri(inst, tmp)
+            self.assertEqual(empty.returncode, 2,
+                             "with the index moved away this is a usage "
+                             "error, not a silent pass")
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_register_index_sweeps_the_currency_column(self):
+        """Column five is the file's stated reason to exist.
+
+        A dead path there is a register whose decay nothing reports. An
+        EMPTY cell is a failure. A cell full of prose naming no path is
+        NOT a failure -- one real register measures currency by a review
+        date -- but it must be counted and NAMED, or it is
+        indistinguishable from a row whose paths were all checked.
+        """
+        tmp = tempfile.mkdtemp(prefix="register-index-")
+        try:
+            inst = self._mini_register_tree(
+                tmp, ["002-b.md"], ["001-a.md"], "ADR-001 ADR-002\n")
+            clean = self._ri(inst, tmp)
+            self.assertEqual(clean.returncode, 0)
+            self.assertIn("path(s) checked across", clean.stdout)
+            self.assertIn("0 row(s) name no checkable path", clean.stdout)
+
+            index = os.path.join(tmp, "docs", "registers.md")
+            with open(index, encoding="utf-8") as f:
+                table = f.read()
+
+            with open(index, "w", encoding="utf-8") as f:
+                f.write(table.replace("`instruments/register-index.py` check (b) |",
+                                      "`instruments/gone-forever.py` check (b) |", 1))
+            dead = self._ri(inst, tmp)
+            self.assertEqual(dead.returncode, 1)
+            self.assertIn("currency evidence names", dead.stdout)
+
+            with open(index, "w", encoding="utf-8") as f:
+                f.write(table.replace("| `instruments/register-index.py` check (b) |",
+                                      "|  |", 1))
+            blank = self._ri(inst, tmp)
+            self.assertEqual(blank.returncode, 1)
+            self.assertIn("currency evidence cell is empty", blank.stdout)
+
+            # prose with no path: not a failure, but it must be NAMED
+            with open(index, "w", encoding="utf-8") as f:
+                f.write(table.replace("| `instruments/register-index.py` check (b) |",
+                                      "| a monthly hand-audit, by eye |", 1))
+            prose = self._ri(inst, tmp)
+            self.assertEqual(prose.returncode, 0,
+                             "a prose-only currency cell must not fail")
+            self.assertIn("1 row(s) name no checkable path", prose.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_register_index_baseline_entries_must_carry_a_reason(self):
+        """A bare key excuses a finding while recording nothing about why.
+
+        And `--record-baseline` must preserve each entry's FIRST-SEEN
+        date: restamping every line with today would erase the one thing
+        this file measures about itself, inside the mechanism built to
+        stop staleness.
+        """
+        tmp = tempfile.mkdtemp(prefix="register-index-")
+        try:
+            inst = self._mini_register_tree(
+                tmp, ["002-b.md"], ["001-a.md"], "ADR-001\n",
+                baseline=("adr-unaccounted:ADR-002  baseline 2026-01-01, "
+                          "unresolved: probe\n"))
+            self.assertEqual(self._ri(inst, tmp).returncode, 0)
+
+            base = os.path.join(tmp, ".truth", "register-index-baseline")
+            with open(base, "w") as f:
+                f.write("adr-unaccounted:ADR-002\n")
+            bare = self._ri(inst, tmp)
+            self.assertEqual(bare.returncode, 1)
+            self.assertIn("with no reason", bare.stdout)
+
+            with open(base, "w") as f:
+                f.write("adr-unaccounted:ADR-002  baseline 2026-01-01, "
+                        "unresolved: probe\n")
+            rec = subprocess.run([sys.executable, inst, "--record-baseline"],
+                                 cwd=tmp, capture_output=True, text=True)
+            self.assertEqual(rec.returncode, 0, rec.stderr)
+            with open(base) as f:
+                written = f.read()
+            self.assertIn("baseline 2026-01-01", written,
+                          "--record-baseline restamped a first-seen date")
+            self.assertIn("first seen 2026-01-01", rec.stdout,
+                          "--record-baseline did not print the key it recorded")
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_register_index_refuses_to_record_a_reading_it_did_not_take(self):
+        """`--record-baseline` must not bless a corpus it never read.
+
+        With an ADR directory absent the measure is SUSPENDED, so the
+        unaccounted/phantom/gap sets are empty because nothing was
+        measured -- and writing them DELETED the real backlog and its
+        first-seen dates at exit 0, while the ordinary sweep was refusing
+        to so much as report the same reading.
+        """
+        tmp = tempfile.mkdtemp(prefix="register-index-")
+        try:
+            inst = self._mini_register_tree(
+                tmp, ["002-b.md"], ["001-a.md"], "ADR-001\n",
+                baseline=("adr-unaccounted:ADR-002  baseline 2026-01-01, "
+                          "unresolved: probe\n"))
+            base = os.path.join(tmp, ".truth", "register-index-baseline")
+            with open(base) as f:
+                before = f.read()
+
+            shutil.rmtree(os.path.join(tmp, "docs", "archive", "adr"))
+            suspended = self._ri(inst, tmp)
+            self.assertEqual(suspended.returncode, 1)
+            self.assertIn("SUSPENDED", suspended.stdout)
+
+            rec = subprocess.run([sys.executable, inst, "--record-baseline"],
+                                 cwd=tmp, capture_output=True, text=True)
+            self.assertEqual(rec.returncode, 8,
+                             "--record-baseline recorded a suspended reading")
+            self.assertIn("refusing to record", rec.stderr)
+            with open(base) as f:
+                self.assertEqual(before, f.read(),
+                                 "the backlog was overwritten anyway")
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_register_index_fails_loudly_on_a_missing_or_unreadable_input(self):
+        """ADR-042 rule 2 and the environment/ governance split.
+
+        A sweep that read nothing has not passed (exit 8), and an input it
+        could not read is an ENVIRONMENT failure with its own code (exit
+        3) -- never a traceback, and never counted as a finding.
+        """
+        tmp = tempfile.mkdtemp(prefix="register-index-")
+        try:
+            inst = self._mini_register_tree(
+                tmp, ["002-b.md"], ["001-a.md"], "ADR-001 ADR-002\n")
+            self.assertEqual(self._ri(inst, tmp).returncode, 0)
+
+            index = os.path.join(tmp, "docs", "registers.md")
+            # A row whose location is not backticked yields no location.
+            # It used to print OK -- a register un-administered in silence.
+            with open(index, encoding="utf-8") as f:
+                table = f.read()
+            with open(index, "w", encoding="utf-8") as f:
+                f.write(table.replace("| `docs/roadmap-v3.md` |",
+                                      "| docs/roadmap-v3.md |", 1))
+            bare = self._ri(inst, tmp)
+            self.assertEqual(bare.returncode, 1)
+            self.assertIn("names no location this sweep can read", bare.stdout)
+            self.assertIn("FAIL  roadmap", bare.stdout)
+
+            # An absolute location: check (a) was satisfiable by any path
+            # on the machine.
+            with open(index, "w", encoding="utf-8") as f:
+                f.write(table.replace("`docs/roadmap-v3.md`",
+                                      "`/etc/passwd`", 1))
+            absolute = self._ri(inst, tmp)
+            self.assertEqual(absolute.returncode, 1)
+            self.assertIn("is an absolute path", absolute.stdout)
+
+            # ...and the other half of the same refusal, which had no arm:
+            # a relative path that walks OUT of the repository.
+            with open(index, "w", encoding="utf-8") as f:
+                f.write(table.replace("`docs/roadmap-v3.md`",
+                                      "`../roadmap-v3.md`", 1))
+            escape = self._ri(inst, tmp)
+            self.assertEqual(escape.returncode, 1)
+            self.assertIn("escapes the repository", escape.stdout)
+
+            # ADR-042 rule 2: no readable rows at all.
+            with open(index, "w", encoding="utf-8") as f:
+                f.write("# no table here\n")
+            empty = self._ri(inst, tmp)
+            self.assertEqual(empty.returncode, 8)
+            self.assertIn("read ZERO register rows", empty.stderr)
+
+            # --record-baseline must not bless a corpus it never read.
+            before = open(os.path.join(tmp, ".truth",
+                                       "register-index-baseline")).read()
+            rec = subprocess.run([sys.executable, inst, "--record-baseline"],
+                                 cwd=tmp, capture_output=True, text=True)
+            self.assertEqual(rec.returncode, 8)
+            self.assertEqual(
+                before,
+                open(os.path.join(tmp, ".truth",
+                                  "register-index-baseline")).read(),
+                "--record-baseline rewrote the baseline after reading zero "
+                "registers")
+
+            # Unreadable input: a directory where a file belongs. Chosen
+            # over chmod 000 because a privileged runner can read that.
+            os.remove(index)
+            os.makedirs(index)
+            unreadable = self._ri(inst, tmp)
+            self.assertEqual(unreadable.returncode, 3)
+            self.assertIn("the sweep did NOT run", unreadable.stderr)
+            self.assertNotIn("Traceback", unreadable.stderr)
+        finally:
+            shutil.rmtree(tmp)
 
 
 class TestMarkdownAndSpecHealth(unittest.TestCase):

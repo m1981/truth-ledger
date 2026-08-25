@@ -18,8 +18,23 @@ at the end of a different one.
 
 So this file carries a row for itself, and `instruments/register-index.py`
 sweeps it like any other register — every location below must exist on disk,
-and every live document under `docs/` must fall inside some register's
-location or be recorded as a known gap.
+every row must name a location the sweep can actually read, and every live
+document under `docs/` must fall inside some register's location or be
+recorded as a known gap.
+
+**That sweep is now gated**, which it was not when this file was written:
+`template/scripts/test-integrations.py` (`TestTierCInstruments`) runs it
+against this repository and against throwaway trees that seed each failure
+condition. Until that landed, this section asserted a sweep whose own
+docstring said `Gate: NONE yet` — an index claiming administration it did
+not have, which is the exact decay it exists to report.
+
+**Every check runs in both directions.** The instrument was defeated twice
+by the same shape — a check that walks from A to B and never walks back —
+so the rule is now stated in its docstring and each check states its
+reverse: a location named with nothing there AND a row naming nothing; a
+filed decision the plan never mentions AND an id the plan names that has no
+record; an uncovered document AND a baseline entry whose finding has gone.
 
 ## What the last column is, and is not
 
@@ -34,11 +49,11 @@ reason this column exists at all.
 
 | register | purpose | location | status | currency evidence |
 |----------|---------|----------|--------|-------------------|
-| index | the registers themselves (ISO/IEC 11179: the registry is registered) | `docs/registers.md` | live | `instruments/register-index.py` — check (a) fails on a location that vanished, check (c) fails on live prose no register claims; baseline `.truth/register-index-baseline` |
-| ADR | decisions | `docs/decisions` (live, 054+) and `docs/archive/adr` (frozen, 001–053) | live + frozen archive | `instruments/register-index.py` check (b): every id with a file here must be mentioned somewhere in the roadmap; the unaccounted ones are named and baselined in `.truth/register-index-baseline` under the `adr-unaccounted:` prefix; per-citation drift by `instruments/arm-index.py` prose pass against `.truth/arm-index-prose-hashes` (ADR-060) |
+| index | the registers themselves (ISO/IEC 11179: the registry is registered) | `docs/registers.md` | live | `instruments/register-index.py`, gated by `template/scripts/test-integrations.py` — check (a) fails on a location that vanished, on a row naming no readable location, on a location that is absolute or escapes the repo, and on a `currency evidence` cell that is empty or names a path that is not there; check (c) fails on live prose no register claims; baseline `.truth/register-index-baseline` |
+| ADR | decisions | `docs/decisions` (live, 054+) and `docs/archive/adr` (frozen, 001–053) | live + frozen archive | `instruments/register-index.py` check (b), in three directions: every id with a file here is mentioned somewhere in the roadmap (`adr-unaccounted:`), every id the roadmap names has a file (`adr-phantom:`), and the number space has no holes (`adr-gap:` — the space is never restarted and a superseded record is superseded in place, so a hole is a record that vanished). A markdown file here whose name does not parse as `nnn-slug.md`, and a missing ADR directory, are each findings rather than a silently smaller reading. Baselined in `.truth/register-index-baseline`; per-citation drift by `instruments/arm-index.py` prose pass against `.truth/arm-index-prose-hashes` (ADR-060) |
 | INV | safety properties | Appendix A of `docs/truth-ledger-paper-v3.md` | live | `instruments/arm-index.py` reconciliation pass: a row naming no arm, an arm that does not exist, or an arm that does not point back, against `.truth/arm-index-paper-baseline`; link targets hashed in `.truth/arm-index-link-hashes` |
 | arms | seeded faults | `template/scripts/truth-canary.sh` | live, ENFORCED species | `instruments/arm-index.py` subject rule (a canary family without a declared subject fails), exemptions in `.truth/arm-subject-opt-out` |
-| roadmap | the plan | `docs/roadmap-v3.md` | living document | `instruments/register-index.py` check (b): ADR ACCOUNTING — which filed decisions this plan mentions nowhere, in any tense. Not recency: the ids it cites are not required to be the newest, because it is a history log and correctly cites ids that were live then, which is also why it is deliberately excluded from `.truth/citation-scope`. Today's unaccounted backlog is frozen in `.truth/register-index-baseline` (`adr-unaccounted:` prefix) so the NEXT unmentioned decision fails; a baselined id the roadmap later mentions fails too, by the same mirror rule the coverage entries carry |
+| roadmap | the plan | `docs/roadmap-v3.md` | living document | `instruments/register-index.py` check (b): ADR ACCOUNTING — which filed decisions this plan mentions nowhere, in any tense, AND which ids it names that have no record. Not recency: the ids it cites are not required to be the newest, because it is a history log and correctly cites ids that were live then, which is also why it is deliberately excluded from `.truth/citation-scope`. Today's backlog is frozen in `.truth/register-index-baseline` so the NEXT divergence fails. The mirror rule distinguishes the two ways a baselined entry can stop being a finding: the roadmap now mentions it (resolved — drop the line) versus the decision record no longer exists (a REGRESSION — restore it). Reporting the second as the first made the prescribed remedy the regression itself |
 | briefs | analyses | `docs/reviews` | dated records, never revised | filename date is the record; excluded from `.truth/citation-scope` on the same ruling as the roadmap, so a retraction is never blocked by a past review |
 | ledger | claims | `.truth/claims.jsonl` | append-only, live | `scripts/check-truth.sh` INV-A prefix gate at commit (conditional on the hook actually running, ADR-025); per-claim currency by reproduce-on-read and TTL derived in the fold (ADR-057) |
 | gates | Tier B intake gates and counted overrides | `docs/governance/gate-metrics.md` | live | its own per-row next-review date, read as the first item of the R11 monthly hand-audit (ADR-047); a gate enters PROPOSED with a metric or not at all |
@@ -55,9 +70,17 @@ rather than being left to memory.
 
 ## What this index does not do
 
-It does not judge whether a register's *contents* are correct, and it does not
-promise that the mechanisms in the last column are running. It maps items to
-the register that owns them and names the instrument that would report decay.
-Whether that instrument is wired into a gate is a separate question, answered
-per instrument in `docs/governance/gate-metrics.md` and by
-`scripts/gate-reachability.sh`.
+It does not judge whether a register's *contents* are correct. It maps items
+to the register that owns them and names the instrument that would report
+decay.
+
+The last column is checked as far as it can be and no further, and the line
+is worth stating because the column's whole subject is what is and is not
+measured. **Checked:** the cell is not empty, and every backticked token in
+it containing a slash is a path that exists. **Not checked:** whether the
+mechanism a cell names is wired into any gate, or ran, or would report what
+the cell says it reports. That is a separate question, answered per
+instrument in `docs/governance/gate-metrics.md` and by
+`scripts/gate-reachability.sh`. A cell can therefore name a live path and
+still be a promise nobody keeps — which is why the paragraph above says
+which of these registers' sweeps is itself gated.
