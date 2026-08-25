@@ -42,7 +42,9 @@ Four roles, separated by **what each is not told**.
 | **review** | the diff + house conventions | **the specification** | confirmed defects, each with the command that reproduces it |
 | **operator** | everything | — | the commit |
 
-Three rules follow, each earned:
+Four rules follow, each earned. (Three were written first; rule 4 was
+added below after it was learned the expensive way, and this line is
+corrected with it rather than left counting the original three.)
 
 1. **The reviewer's ignorance of the spec is load-bearing.** Given the spec it
    checks compliance — "was what was asked built" — not correctness. The

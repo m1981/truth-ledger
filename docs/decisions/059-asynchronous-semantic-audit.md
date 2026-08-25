@@ -8,7 +8,7 @@ specified by this record.
 
 Date: 2026-08-23
 
-Cites: ADR-007 (`--scope-ok`), ADR-035 (`--exit-ok`), ADR-036
+Cites: ADR-007 (`--scope-ok`), ADR-035 (`--evidence-exit-ok`), ADR-036
 (`--orphan-ok`), ADR-037 (`--generated-ok`), ADR-046 (Tier C), ADR-051
 (`--refresh-evidence`), ADR-057 (read-time TTL — the extractor folds with a
 clock so an expired override is not extracted as load-bearing), FAZA 3
@@ -16,12 +16,45 @@ clock so an expired override is not extracted as load-bearing), FAZA 3
 
 ## Context
 
-Every override in this system is admitted on a **sentence**. `--scope-ok`
-says why a quantifier may stand. `--paths-ok` says why a freehand watch set
-may exceed the budget. `--generated-ok` says why a generated artifact may be
-watched, `--exit-ok` why a failing probe still proves something,
-`--orphan-ok` why citations may be left dangling, and ADR-051's
+**SIX of the ten overrides in this system are admitted on a sentence.**
+`--scope-ok` says why a quantifier may stand. `--paths-ok` says why a freehand
+watch set may exceed the budget. `--generated-ok` says why a generated
+artifact may be watched, `--evidence-exit-ok` why a failing probe still proves
+something, `--orphan-ok` why citations may be left dangling, and ADR-051's
 `--refresh-evidence` why a moved output is still the same fact.
+
+**The other four are admitted on nothing at all**, and the split is not
+random. Corrected 2026-08-24, after this record spent its whole life claiming
+otherwise — and corrected twice, because the first correction said "five of
+eight" in a sentence that listed six, having counted `--refresh-evidence` in
+the prose and left it out of the total:
+
+| flag | lifts | admitted on |
+|---|---|---|
+| `--duplicate-ok` | the G8 near-duplicate refusal | a bare boolean |
+| `--evidence-unsafe-ok` | **the evidence screen** — files a claim whose command the screen refused (ADR-009) | a bare boolean |
+| `--accept-unsafe-ok` | **the acceptance screen** — closes a work item without running its oracle (ADR-014) | a bare boolean |
+| `--single-run` | **the G6 determinism double-run** — and it writes NO field into the record, so its use cannot be counted at all | a bare boolean |
+
+The six that carry a sentence lift a **quality-of-justification** gate. The
+four that carry none lift an **execution** gate. So the overrides with the
+largest blast radius are exactly the ones this extractor cannot hand to L2 —
+not through an omission in its field list, but because there is no rationale
+to extract. Worse, the L2 reader cannot tell "no override happened" from "an
+override happened and said nothing": both produce no row.
+
+Measured on this ledger 2026-08-24: **23 records carry an override sentence
+(17 of them on the five fields this extractor reads, plus 6 `evidence_refresh`),
+against 28 records carrying an override with none** — and `--single-run`'s
+uses are not in either figure, because it leaves nothing to count. More of
+this repository's bypasses were admitted on nothing than on an argument.
+Read the current figures off `instruments/waiver-index.py` rather than from
+this paragraph.
+
+The premise stood unchallenged because no register held the list of override
+flags. `docs/waivers.md` is now that register and
+`instruments/waiver-index.py` sweeps it against the parser in both
+directions.
 
 The gates check that a sentence **exists** and is non-empty. Nothing in this
 repository has ever checked whether it **means** anything. To every mechanism
@@ -98,9 +131,46 @@ firing.
 `evidence_refresh=3`, `paths_basis=2`, `orphan_basis=1`,
 `generated_ok_basis=0`, `evidence_exit_basis=0`. The two remaining zeros
 are honest: no active claim currently carries a `--generated-ok` or
-`--exit-ok` override.
+`--evidence-exit-ok` override.
 
-**Not specified here.** What L2 asks the model, what counts as a failing
+## How a population figure is counted, so a number in this record is reproducible
+
+Every count of overrides in this record and in `docs/waivers.md` follows one
+rule, written down because "28" was published before the rule was, and an
+unreproducible number in a repository about reproducibility is its own defect.
+
+1. **Count distinct RECORD ids, never field occurrences.** A record carrying
+   two stamps is one override, not two.
+2. **One field per waiver — the field that is set WHENEVER the flag is used.**
+   `--accept-unsafe-ok` stamps `accept.screened = false` on the filing and
+   additionally `accept.executed = false` on the close. Measured 2026-08-25:
+   5 and 2, and the second set is a strict SUBSET of the first. The counting
+   field is `accept.screened`; the other is reported beside it and never
+   added to it. Summing them would give 7 for a flag used 5 times.
+3. **A total across waivers is a UNION, not a sum.** The four sentence-less
+   flags produce only THREE stamps -- `--single-run` produces none -- and
+   those three happen to be pairwise disjoint on this ledger today (0 overlap in
+   all three pairs), so 23 + 5 + 0 = 28 coincides with the union — but that
+   is an observation about today's data, not a property, and the next reader
+   must take the union.
+4. **A value is not a rationale.** `--ttl-days` admits an override with a
+   number. It is counted as an override and never as a sentence.
+5. **Every total is a LOWER BOUND.** `--single-run` lifts the G6 determinism
+   double-run and writes no field at all, so its uses appear in no figure
+   here or anywhere else. A population that cannot see one of its members is
+   a floor, and must be read as one.
+
+Applying the rule to this ledger on 2026-08-25: **23 records carry an override
+sentence, 28 carry an override with none, both sets disjoint, and an unknown
+number of `--single-run` filings are in neither.**
+
+**Not specified here.** How to give the four sentence-less overrides a
+rationale — a `--duplicate-ok SENTENCE`, basis fields for the two unsafe
+flags, and any record at all for `--single-run` — is a change to the intake
+gates and belongs in its own record. What
+this one now does is stop asserting that they already have one.
+
+Also not specified here: what L2 asks the model, what counts as a failing
 sentence, and whether the result blocks anything. Those are L2's, and
 writing them into this repository would be L1 specifying its own examiner.
 

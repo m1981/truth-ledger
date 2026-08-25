@@ -534,7 +534,7 @@ class TestTierCInstruments(unittest.TestCase):
     COVERED_INSTRUMENTS = frozenset((
         "separation-report.py", "override-velocity.py", "blast-report.py",
         "concern-tag.py", "retraction-causes.py", "semantic-audit.py",
-        "register-index.py",
+        "register-index.py", "waiver-index.py",
     ))
     # Instruments with no arm here. Listed, not omitted: an unexamined
     # instrument that nobody wrote down is indistinguishable from one
@@ -1038,6 +1038,650 @@ class TestTierCInstruments(unittest.TestCase):
             dropped = self._ri(inst, tmp)
             self.assertEqual(dropped.returncode, 1)
             self.assertIn("ADR-002 has no record in", dropped.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    # ---- waiver-index: the register of ways to bypass a gate ----------
+
+    # A stub CLI whose `--help` this suite controls. The instrument
+    # harvests its inventory by RUNNING the CLI, so the honest way to seed
+    # a divergence is to control that output rather than to patch the
+    # instrument. Built from a list of lines rather than a nested
+    # triple-quoted literal, because a program inside a program inside a
+    # test is where quoting goes to die.
+    STUB_CLI_LINES = [
+        "#!/usr/bin/env python3",
+        "import sys",
+        "VERBS = {verbs!r}",
+        "FLAGS = {flags!r}",
+        # Flags rendered in the USAGE line only, never in `options:`.
+        # argparse never does this; the point is that if this reader ever
+        # disagrees with itself about one parser, it must say so rather
+        # than silently prefer one rendering.
+        "USAGE_ONLY = {usage_only!r}",
+        "argv = [x for x in sys.argv[1:] if x != '--help']",
+        "if not argv:",
+        "    print('usage: truth [-h] {{' + ','.join(VERBS) + '}} ...')",
+        "    print()",
+        "    print('positional arguments:')",
+        "    for v in VERBS:",
+        "        print('    %-18s do the %s thing' % (v, v))",
+        "    raise SystemExit(0)",
+        "verb = argv[0]",
+        "if verb not in VERBS:",
+        "    raise SystemExit(2)",
+        "flags = FLAGS.get(verb, [])",
+        "extra = USAGE_ONLY.get(verb, [])",
+        "opts = ''.join(' [' + f + ']' for f in flags + extra)",
+        "print('usage: truth ' + verb + ' [-h]' + opts)",
+        "print()",
+        "print('positional arguments:')",
+        "print('  text')",
+        "print()",
+        "print('options:')",
+        "print('  -h, --help            show this help message and exit')",
+        "for f in flags:",
+        "    print('  ' + f + '   help text for ' + f.split()[0])",
+        "raise SystemExit(0)",
+    ]
+
+    def _mini_waiver_tree(self, root, verbs, flags, rows, ledger=(),
+                          policy=None):
+        """A throwaway tree with a stub CLI and a seven-column register."""
+        os.makedirs(os.path.join(root, "instruments"))
+        os.makedirs(os.path.join(root, "docs"))
+        os.makedirs(os.path.join(root, "scripts"))
+        os.makedirs(os.path.join(root, ".truth"))
+        shutil.copy2(os.path.join(INSTRUMENTS_DIR, "waiver-index.py"),
+                     os.path.join(root, "instruments", "waiver-index.py"))
+        self._write_stub(root, verbs, flags)
+        self._write_register(root, rows)
+        with open(os.path.join(root, ".truth", "claims.jsonl"), "w") as f:
+            for rec in ledger:
+                f.write(json.dumps(rec) + "\n")
+        # Every flag must be classified, so a tree that gives the stub any
+        # flag beyond the registered ones needs a policy file too.
+        self._write_policy(root, policy or "")
+        return os.path.join(root, "instruments", "waiver-index.py")
+
+    @staticmethod
+    def _write_policy(root, body):
+        with open(os.path.join(root, ".truth",
+                               "waiver-not-an-override"), "w") as f:
+            f.write("# probe\n" + body)
+
+    def _write_stub(self, root, verbs, flags, usage_only=None):
+        body = "\n".join(self.STUB_CLI_LINES).format(
+            verbs=verbs, flags=flags, usage_only=usage_only or {})
+        cli = os.path.join(root, "scripts", "truth")
+        with open(cli, "w") as f:
+            f.write(body + "\n")
+        os.chmod(cli, 0o755)
+
+    @staticmethod
+    def _write_register(root, rows):
+        header = ("| flag | verbs | gate it lifts | admitted on | stamp on "
+                  "the record | decays | governing record |\n"
+                  "|---|---|---|---|---|---|---|\n")
+        body = "".join(
+            "| `%s` | %s | a gate | %s | `%s` | no | ADR-000 |\n"
+            % (flag, ", ".join(vs), admitted, stamp)
+            for flag, vs, admitted, stamp in rows)
+        with open(os.path.join(root, "docs", "waivers.md"), "w") as f:
+            f.write("# Waivers\n\n" + header + body + "\n")
+
+    def _wi(self, inst, root):
+        return subprocess.run([sys.executable, inst], cwd=root,
+                              capture_output=True, text=True)
+
+    def test_waiver_index_runs_in_both_directions(self):
+        """The register of overrides, checked against the parser both ways.
+
+        REVERSE is the direction that matters and the one whose absence
+        cost this repository months: `--exit-ok`, a flag that has never
+        existed, lived in three documents at once because nothing ever
+        walked from the parser back to the list.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            inst = self._mini_waiver_tree(
+                tmp, ["claim", "verdict"],
+                {"claim": ["--scope-ok SENTENCE", "--duplicate-ok"],
+                 "verdict": ["--orphan-ok SENTENCE"]},
+                [("--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
+                 ("--duplicate-ok", ["claim"], "nothing",
+                  "overridden_duplicates"),
+                 ("--orphan-ok", ["verdict"], "SENTENCE", "orphan_basis")])
+            clean = self._wi(inst, tmp)
+            self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
+
+            # REVERSE: the parser grows a bypass the register never heard of
+            self._write_stub(tmp, ["claim", "verdict"],
+                             {"claim": ["--scope-ok SENTENCE",
+                                        "--duplicate-ok", "--brand-new-ok"],
+                              "verdict": ["--orphan-ok SENTENCE"]})
+            rev = self._wi(inst, tmp)
+            self.assertEqual(rev.returncode, 1,
+                             "a new bypass flag with no row passed: %s"
+                             % rev.stdout)
+            self.assertIn("--brand-new-ok", rev.stdout)
+            self.assertIn("NOTHING classifies it", rev.stdout)
+
+            # FORWARD: the register lists a flag the parser does not accept
+            self._write_stub(tmp, ["claim", "verdict"],
+                             {"claim": ["--scope-ok SENTENCE",
+                                        "--duplicate-ok"],
+                              "verdict": ["--orphan-ok SENTENCE"]})
+            self._write_register(
+                tmp,
+                [("--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
+                 ("--duplicate-ok", ["claim"], "nothing",
+                  "overridden_duplicates"),
+                 ("--exit-ok", ["verdict"], "SENTENCE", "orphan_basis")])
+            fwd = self._wi(inst, tmp)
+            self.assertEqual(fwd.returncode, 1)
+            self.assertIn("--exit-ok", fwd.stdout)
+            self.assertIn("accepts on NO verb", fwd.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_checks_what_a_waiver_is_admitted_on(self):
+        """A bare flag described as taking a sentence is the defect that
+        made ADR-059's opening premise false: three of the eight overrides
+        are admitted on NOTHING, and they are exactly the three that lift
+        an execution screen rather than a quality-of-justification gate.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            base = [("--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
+                    ("--duplicate-ok", ["claim"], "nothing",
+                     "overridden_duplicates")]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"],
+                {"claim": ["--scope-ok SENTENCE", "--duplicate-ok"]}, base)
+            self.assertEqual(self._wi(inst, tmp).returncode, 0)
+
+            # the register claims a rationale where the parser takes none
+            self._write_register(
+                tmp, [base[0],
+                      ("--duplicate-ok", ["claim"], "SENTENCE",
+                       "overridden_duplicates")])
+            lie = self._wi(inst, tmp)
+            self.assertEqual(lie.returncode, 1)
+            self.assertIn("the parser says", lie.stdout)
+
+            # ...and the other way: a sentence flag described as bare
+            self._write_register(
+                tmp, [("--scope-ok", ["claim"], "nothing", "scope_basis"),
+                      base[1]])
+            other = self._wi(inst, tmp)
+            self.assertEqual(other.returncode, 1)
+            self.assertIn("the parser says", other.stdout)
+
+            # the register names the wrong verbs
+            self._write_register(
+                tmp, [("--scope-ok", ["verdict"], "SENTENCE", "scope_basis"),
+                      base[1]])
+            verbs = self._wi(inst, tmp)
+            self.assertEqual(verbs.returncode, 1)
+            self.assertIn("the parser accepts it on", verbs.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_counts_the_population_structurally(self):
+        """A nested field with a required value is invisible to a
+        substring scan. The first version of this instrument reported 0
+        for `accept.screened = false` where the truth was 5 -- an
+        under-reporting population count, which is the shrinking
+        measurement this repository keeps catching in other places.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            ledger = [
+                {"id": "tr-1", "kind": "claim",
+                 "payload": {"accept": {"screened": False}}},
+                {"id": "tr-2", "kind": "claim",
+                 "payload": {"accept": {"screened": True}}},
+                {"id": "tr-3", "kind": "claim",
+                 "payload": {"scope_basis": "because"}},
+            ]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"],
+                {"claim": ["--scope-ok SENTENCE", "--accept-unsafe-ok"]},
+                [("--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
+                 ("--accept-unsafe-ok", ["claim"], "nothing",
+                  "accept.screened = false")],
+                ledger=ledger)
+            out = self._wi(inst, tmp)
+            self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+            # 1, not 2: the record whose screen was NOT lifted must not
+            # count as a bypass, which is why the value is part of the key
+            self.assertRegex(out.stdout,
+                             r"accept\.screened = false\s+1 record")
+            self.assertRegex(out.stdout, r"scope_basis\s+1 record")
+
+            # a ledger line that will not parse must be COUNTED, not skipped
+            with open(os.path.join(tmp, ".truth", "claims.jsonl"), "a") as f:
+                f.write("{not json\n")
+            broken = self._wi(inst, tmp)
+            self.assertEqual(broken.returncode, 1)
+            self.assertIn("could not be parsed as JSON", broken.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_refuses_to_report_health_over_nothing(self):
+        """ADR-042 rule 2, both halves, plus the environment split.
+
+        An empty register agrees with an empty parser, so a sweep that
+        read neither would report a clean escape surface having harvested
+        nothing at all -- the most comfortable way to be wrong about how
+        many gates can be bypassed.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            rows = [("--scope-ok", ["claim"], "SENTENCE", "scope_basis")]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"], {"claim": ["--scope-ok SENTENCE"]}, rows)
+            self.assertEqual(self._wi(inst, tmp).returncode, 0)
+
+            # Zero rows with a live parser is a DIVERGENCE, not an empty
+            # sweep: every flag the CLI accepts is now unlisted.
+            waivers = os.path.join(tmp, "docs", "waivers.md")
+            with open(waivers, "w") as f:
+                f.write("# Waivers\n\nno table here\n")
+            lost = self._wi(inst, tmp)
+            self.assertEqual(lost.returncode, 1)
+            self.assertIn("NOTHING classifies it", lost.stdout)
+            self.assertIn("no table header row", lost.stdout)
+
+            # a parser with no overrides and a register with one is a
+            # DIVERGENCE, not an empty sweep
+            self._write_register(tmp, rows)
+            self._write_stub(tmp, ["claim"], {"claim": []})
+            none = self._wi(inst, tmp)
+            self.assertEqual(none.returncode, 1)
+            self.assertIn("accepts on NO verb", none.stdout)
+
+            # both empty: the sweep must not agree with itself
+            with open(waivers, "w") as f:
+                f.write("# Waivers\n\nno table here\n")
+            self.assertEqual(self._wi(inst, tmp).returncode, 8,
+                             "an empty register agreed with an empty parser")
+
+            # a CLI whose top-level help lists NO verbs is ENVIRONMENT:
+            # the inventory would be empty and every row would read as
+            # "accepts on NO verb", which is a confident wrong answer
+            # rather than an admission that nothing was harvested.
+            self._write_register(tmp, rows)
+            self._write_stub(tmp, [], {})
+            noverbs = self._wi(inst, tmp)
+            self.assertEqual(noverbs.returncode, 3,
+                             "zero verbs harvested was reported as findings")
+            self.assertIn("listed no subcommands", noverbs.stderr)
+
+            # a CLI that cannot run at all is ENVIRONMENT, not a finding
+            self._write_register(tmp, rows)
+            cli = os.path.join(tmp, "scripts", "truth")
+            os.remove(cli)
+            os.makedirs(cli)
+            env = self._wi(inst, tmp)
+            self.assertEqual(env.returncode, 3)
+            self.assertIn("the sweep did NOT run", env.stderr)
+            self.assertNotIn("Traceback", env.stderr)
+
+            # ...and the harder half, which the previous case cannot
+            # isolate: a CLI that prints PERFECTLY USABLE help and then
+            # exits non-zero. Removing the returncode guard leaves the
+            # empty-help guard to catch the case above, so without this
+            # one the returncode branch could be deleted unnoticed.
+            # Trusting a parser that reported failure is reading an
+            # inventory from a program that said it was broken.
+            shutil.rmtree(cli)
+            self._write_stub(tmp, ["claim"], {"claim": ["--scope-ok SENTENCE"]})
+            with open(cli) as f:
+                good = f.read()
+            with open(cli, "w") as f:
+                f.write(good.replace("raise SystemExit(0)",
+                                     "raise SystemExit(3)"))
+            os.chmod(cli, 0o755)
+            noisy = self._wi(inst, tmp)
+            self.assertEqual(noisy.returncode, 3,
+                             "a CLI that exited non-zero was trusted anyway")
+            self.assertIn("exited 3", noisy.stderr)
+            self.assertNotIn("Traceback", noisy.stderr)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_classifies_every_flag_not_just_the_ok_ones(self):
+        """The reverse direction is TOTAL, and it has to be.
+
+        Scoping it to a naming convention was wrong twice in one file:
+        `--refresh-evidence` lifts a hard ADR-051 refusal and takes a
+        sentence with no `-ok` suffix, and `--single-run` skips the G6
+        determinism double-run with neither. A flag nobody has judged is
+        a gate nobody knows can be lifted, so every flag the parser
+        accepts must be a waiver row or a declared non-override.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            rows = [("--scope-ok", ["claim"], "SENTENCE", "scope_basis")]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"],
+                {"claim": ["--scope-ok SENTENCE", "--json"]}, rows,
+                policy="--json  selects machine output; read-only.\n")
+            self.assertEqual(self._wi(inst, tmp).returncode, 0)
+
+            # a NEW flag matching neither historical override shape
+            self._write_stub(tmp, ["claim"],
+                             {"claim": ["--scope-ok SENTENCE", "--json",
+                                        "--single-run"]})
+            new = self._wi(inst, tmp)
+            self.assertEqual(new.returncode, 1,
+                             "an unclassified flag passed: %s" % new.stdout)
+            self.assertIn("--single-run", new.stdout)
+            self.assertIn("NOTHING classifies it", new.stdout)
+
+            # declaring it not-an-override clears it -- that is the judgement
+            self._write_policy(tmp, "--json  selects machine output; read-only.\n"
+                                    "--single-run  a probe entry.\n")
+            self.assertEqual(self._wi(inst, tmp).returncode, 0)
+
+            # a declaration with no reason does not
+            self._write_policy(tmp, "--json  selects machine output; read-only.\n"
+                                    "--single-run\n")
+            bare = self._wi(inst, tmp)
+            self.assertEqual(bare.returncode, 1)
+            self.assertIn("with no reason", bare.stdout)
+
+            # mirror: a declaration whose flag is gone
+            self._write_policy(tmp, "--json  selects machine output; read-only.\n"
+                                    "--single-run  a probe entry.\n"
+                                    "--long-gone  a probe entry.\n")
+            stale = self._wi(inst, tmp)
+            self.assertEqual(stale.returncode, 1)
+            self.assertIn("--long-gone", stale.stdout)
+            self.assertIn("outlived its subject", stale.stdout)
+
+            # a flag on BOTH sides is a contradiction, not a pass
+            self._write_policy(tmp, "--json  selects machine output; read-only.\n"
+                                    "--single-run  a probe entry.\n"
+                                    "--scope-ok  a probe entry.\n")
+            both = self._wi(inst, tmp)
+            self.assertEqual(both.returncode, 1)
+            self.assertIn("BOTH a row in", both.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_refuses_a_reason_abandoned_mid_clause(self):
+        """A half-written reason is worse than a missing one.
+
+        It reads as a judgement somebody made, so nothing prompts anyone
+        to finish it, and the flag stays excused on half an argument.
+        Three entries in the real policy file were truncated exactly this
+        way on the first pass -- `--basis` ("so it is the opposite"),
+        `--watch-policy` ("the alternative to an") and `--ttl-days`
+        ("visible opt-out, so").
+
+        The narrow half matters as much: pronouns and negations DO end
+        sentences, and a first cut that failed on them produced five
+        false positives against legitimate reasons. A check that fires on
+        a valid input is worse than one that misses.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            rows = [("--scope-ok", ["claim"], "SENTENCE", "scope_basis")]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"], {"claim": ["--scope-ok SENTENCE", "--json"]},
+                rows, policy="--json  selects machine output; read-only.\n")
+            self.assertEqual(self._wi(inst, tmp).returncode, 0)
+
+            # the three real truncations, each in its own shape
+            for reason, needle in (
+                    ("the reasoning basis, so it is the opposite",
+                     "'opposite'"),
+                    ("names a reviewed watch set, the alternative to an",
+                     "joining word 'an'"),
+                    ("the shelf life; a large value is the opt-out, so",
+                     "joining word 'so'"),
+                    ("a joining word with a full stop after it, so.",
+                     "joining word 'so'")):
+                self._write_policy(tmp, "--json  %s\n" % reason)
+                got = self._wi(inst, tmp)
+                self.assertEqual(
+                    got.returncode, 1,
+                    "an unfinished reason passed: %r -> %s"
+                    % (reason, got.stdout))
+                self.assertIn("not a finished sentence", got.stdout)
+                self.assertIn(needle, got.stdout)
+
+            # ...and the negative controls, which must NOT fire
+            for reason in (
+                    "selects machine output; read-only.",
+                    "the screen that may refuse it is lifted by --x, never by this.",
+                    "ADR-013 refuses it, so a refusal acts on it rather than through it.",
+                    "it changes where input comes from and nothing about what it does.",
+                    "a rendering choice only!",
+                    "which transition runs?"):
+                self._write_policy(tmp, "--json  %s\n" % reason)
+                ok = self._wi(inst, tmp)
+                self.assertEqual(
+                    ok.returncode, 0,
+                    "a finished reason was refused: %r -> %s"
+                    % (reason, ok.stdout))
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_harvests_flag_shapes_argparse_really_prints(self):
+        """The usage line is not a reliable inventory.
+
+        argparse renders required arguments unbracketed, alternation
+        groups with `|`, lowercase metavars, digits in names, and wraps
+        all of it. A reader that assumes `[--flag METAVAR]` walks past
+        every one of those, at exit 0 -- which is a fail-open in the one
+        direction this register exists for. The inventory is taken from
+        the `options:` section and cross-checked against usage.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            rows = [("--scope-ok", ["claim"], "SENTENCE", "scope_basis")]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"], {"claim": ["--scope-ok SENTENCE"]}, rows)
+            self.assertEqual(self._wi(inst, tmp).returncode, 0)
+
+            for shape, needle in (
+                    ("--sneaky-ok reason", "--sneaky-ok"),
+                    ("--g8-ok", "--g8-ok"),
+                    ("--refresh-evidence SENTENCE", "--refresh-evidence"),
+                    ("--mandatory-ok SENTENCE", "--mandatory-ok"),
+                    ("--choice {a,b}", "--choice")):
+                self._write_stub(tmp, ["claim"],
+                                 {"claim": ["--scope-ok SENTENCE", shape]})
+                got = self._wi(inst, tmp)
+                self.assertEqual(
+                    got.returncode, 1,
+                    "the harvester walked past %r: %s" % (shape, got.stdout))
+                self.assertIn(needle, got.stdout)
+
+            # the two renderings of ONE parser disagreeing. argparse never
+            # does this, so if this reader sees it, the reader is wrong
+            # about at least one rendering -- and a reader quietly wrong
+            # about the shape of a flag is how an override goes unlisted.
+            self._write_stub(tmp, ["claim"],
+                             {"claim": ["--scope-ok SENTENCE"]},
+                             usage_only={"claim": ["--ghost-ok"]})
+            ghost = self._wi(inst, tmp)
+            self.assertEqual(ghost.returncode, 1,
+                             "the two renderings disagreed silently: %s"
+                             % ghost.stdout)
+            self.assertIn("--ghost-ok", ghost.stdout)
+            self.assertIn("and not the other", ghost.stdout)
+
+            # one flag, two shapes: a sweep that averaged these would be
+            # confidently wrong about what admits the override
+            self._write_stub(tmp, ["claim", "verdict"],
+                             {"claim": ["--scope-ok SENTENCE"],
+                              "verdict": ["--scope-ok"]})
+            two = self._wi(inst, tmp)
+            self.assertEqual(two.returncode, 1,
+                             "a flag with two shapes passed: %s" % two.stdout)
+            self.assertIn("one flag, two shapes", two.stdout)
+
+            # a verb whose name carries a digit takes its flags out of
+            # scope entirely if the verb regex cannot see it
+            self._write_stub(tmp, ["claim", "claim2"],
+                             {"claim": ["--scope-ok SENTENCE"],
+                              "claim2": ["--evil-ok"]})
+            verb = self._wi(inst, tmp)
+            self.assertEqual(verb.returncode, 1,
+                             "a verb with a digit hid its flags: %s"
+                             % verb.stdout)
+            self.assertIn("--evil-ok", verb.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_reads_the_table_as_a_block(self):
+        """The register's own parser, held to the rule it states.
+
+        A missing trailing pipe renders identically in GFM; a blank line
+        ends the table and orphans every row below it. Both used to be
+        invisible, and the second produced a message prescribing "add the
+        row" for a row that was already there, three lines down.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            rows = [("--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
+                    ("--duplicate-ok", ["claim"], "nothing", "overridden_duplicates")]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"],
+                {"claim": ["--scope-ok SENTENCE", "--duplicate-ok"]}, rows)
+            self.assertEqual(self._wi(inst, tmp).returncode, 0)
+
+            reg = os.path.join(tmp, "docs", "waivers.md")
+            with open(reg, encoding="utf-8") as f:
+                table = f.read()
+
+            # (a) a body row missing its trailing pipe
+            with open(reg, "w", encoding="utf-8") as f:
+                f.write(table.replace("| no | ADR-000 |\n",
+                                      "| no | ADR-000 \n", 1))
+            bare = self._wi(inst, tmp)
+            self.assertEqual(bare.returncode, 1,
+                             "a row missing its trailing pipe passed")
+            self.assertIn("is not a row", bare.stdout)
+
+            # (b) the wrong column count
+            with open(reg, "w", encoding="utf-8") as f:
+                f.write(table.replace("| no | ADR-000 |\n",
+                                      "| no | ADR-000 | eighth |\n", 1))
+            wide = self._wi(inst, tmp)
+            self.assertEqual(wide.returncode, 1)
+            self.assertIn("columns, not the seven", wide.stdout)
+
+            # (c) a blank line mid-table orphans the rows below it
+            lines = table.splitlines(True)
+            cut = max(i for i, l in enumerate(lines) if l.startswith("| `--"))
+            with open(reg, "w", encoding="utf-8") as f:
+                f.write("".join(lines[:cut]) + "\n" + "".join(lines[cut:]))
+            blank = self._wi(inst, tmp)
+            self.assertEqual(blank.returncode, 1)
+            self.assertIn("silently truncated", blank.stdout)
+
+            # (d) a duplicate row is one waiver with two homes. Inserted
+            # INSIDE the block: appended after it, the truncation finding
+            # fires first and this would test the wrong thing.
+            dup_row = ("| `--scope-ok` | claim | a gate | SENTENCE "
+                       "| `scope_basis` | no | ADR-000 |\n")
+            with open(reg, "w", encoding="utf-8") as f:
+                f.write(table.replace(dup_row, dup_row + dup_row, 1))
+            dup = self._wi(inst, tmp)
+            self.assertEqual(dup.returncode, 1)
+            self.assertIn("two rows", dup.stdout)
+
+            # (e) a first cell with no backticked flag
+            with open(reg, "w", encoding="utf-8") as f:
+                f.write(table.replace("| `--duplicate-ok` |",
+                                      "| duplicate-ok |", 1))
+            nof = self._wi(inst, tmp)
+            self.assertEqual(nof.returncode, 1)
+            self.assertIn("names no backticked flag", nof.stdout)
+
+            # (f) the header not followed by its separator
+            with open(reg, "w", encoding="utf-8") as f:
+                f.write(table.replace("|---|---|---|---|---|---|---|\n", "", 1))
+            nosep = self._wi(inst, tmp)
+            self.assertEqual(nosep.returncode, 1)
+            self.assertIn("separator", nosep.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_admitted_on_is_a_controlled_vocabulary(self):
+        """Substring-matching the column fired on legitimate wording.
+
+        `bare = "nothing" in cell.lower()` read `SENTENCE, never nothing`
+        as bare. A check that fires on a legitimate input is worse than
+        one that misses, so the column is exactly `SENTENCE` or
+        `nothing` and anything else is its own finding.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            rows = [("--scope-ok", ["claim"], "SENTENCE", "scope_basis")]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"], {"claim": ["--scope-ok SENTENCE"]}, rows)
+            self.assertEqual(self._wi(inst, tmp).returncode, 0)
+
+            self._write_register(
+                tmp, [("--scope-ok", ["claim"], "SENTENCE, never nothing",
+                       "scope_basis")])
+            prose = self._wi(inst, tmp)
+            self.assertEqual(prose.returncode, 1)
+            self.assertIn("must be exactly", prose.stdout)
+            self.assertNotIn("the parser says", prose.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_population_says_when_it_cannot_measure(self):
+        """A stamp column with no field, and a ledger that is not there.
+
+        `--single-run` writes NO field, so its population is not zero --
+        it is unavailable, and printing 0 would read as "never used". A
+        missing ledger is the same shape one level up.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"],
+                {"claim": ["--scope-ok SENTENCE", "--single-run"]},
+                [("--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
+                 ("--single-run", ["claim"], "nothing", "")],
+                ledger=[{"id": "tr-1", "kind": "claim",
+                         "payload": {"scope_basis": "because"}}])
+            out = self._wi(inst, tmp)
+            self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+            self.assertIn("NOT COUNTABLE", out.stdout)
+            self.assertIn("--single-run", out.stdout)
+
+            os.remove(os.path.join(tmp, ".truth", "claims.jsonl"))
+            gone = self._wi(inst, tmp)
+            self.assertIn("population unknown", gone.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_usage_guards(self):
+        """Exit 2 is usage, and is not to be confused with a finding."""
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"], {"claim": ["--scope-ok SENTENCE"]},
+                [("--scope-ok", ["claim"], "SENTENCE", "scope_basis")])
+            bad = subprocess.run([sys.executable, inst, "--nope"], cwd=tmp,
+                                 capture_output=True, text=True)
+            self.assertEqual(bad.returncode, 2)
+            self.assertIn("unknown argument", bad.stderr)
+
+            os.remove(os.path.join(tmp, "docs", "waivers.md"))
+            missing = self._wi(inst, tmp)
+            self.assertEqual(missing.returncode, 2)
+            self.assertIn("not found", missing.stderr)
         finally:
             shutil.rmtree(tmp)
 

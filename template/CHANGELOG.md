@@ -222,7 +222,7 @@ v0.10.0 (the clock stops being an event; two verbs retired, one added.
     have. Residual recorded in the ADR, not papered over.
   * `instruments/semantic-audit.py` (ADR-059): extracts the justification
     sentences that intake gates admit -- `--scope-ok`, `--paths-ok`,
-    `--generated-ok`, `--exit-ok`, `--refresh-evidence` from ACTIVE
+    `--generated-ok`, `--evidence-exit-ok`, `--refresh-evidence` from ACTIVE
     claims, plus `--orphan-ok` from retracted ones -- as flat JSON for an
     external reader. The gates check a sentence EXISTS; nothing has ever
     checked it MEANS anything, and a model asked to rule on an argument

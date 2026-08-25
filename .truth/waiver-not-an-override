@@ -1,0 +1,66 @@
+# Flags the CLI accepts that are NOT overrides -- the complement of
+# docs/waivers.md. Together the two must account for EVERY flag the parser
+# accepts on any verb, so a new flag of any shape fails the sweep until
+# somebody has decided which side it is on.
+#
+# Format:  <flag>  <why it does not lift a refusal>.  ONE ENTRY PER LINE;
+# there are no continuation lines, because a parser that reads `flag =
+# everything up to the first space` would read an indented continuation as
+# a flag named after its first word.
+#
+# A REASON IS REQUIRED, and it must be a FINISHED SENTENCE: one ending in a
+# conjunction or a preposition, or with no sentence-final mark, is a
+# finding. Three entries here were truncated mid-clause on the first pass
+# -- `--basis`, `--watch-policy` and `--ttl-days` -- and a half-written
+# reason is worse than a missing one, because it reads as a judgement that
+# somebody made rather than one that was never finished.
+#
+# Scoping this file by NAME is what it replaces. Three real overrides have
+# no `-ok` suffix: --refresh-evidence (takes a sentence), --single-run
+# (takes nothing and leaves no trace in the record at all) and --ttl-days
+# (takes a number, and an explicit one suppresses ADR-032's decay).
+
+# --- output and machine-readability -------------------------------------
+--json  selects machine output; it changes no gate and files nothing.
+--ready-json  selects the tracker's JSON shape; a rendering choice only.
+--stdin  takes the tracker feed from stdin rather than from a command, which changes where input comes from and nothing about what is admitted.
+--live  filters the listing to live claims; read-only.
+--stale  filters the listing to stale claims; read-only.
+--diverged  filters the listing to diverged claims; read-only.
+--retracted  filters the listing to retracted claims; read-only.
+--disputed  filters the listing to disputed claims; read-only.
+--unverified  filters the listing to unverified claims; read-only.
+--cannot-verify  filters the listing to cannot_verify claims; read-only.
+--since  narrows an event window; read-only.
+--under  narrows a report to one path prefix; read-only.
+--exclude  narrows a sweep by pattern; read-only.
+--inverse  flips `impact` to ask which files no claim watches; read-only.
+--arm  filters `reproduce` to one capsule outcome; read-only.
+
+# --- the content of a filing, not permission to make it -----------------
+--text  the claim sentence itself, which is the thing judged rather than a judgement.
+--basis  the reasoning basis, and REQUIRED for an INFERRED claim, which makes it the opposite of a waiver: it is demanded, never granted.
+--claim  the claim-at-death sentence on `done`; content, and required.
+--claim-basis  that claim's own basis; required, so it excuses nothing.
+--evidence-cmd  the command whose output becomes the evidence; the screen that may refuse it is lifted by --evidence-unsafe-ok, never by this.
+--accept-cmd  the acceptance oracle's command; the screen that may refuse it is lifted by --accept-unsafe-ok, never by this.
+--paths  the watch set itself; the budget it may exceed is lifted by --paths-ok, never by this. NOT COVERED BY ANY WAIVER ROW: a `<path>#<selector>` entry is exempt from the one-path and churn budgets by ADR-055, so that exemption is a bypass carried by PATH SYNTAX rather than by a flag, and no register holds it.
+--watch-policy  names a watch set reviewed once and reused (FAZA 3); choosing it means the freehand budget is never reached, which is the opposite of lifting it.
+--tier  the cost tier; content.
+--class  the evidence class; content.
+--deps  issue dependencies; content.
+--premise  an issue premise; content.
+--successor  the id a retraction points at, REQUIRED by `--cause restated`; demanded rather than granted.
+--supersedes  the dead premise this link replaces; ADR-013 REFUSES it while the old premise still passes ready, so a refusal acts on it rather than through it.
+--cause  ADR-049's retraction cause {restated,expired,wrong}, REQUIRED on every retraction; demanded rather than granted.
+--accept-kind  the oracle's kind {verification,validation}; content.
+
+# --- verb selection and mode, not gate lifting --------------------------
+--cancel  selects the cancel form of `done`; it chooses a transition.
+--reopen  selects the reopen transition; it chooses a transition.
+--release  selects the release form of the tag check, which is the stricter form rather than a relaxation.
+--recheck  re-executes a recorded capsule; it can only ADD a refusal, never remove one.
+--reproduce  re-executes without filing; read-only.
+--diff  folds a second ref and prints the delta; read-only.
+--mechanical  ADR-012 display subtype on a diverge; it never changes status.
+--append-order  selects append order for a batch read; read-only.

@@ -5,16 +5,43 @@ verdicts -- plus `orphan_basis` from retracted ones, which is the single
 sentence that outlives its subject -- as flat JSON on stdout. It judges
 nothing.
 
-WHY AN EXTRACTOR AND NOT A CHECKER. Every override in this system is
-admitted on a SENTENCE: `--scope-ok` says why a quantifier may stand,
-`--paths-ok` why a freehand watch set may exceed the budget,
-`--generated-ok` why a generated artifact may be watched, `--exit-ok` why a
-failing probe still proves something, `--orphan-ok` why citations may be
-left dangling, and ADR-051's `--refresh-evidence` why a moved output is
-still the same fact. The gates check that a sentence EXISTS and is
-non-empty. Nothing in the repository has ever checked whether it MEANS
-anything -- "reviewed", "ok", "see above" and a genuine argument are
-identical to every mechanism here.
+WHY AN EXTRACTOR AND NOT A CHECKER. SIX of the ten overrides in this
+system are admitted on a SENTENCE: `--scope-ok` says why a quantifier may
+stand, `--paths-ok` why a freehand watch set may exceed the budget,
+`--generated-ok` why a generated artifact may be watched,
+`--evidence-exit-ok` why a failing probe still proves something,
+`--orphan-ok` why citations may be left dangling, and ADR-051's
+`--refresh-evidence` why a moved output is still the same fact. The
+gates check that a sentence EXISTS and is non-empty. Nothing in the
+repository has ever checked whether it MEANS anything -- "reviewed",
+"ok", "see above" and a genuine argument are identical to every
+mechanism here.
+
+WHAT THIS EXTRACTOR CANNOT HAND TO L2, AND WHY IT IS NOT AN OMISSION.
+The other four overrides carry no sentence at all. `--duplicate-ok`,
+`--evidence-unsafe-ok`, `--accept-unsafe-ok` and `--single-run` are bare
+booleans, and they are precisely the four that lift an EXECUTION screen
+rather than a quality-of-justification gate: admit a near-duplicate, file
+a claim whose evidence command the screen refused, close a work item
+without running its acceptance oracle, skip the G6 determinism
+double-run. There is nothing here to extract, so this file emits nothing
+for them -- and an L2 reader cannot tell "no override happened" from "an
+override happened and said nothing", because both produce no row.
+`--single-run` is worse still: it writes no field at all, so its uses
+cannot be counted by any instrument here.
+
+The docstring of this file, ADR-059 and AGENTS.md all said "every
+override is admitted on a sentence" until 2026-08-24. It was never true.
+Nothing noticed because no register held the list of override flags; the
+same absence let `--exit-ok`, a flag that has never existed, live in all
+three surfaces at once. `docs/waivers.md` is now that register and
+`instruments/waiver-index.py` sweeps it against the parser BOTH ways.
+
+Until the three grow a basis field, the honest reading of a small row
+count here is "few sentence-bearing overrides are active", NOT "few gates
+were bypassed". Ask `instruments/waiver-index.py` for the second
+question: it reports the population per stamp, including the three that
+say nothing.
 
 That check needs a reader, and ADR-059 puts the reader outside: an LLM
 running in CI, at L2. This script is the L1 half, and its entire job is to
@@ -58,7 +85,7 @@ CLAIM_BASIS_FIELDS = (
     "scope_basis",           # ADR-007  --scope-ok
     "paths_basis",           # FAZA 3   --paths-ok
     "generated_ok_basis",    # ADR-037  --generated-ok
-    "evidence_exit_basis",   # ADR-035  --exit-ok
+    "evidence_exit_basis",   # ADR-035  --evidence-exit-ok
 )
 
 # Basis fields carried by a VERDICT record's payload, for claims that are

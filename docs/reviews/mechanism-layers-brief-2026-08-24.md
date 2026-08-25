@@ -47,7 +47,7 @@ Order is load-bearing: L2 is meaningless without L1, and L1 without L0.
 | # | layer | what | cost | why it matters |
 |---|---|---|---|---|
 | 0 | **L0/nav** | **register index with a currency column** — one row per register (ADR, INV, arms, roadmap, briefs, ledger): purpose, location, status, **and what its currency is measured by**. The index is itself an administered item (ISO/IEC 11179: the registry is registered). Relations *between* registers are declared, not prose (SKOS `ConceptScheme` mappings; GSN away-goals from the argument side) | one file + ~30 lines | answers both halves of the problem this session hit last: a cold session reads one row and learns the plan exists, and learns not to trust it. `docs/roadmap-v3.md` was last touched 2026-07-29, names ADR-033, repo is at ADR-061 — **28 decisions behind, every visible batch marked DONE** |
-| 0b | **L0/nav** | **waiver register** — one row per `--*-ok` override: the flag, the gate it lifts, the `basis` field it stamps, whether it decays, where it is documented. Checked BOTH ways: a flag the table omits, and a table row with no flag | one table + ~25 lines | there are **8** override flags, ~6 differently-named basis stamps, aggregate reporting for 4 of 8 (INV-U), decay on exactly 1 (`--scope-ok`, ADR-032/055), and **no canonical list** — so `--exit-ok`, which does not exist, is carried by `AGENTS.md`, ADR-059 and `instruments/semantic-audit.py` alike |
+| 0b | **L0/nav** | **DECLARED 2026-08-25, not DONE** — **waiver register**: one row per override, with the gate it lifts, what admits it, what it stamps, whether it decays, and its governing record. Membership is checked BOTH ways and is TOTAL — every flag the parser accepts must be a waiver row or a declared non-override, because scoping it to `--*-ok` missed three real overrides. The four content columns are held by reading and have already produced two defects; see the ADR-061 block below | one table + one policy file + ~120 lines | the spec said **8** `--*-ok` flags; the built register holds **11** overrides over a 50-flag surface — `--refresh-evidence` (a sentence, no `-ok`), `--single-run` (nothing at all, and it stamps nothing) and `--ttl-days` (a number) were all outside the original scope. Six admitted on a sentence, one on a value, four on nothing. **No count here is authoritative — read them off `instruments/waiver-index.py`** |
 | 1 | L1(a) | `doc-health` checks backtick paths, not only links — the gap §7 row 4 names | ~20 lines + baseline | **20 of 183 backtick paths are dead (11%)**, two of them inside the paper itself |
 | 2 | L0 | `.truth/moved` forwarding table with enforced integrity (dead target = FAIL; resurrected source = FAIL) | one file + ~40 lines | inverts the economics of relocation: one line instead of N edits. `FAULT OV` moved twice with no forward |
 | 3 | L3 | registration status per Appendix A row: `Active` / `Superseded-by` / `Retired` (ISO/IEC 11179) | one column + one rule | a row currently cannot die; it can only keep promising. The four rows in `ee2f541` had to be rewritten instead of retired |
@@ -182,18 +182,70 @@ authoritative. Hand-maintained *and* trusted is the combination that produces a
 
 ---
 
-## Item 0b in ADR-061 form — the waiver register
+## Item 0b in ADR-061 form — the waiver register — **DECLARED, not DONE**
 
-**Named failure condition.** A `--*-ok` flag exists in the CLI parser that the
-register does not list, or the register lists one the parser does not accept.
-Both directions, because one direction is how every other register here rotted.
+Built 2026-08-24/25: `docs/waivers.md`, `instruments/waiver-index.py`,
+`.truth/waiver-not-an-override`, gated by
+`template/scripts/test-integrations.py` (`TestTierCInstruments`), which rides
+the pre-push battery. Record: `docs/reviews/waiver-register-2026-08-24.md`.
 
-**Gate.** Swept with the other instruments; today's eight recorded as the
-baseline, the next divergence refused.
+**Status is DECLARED, and the residue is named, because half the register is
+still held by reading.** ADR-061: an item is DONE when a gate can go red for
+its named reason and someone has demonstrated it. That is true of the
+register's MEMBERSHIP and false of its CONTENTS.
 
-**Demonstration required before DONE.** Add `--foo-ok` to the parser, confirm
-red naming it; remove it, confirm green. Then delete a row, confirm red the
-other way.
+**What has a gate, demonstrated red.** Membership, in both directions and
+without a naming heuristic: every flag the parser accepts must be a waiver
+row or a declared non-override with a finished reason, so a new flag of any
+shape refuses until somebody has judged it. Also gated: the `admitted on`
+vocabulary against the parser, the `verbs` column against the parser, the
+table's block structure, the population's field selection, and the ADR-042
+empty guard. Twenty checks, each disabled in turn with an arm going red.
+
+**What has no gate.** Four of the seven columns: `gate it lifts`, `stamp on
+the record`, `decays`, `governing record`. Each is prose, hand-verified once
+and held by nothing.
+
+**The named failure condition, restated for the half that is DONE.** A flag
+the parser accepts that nothing classifies; a classification whose flag the
+parser no longer accepts; a flag on both sides at once; an `admitted on` cell
+that disagrees with the parser; a reason abandoned mid-clause.
+
+**Why this is DECLARED rather than DONE, with evidence rather than caution.**
+The ungated half **has already produced two defects, inside the change that
+built it**, both found by review rather than by any mechanism:
+
+- **`--ttl-days` was classified as not-an-override on a reason that argued
+  against its own classification** — it ended "*a large value is ADR-032's
+  visible opt-out, so*". ADR-032 calls it an opt-out in those words; the
+  entry recorded the fact and drew the opposite conclusion. It is now a
+  waiver row, admitted on `a value`. **No check could have caught this**: the
+  membership gate was satisfied — the flag *was* classified — and the
+  contents gate does not exist.
+- **`--accept-unsafe-ok`'s `gate it lifts` cell named one refusal where the
+  code has two**, on two different verbs (`issue` lifts the ADR-014 screen;
+  `done` lifts running the oracle). Corrected against the code. Again
+  unreachable by any current check.
+
+Two defects in one column in one change is not a reason to be cautious about
+DONE; it is a measurement of how fast that column decays. Marking membership
+DONE and the register DONE would be the same error the roadmap made with
+*"Batch 3 — self-consistency — DONE"*.
+
+**What DONE would require.** A reader per unchecked column: the `stamp` field
+must exist where the kernel writes it; `decays` must agree with
+`override_decay`'s call site; `governing record` must name a record that
+exists and cites the flag. `gate it lifts` is free prose and may never be
+mechanisable — if so it is DECLARED permanently, and the register says which
+columns are which.
+
+**One residue outside the register entirely.** A `<path>#<selector>` entry is
+exempt from the one-path and churn budgets by ADR-055. That is a bypass
+carried by **path syntax, not by a flag**, so no row here can hold it and the
+sweep cannot see it. Recorded in `.truth/waiver-not-an-override` under
+`--paths`, and it means the register's own scope — "one row per `--*-ok`
+override" — was too narrow twice over: once for flags with other names, once
+for bypasses that are not flags.
 
 ### Why this is a register, not a pile of flags
 
