@@ -59,6 +59,33 @@ forward). Five rules, each earned:
 
 1. **Every finding raised in the body terminates in exactly one of three:
    `robię`, `Twoja decyzja`, `odpuszczam — z powodem`. Unclassified: zero.**
+   `Twoja decyzja` is not one bucket but three, and collapsing them hides the
+   only thing the operator needs in order to schedule: **a RULING** is a
+   binary choice with something already waiting on it and costs a sentence;
+   **a JUDGEMENT** costs thought and no working tree, so it can be answered
+   at any time from anywhere; **a SPECIFICATION** changes a mechanism and
+   costs a whole session, so it cannot be answered between other things and
+   must be REFERRED rather than deferred. Three orders of magnitude under one
+   label mean the label carries no cost information at all. Name the kind.
+
+   **The domain is findings HANDED IN as well as findings raised.** A review,
+   an audit or another agent's report arrives as a list, and reading it is not
+   terminating it: an item nobody transcribes enters no partition and is
+   counted by nothing. So a list received from elsewhere is **transcribed into
+   `Domknięcie` item by item before any of it is acted on** -- one row per
+   item, including the ones already handled, because the row is what makes an
+   omission visible.
+
+   Earned the same day the rest of this record was: a review returning nine
+   findings plus one filed off-scope was read, five were repaired, and the
+   commit message prepared for it said "five false assertions fixed" as though
+   that were the whole of it. The remaining four were real and cheap -- four
+   sentence edits, made within the hour once the list was walked. Nothing
+   caught the gap; the operator pasting the full report caught it.
+
+   That is rule 1's own partition mis-scoped, which is the failure this
+   repository has now produced at four different levels: **total over the
+   findings I raise, and read as total over findings.**
    A partition, not a search — the move this repository has made against every
    roster it has lost to. Its side effect is the point: *a finding not worth
    terminating is not worth raising*, which cures the ratio at source where an
@@ -87,10 +114,79 @@ forward). Five rules, each earned:
    escalations evaporated; ordering, stated in prose four times, evaporated
    with them.
 
+6. **Every row in `Domknięcie` and `Otwarte` carries a local enumerator,
+   prefixed by section — `D1..Dn`, `O1..On`, scoped to the one answer.** The
+   operator answers by address instead of by quotation. Two sections numbered
+   independently collide on a bare digit, hence the prefix. The enumerator is
+   a convenience address and expires with the answer; where an item has a
+   `wk-` id that id is the durable one and is carried beside the number.
+   **An open item with no `wk-` has only the local number and dies with the
+   answer** — the enumerator therefore shows, for free, what has not been
+   anchored.
+
+7. **The answer closes on a recommendation: the unblocked frontier, ordered,
+   each with why it is next.** Approved en bloc by one word; a reservation
+   removes one item by its address. The order is **derived** from the
+   blocking graph, never chosen — a chosen order is the same roster as a
+   maintained one. Two guards. **No item may appear for the first time in the
+   recommendation**: it must already stand in `Domknięcie` or `Otwarte` of the
+   same answer, because a standing one-word approval is an incentive to widen
+   the batch, and a subset rule is the only cheap check on it. That is rule 1
+   run backwards — no finding without a terminus, and now no action without a
+   finding. And when nothing is unblocked, the section says so in one line
+   rather than inventing a move.
+   **Every recommended item names who EXECUTES it and who APPROVES it.** The
+   subset guard above checks an item's PROVENANCE; nothing in it checks
+   AGENCY, and that gap is not theoretical: the first recommendation written
+   under this rule proposed three items of which two were the operator's
+   alone (a commit -- ADR-062 rule 2 -- and a dispatch that must not
+   originate in the answering session) and the third needed an
+   `--accept-unsafe-ok`, which lifts a screen and is therefore an operator
+   act. All three were offered under one word of approval. A one-word
+   approval over a batch with unnamed actors approves the assistant's reading
+   of who may do what, which is exactly the authority ADR-062 rule 2
+   withholds.
+
+**Scheduling.** The answer to "when will there be room for this" is a
+**limit, not a date**: at most one SPECIFICATION-sized item in flight at a
+time, and the rest are ordered by the blocking graph. Every date offered from
+memory in the session this record came from turned out to be unreproducible;
+a limit is checkable at the moment it is checked.
+
 **Negative rule.** A one-sentence answer skips the skeleton entirely. Four
 headers over one sentence is theatre — the same failure this repository names
 for an assurance case that acquires a diagram before it acquires defeat
 conditions.
+
+## Lineage
+
+Rules 1–4 restate, for one answer, what this repository already does for a set
+of records: a partition with no unclassified remainder, provenance per datum,
+and a defeat condition on anything asserted. Rules 6 and 7 are older and come
+from outside. **Pinpoint citation** — legislation is numbered so a reader can
+answer "s. 3(2)(b)", and ISO/IEC/IEEE 29148 makes identifiability a quality
+characteristic of a requirement because traceability is impossible without a
+stable address. **Audit finding numbering** (IIA, GAO) is the closest relative
+of all: *Finding 3 · Recommendation 3.1 · Management response to 3.1* is
+exactly `Domknięcie` answered by address. Rule 7 is a **consent agenda** — a
+body adopts a batch in one act and any member removes an item by naming it —
+with the **silence procedure** of NATO/EU council practice as its sibling:
+adopted unless an objection is raised. The obligatory closing recommendation
+is SBAR's R and the staff study's final section, where the approving authority
+signs against it.
+
+Rule 7's actor column is **RACI/DACI**, reduced to the two roles that carry
+the weight here -- who executes, who approves -- a device invented against
+precisely the failure of agreeing and nobody moving. The three kinds of
+operator decision are the **agenda item types** every board secretary's manual
+separates (action, discussion, information), for the same reason: a consent
+agenda that mixes them approves in one act things that needed argument.
+**Referral to committee** supplies what to do with a SPECIFICATION -- not
+"later" but "elsewhere" -- and the **WIP limit** of kanban supplies the
+scheduling rule, since a limit survives being read later and a date does not.
+ISO/IEC/IEEE 29148 underwrites both this and rule 6: an instruction without an
+actor is not unambiguous, and a requirement without an address is not
+traceable.
 
 ## Rejected
 
@@ -107,6 +203,13 @@ conditions.
   or **suppress the raise**, which the table cannot show. Self-audit is a
   necessary condition, never evidence.
 - **A hand-ordered open list.** See rule 5.
+- **A durable home for `odpuszczam`.** A dismissed finding is not work, so it
+  does not belong in the work kernel; `done --cancel` is a G12 tombstone with
+  a human ceremony, which costs more than the finding did. So **`odpuszczam`
+  is session-scoped by design**: what was dismissed and later matters must be
+  **raised again**, not looked up. This is the convention's weakest seam and
+  it is stated rather than papered over — an independent audit named that
+  column as the one where a finding can be buried under a plausible reason.
 
 ## Falsifier
 
@@ -143,6 +246,10 @@ from this session:
   kernel carries it: `truth issue --deps` gives a blocking graph, and a
   topological order derived from it, which is what rule 5 actually wants.
   **The dependency is stated so that satisfying rule 5 by hand is understood
-  as the interim, not the design.** One work item is live in this repository
-  today; whether that kernel is dormant or deliberately retired is an open
-  operator question.
+  as the interim, not the design.** Corrected 2026-08-26: an earlier draft of
+  this paragraph said one work item was live and asked whether the kernel was
+  dormant. `truth issues` reports **48 open, 53 closed, 2 cancelled** — the
+  kernel is in heavy use and the figure came from `truth list --live`, which
+  counts claims, not work items. The error is left recorded because it is the
+  same shape as the three this record was written about: a measurement taken
+  with the wrong instrument and reported with the confidence of a right one.
