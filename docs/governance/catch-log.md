@@ -68,6 +68,8 @@ It has no gate, no baseline and no instrument. It is read by a person.
 | 2026-08-26 | **a measurement reported to the operator as 61 was 47.** The range that produced it swept in pre-existing tests around the arms it meant to audit. It had already been reported and acted on for a full round. Writing it to disk is what exposed it: the act of stating it where a later reader could check it forced the range to be named, and the range was wrong | persisting a measurement to disk (ADR-062 r.4), and the operator's `grep -rc permissive` returning 0 against the record that should have held it | cmd |
 | 2026-08-26 | a new environment carrier `TRUTH_BATTERY_PLAN` added to `scripts/release-battery.sh` and classified nowhere. It exits the battery before the first check, so a push under it verifies nothing — the `--single-run` shape: lifts everything, on nothing, leaving no record. Caught minutes after it was written, before any reviewer started | `python3 instruments/waiver-index.py` → exit 1, naming the carrier and both places it could be declared | cmd |
 | 2026-08-26 | two live claims asserting pre-ADR-057 semantics: `tr-56a8e36c` (the ADR-019 canary arm ADR-057 replaced) and `tr-d0191e65` (a clock-reader phrase `template/truthlib/policy.py` no longer contains, the arm having moved to `kernel.ttl_expiry`). Both had been false for two weeks with every instrument green | `python3 template/scripts/truth reproduce` → exit 7; the battery surfaced it at the push boundary | cmd |
+| 2026-08-26 | seven defects in a 45-line change its author had declared green, gate-proven red in both directions and byte-identically restored. Four of them (D1–D4) were one cause: a completeness gate that models only part of the decision it claims to cover. The change was withdrawn, not patched | a reviewer given the diff, the tree and the house conventions, and NOT given the brief, the author's account, or any measurement — `docs/reviews/plan-mode-review-2026-08-26.md` | hist |
+| 2026-08-26 | **`arm-index --record-links` froze a census computed from sources it could not read.** With one SOURCES entry hidden, the ordinary run raised two failures and the refresh printed `recorded 36 link and 221 prose hash(es)` at exit 0 — one link FEWER than the file it overwrote, the unreadable source's arms having silently vanished. The failure list was computed and never printed, because the early return preceded it: the `--record-baseline` shape, one instrument over | an independent audit of the transcript, which recovered the suspicion from the session's first answer; then a demonstration — hide the source, run the flag, watch it write | cmd |
 
 ## MISSES — it reached the operator, or lived, despite the apparatus
 
@@ -89,6 +91,10 @@ It has no gate, no baseline and no instrument. It is read by a person.
 | 2026-08-25 → 08-26 | that same number lived a full round in a chat message and nowhere else, and it was **wrong while it was being cited**. ADR-062 rule 4 was written IN THIS SESSION, after a phantom citation in `AGENTS.md`, and was broken again by its own author one layer further out. The lesson is not "persist more": an unpersisted measurement is not merely unverifiable, it decays before anyone can check it, and this one was wrong in exactly the way a written record exposes — a silently over-wide range | nothing checks that a number quoted in a report exists in the record the report cites. Rule 4 says to persist; nothing reads back | hist |
 | 2026-08-26 | a timing measurement whose stage function used `eval` without a subshell, so a `cd` inside one stage leaked into every later one. Three stages reported **0s** — failed starts read as results. The author had written the L0 rule ("did I measure the world, or my own apparatus?") into `docs/governance/architects-crib.md` hours earlier | nothing: no gate covers a measurement written in a scratch file. Marked `test` on the day it happened, which is what rule 5 is for — provenance tracks reproducibility, not recency | test |
 | 2026-08-26 | ADR-057 changed what `stale` means, replaced a canary arm and moved the clock reader, and **nothing connected the decision to the claims that depended on it**. Suspect links hash prose citations; no mechanism runs decision → dependent claims. `reproduce` caught the consequence, two weeks and one push boundary late | the direction does not exist. Structural, not a defect to repair: an instance is repaired by judging two claims, the class needs a link type nobody has built | cmd |
+| 2026-08-26 | the author added `GUARDS=$(grep -cE '^(if|elif) touches "\$' "$0")` as a completeness gate — **a roster inside a guard against rosters**, recognising one guard spelling out of four. The evading form is the style both guards used at HEAD one commit earlier. Over the SAME file whose `grep -oE` section counter reported 10 arms against 12 and produced operator RULING 8 | nothing in the tree enforces the spelling. Verified by injecting a literal-style guard: the plan still prints "every other stage is unconditional" at exit 0 | cmd |
+| 2026-08-26 | `instruments/capsule-blindness.py` exists precisely for "a capsule that enumerates by pattern counts what it recognises, not what exists" — and could not have caught the above, because `capsule-blindness.py:75` reads `.truth/claims.jsonl` only. A pattern counter living in a shell script is outside its domain | the instrument's domain is the ledger; the class is wider than the instrument. Structural — an instance is repaired by rewriting one counter, the class needs the instrument to reach code | cmd |
+| 2026-08-26 | `bash scripts/test-release-battery.sh 2` dies with `line 262: CANARY_STUB: unbound variable` — the stub is defined inside `if want 1`, so no arm after the first can be exercised alone. Pre-existing; it made both the reviewer's and the dispatcher's per-arm measurements incomplete | no gate covers the suite's own arm-selection wiring; the suite is only ever run whole | cmd |
+| 2026-08-26 | that defect was **suspected in the session's first answer**, stated as "nobody but me knows this, so I am saying it plainly", and then evaporated for the whole session — one of seven escalations the audit found with no repository trace. It was real, and it sat unchecked for forty-odd answers while everything around it was being hardened | nothing carried it. `Otwarte` did not exist yet, and when it did its recall was ~45% against an independently compiled list. This is the instance that turns that statistic into a defect | hist |
 
 ---
 
@@ -101,6 +107,7 @@ and rule 4 says it is the only deletion criterion available here.
 | instrument | catches recorded |
 |---|---|
 | `arm-index.py` | 1 |
+| independent audit of the transcript | 1 |
 | `register-index.py` | 1 |
 | `waiver-index.py` | 3 |
 | `map.py` | — (provenance unknown; see MISSES) |
@@ -117,7 +124,7 @@ and rule 4 says it is the only deletion criterion available here.
 | `doc-health.sh` | — |
 | `truth-canary.sh` | — |
 | `truth reproduce` (the push-boundary sweep) | 1 |
-| review by an agent NOT given the spec | 7 |
+| review by an agent NOT given the spec | 8 |
 | mutation of a gate (ADR-061) | 2 |
 | git history as an oracle | 2 |
 | operator-side reading | 3 |
@@ -127,7 +134,7 @@ and rule 4 says it is the only deletion criterion available here.
 
 ## What the figures currently say
 
-**Twenty-one catches, sixteen misses, and the sample is still far too small to
+**Twenty-three catches, twenty misses, and the sample is still far too small to
 conclude anything.** That sentence is the honest reading and it should stay
 until the log has run for months, not days.
 
