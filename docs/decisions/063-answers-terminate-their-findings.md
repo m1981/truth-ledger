@@ -55,12 +55,18 @@ four times.
 Five sections: **Odpowiedź** (the verdict, before the evidence) · **Dowód**
 (only what carries it) · **Co z tego wynika** (the implication, not the
 observation) · **Domknięcie** (the table) · **Otwarte** (escalations carried
-forward). Seven rules, each earned. (Five were written first; rules 6 and 7
-were added after the operator asked for addressable rows and a closing
-recommendation, and this line is corrected with them rather than left
-counting the original five -- a drift that stood in this record, unnoticed by
-its author, in the paragraph directly above the rule about counted
-assertions.)
+forward). Eight rules, each earned. (Five were written first; 6 and 7 were
+added when the operator asked for addressable rows and a closing
+recommendation, 8 when he asked what moves the work while the assistant has
+none to do. **This line has now been wrong three times in one day** -- five
+when there were seven, seven when there were eight -- each time corrected only
+because somebody counted, and each time in the paragraph directly above the
+rule about counted assertions. Three occurrences in one file in one day is
+not a lapse of care; it is the argument that a hand-kept count in prose is
+unmaintainable, and it is mechanically checkable without reading any meaning:
+the number in this sentence against `grep -c "^[0-9]\. \*\*"` over the same
+file. That check does not exist. It is the cheapest concrete instance of what
+`wk-1fc6ab40` proposes.)
 
 1. **Every finding raised in the body terminates in exactly one of three:
    `robię`, `Twoja decyzja`, `odpuszczam — z powodem`. Unclassified: zero.**
@@ -174,6 +180,37 @@ assertions.)
    approval over a batch with unnamed actors approves the assistant's reading
    of who may do what, which is exactly the authority ADR-062 rule 2
    withholds.
+
+8. **When the frontier holds nothing the assistant may execute, the answer
+   does STAFF WORK on the cheapest pending decision and PUTS ONE QUESTION.**
+   The process must move without the assistant's labour, and there are two
+   ways an organ with no authority does that. **Completed staff work**: every
+   option is drafted in full -- the actual sentence that would go in the
+   actual file -- so the ruling costs a word rather than an afternoon of
+   research. Its own test travels with it: *would I sign what I prepared, if
+   the decision were mine?* If not, the staff work is not complete and must
+   not be presented. **Putting the question** (Robert's Rules): the duty to
+   call a question belongs to the one running the business, not to the one
+   deciding it. Business does not drift because nobody asked; it drifts
+   because nobody put it.
+
+   **One question, never a menu.** A menu of three pending rulings is the
+   mechanism of stall: each looks like it needs thought, so none gets any.
+   Which one to put is chosen by AGE, which the work kernel already records
+   in every item's `ts` -- no new mechanism, the kanban answer that aging is
+   the signal.
+
+   **Explicitly NOT a silence procedure.** A default that takes effect on a
+   deadline is legitimate for the assistant's own procedural choices and
+   never for anything that changes the repository: adopting-unless-objected
+   transfers the decision to the passage of time, and ADR-062 rule 2 reserves
+   it for the operator with no exception for a clock.
+
+   Earned 2026-08-26: a ruling worth one letter (`register-index` red on
+   `adr-unaccounted:ADR-063`, resolvable by a roadmap line or a baseline
+   entry) was recited as "your decision" in three consecutive answers and
+   moved on none of them. It was settled in one exchange the moment both
+   options were drafted and a single question was put.
 
 **Scheduling.** The answer to "when will there be room for this" is a
 **limit, not a date**: at most one SPECIFICATION-sized item in flight at a

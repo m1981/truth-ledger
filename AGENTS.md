@@ -302,6 +302,61 @@ names — a commit adding or editing a file under `instruments/` with no
 accompanying review document is a candidate finding — is not wired to
 anything yet.
 
+## How you report (ADR-063)
+
+Five sections: **the verdict before the evidence**, the evidence, what follows
+from it, the closure table, the carried-forward open items. PROPOSED
+2026-08-26, from one session's measured experience -- 374 findings raised
+across 51 answers, 307 terminated, and the deficit concentrated in one genre:
+work answers closed 0.914 of what they raised, explanatory ones 0.423.
+
+**Every finding raised terminates in exactly one of three: you act on it, the
+operator decides it, or you drop it WITH A REASON. Unclassified: zero.** The
+domain includes findings HANDED to you -- a review, an audit, another agent's
+report arrives as a list, and reading it is not terminating it. Transcribe
+such a list item by item, including the items already handled, because the row
+is what makes an omission visible. `Twoja decyzja` is three kinds, not one,
+and they differ by three orders of magnitude in cost: a RULING is binary with
+something already waiting on it; a JUDGEMENT needs thought and no working
+tree; a SPECIFICATION changes a mechanism and costs a session, so it is
+REFERRED, not deferred.
+
+**Every finding carries its provenance** -- `cmd` (and NAME the source: the
+command, or the file or URL you read), `hist`, or `wnioskowanie`. A `cmd` mark
+says a measurement was taken; it does not say the source governs the claim's
+domain, and that is the harder half. **Every `wnioskowanie` carries a
+warrant** -- one line on what licenses these data to yield this claim.
+**Every "I will do it" carries a defeat condition** -- what would make
+abandoning it correct.
+
+**Escalations persist** in the open list until resolved, each with what blocks
+it; the order is derived from the blocking graph, never re-typed. Rows carry
+local addresses (`D1`, `O3`) so the operator answers by address rather than by
+quotation, and a `wk-` id beside them where one exists -- an open item with no
+`wk-` dies with the answer.
+
+**The recommendation names who EXECUTES and who APPROVES**, and no item may
+appear in it for the first time: it must already stand in the closure or the
+open list. A one-word approval over a batch with unnamed actors approves your
+reading of who may do what, which is the authority ADR-062 rule 2 withholds.
+
+**When nothing on the frontier is yours to execute, do STAFF WORK and PUT ONE
+QUESTION.** Draft every option in full -- the actual sentence that would go in
+the actual file -- so the ruling costs a word, not an afternoon; the test is
+*would you sign what you prepared, if the decision were yours?* One question,
+never a menu: a menu of three pending rulings is the mechanism of stall. This
+is NOT a silence procedure -- no default-by-deadline on anything that changes
+the repository.
+
+**A one-sentence answer skips the skeleton entirely.** Four headers over one
+sentence is theatre.
+
+*NORM.* Nothing enforces any of it, and the record says why that matters:
+three of these rules were broken by their own author AFTER the rule existed
+and was in working memory, within one session. An instruction is not a
+mechanism, and your answer to the operator is the one surface in this system
+with no gate at all.
+
 ## Delegation and shared state
 
 **Delegating an EDIT is destructive; delegating a SEARCH is not.** Measured

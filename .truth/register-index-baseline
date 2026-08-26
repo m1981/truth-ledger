@@ -95,3 +95,4 @@ adr-unaccounted:ADR-056  baseline 2026-08-24, unresolved: docs/roadmap-v3.md men
 adr-unaccounted:ADR-057  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
 adr-unaccounted:ADR-058  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
 adr-unaccounted:ADR-059  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
+adr-unaccounted:ADR-063  governs the SHAPE OF AN ANSWER, not the content of the plan. ADR-062 was cited in the roadmap because it changes WHO MAY EXECUTE a plan step; this one changes nothing a roadmap row describes -- it binds the report, not the work. REVERSES if a roadmap row is ever written whose done-condition is a form of reporting, in which case the record does bear on the plan and belongs cited there instead.
