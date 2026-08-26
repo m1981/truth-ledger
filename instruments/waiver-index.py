@@ -12,7 +12,7 @@ where a rule was SET ASIDE, and it is the register whose absence is least
 visible: a waiver leaves a record only where somebody built one to leave.
 
 The measured cost of having no such list: `--exit-ok`, A FLAG THAT HAS
-NEVER EXISTED, was carried simultaneously by AGENTS.md,
+NEVER EXISTED, was carried simultaneously by template/CHANGELOG.md,
 docs/decisions/059-asynchronous-semantic-audit.md and
 instruments/semantic-audit.py, all three citing ADR-035, whose own text
 says `--evidence-exit-ok`. Three surfaces agreed with each other and none
