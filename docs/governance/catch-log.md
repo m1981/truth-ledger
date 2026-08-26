@@ -104,31 +104,46 @@ Every instrument in this repository, and whether this log records it catching
 anything. A blank column is not an accusation; it is an unanswered question,
 and rule 4 says it is the only deletion criterion available here.
 
-| instrument | catches recorded |
-|---|---|
-| `arm-index.py` | 1 |
-| independent audit of the transcript | 1 |
-| `register-index.py` | 1 |
-| `waiver-index.py` | 3 |
-| `map.py` | — (provenance unknown; see MISSES) |
-| `blast-report.py` | — |
-| `capsule-blindness.py` | — |
-| `concern-tag.py` | — |
-| `field-consumers.py` | — |
-| `label-coupling.py` | — |
-| `override-velocity.py` | — |
-| `retraction-causes.py` | — |
-| `semantic-audit.py` | — (appears in MISSES) |
-| `separation-report.py` | — |
-| `watch-derivation.py` | — |
-| `doc-health.sh` | — |
-| `truth-canary.sh` | — |
-| `truth reproduce` (the push-boundary sweep) | 1 |
-| review by an agent NOT given the spec | 8 |
-| mutation of a gate (ADR-061) | 2 |
-| git history as an oracle | 2 |
-| operator-side reading | 3 |
-| persisting a measurement to disk (ADR-062 r.4) | 1 |
+**Second column, added 2026-08-26: is this thing in the catching business at
+all?** Without it a zero says nothing, and rule 4's deletion criterion is
+blind — an extractor that has caught nothing has done exactly its job. Each
+classification is taken from the instrument's own opening docstring, not
+assigned by judgement:
+
+* **detector** — it asks a question that can FAIL. A long-standing zero here
+  is a real signal and rule 4 applies.
+* **reporter** — it emits a measurement for a person to read. It cannot
+  catch, so its zero carries no information and rule 4 must never be aimed
+  at it.
+* **gate** — it refuses. Its zero in THIS log means the log does not record
+  its refusals, not that none happened; a refusal writes no record, which is
+  the standing blindness this repository already knows about.
+
+| instrument | catches recorded | in the catching business? |
+|---|---|---|
+| `arm-index.py` | 1 | detector · "which arm guards what?" |
+| independent audit of the transcript | 1 | practice, not an instrument |
+| `register-index.py` | 1 | detector · "is the index of registers itself administered?" |
+| `waiver-index.py` | 3 | detector · "is the list of ways to bypass a gate itself administered?" |
+| `map.py` | — (provenance unknown; see MISSES) | reporter · "one line per navigable artifact, so an agent greps instead of reads" |
+| `blast-report.py` | — | reporter · the ADR-039 churn report |
+| `capsule-blindness.py` | — | detector · commissioned for the fail-open capsule class (RULING 8) |
+| `concern-tag.py` | — | reporter · its docstring says READER |
+| `field-consumers.py` | — | detector · "does every payload field have a READER?" |
+| `label-coupling.py` | — | detector · "which modules share decisions without sharing code?" |
+| `override-velocity.py` | — | reporter · the ADR-033 override report |
+| `retraction-causes.py` | — | reporter · ADR-049's adoption metric |
+| `semantic-audit.py` | — (appears in MISSES) | reporter · its docstring says EXTRACTOR |
+| `separation-report.py` | — | reporter · the ADR-010 separation evidence |
+| `watch-derivation.py` | — | detector · "does a claim watch what its recipe reads?" |
+| `doc-health.sh` | — | gate · refuses; refusals are not logged here |
+| `truth-canary.sh` | — | gate · catches seeded faults every run; not logged here |
+| `truth reproduce` (the push-boundary sweep) | 1 | gate · refused a push this very session |
+| review by an agent NOT given the spec | 8 | practice, not an instrument |
+| mutation of a gate (ADR-061) | 2 | practice, not an instrument |
+| git history as an oracle | 2 | practice, not an instrument |
+| operator-side reading | 3 | practice, not an instrument |
+| persisting a measurement to disk (ADR-062 r.4) | 1 | practice, not an instrument |
 
 ---
 
@@ -157,6 +172,17 @@ entries, not a result:
    fields. Neither can be repaired by adding a case, because both are
    failures of a partition to judge the contents of its own cells. That is
    a shape problem, and the shape is currently correct for what it can do.
+
+4. **The census reads very differently now that it says what each thing is
+   FOR.** Of the fourteen instruments, **seven are detectors and seven are
+   reporters** — and a reporter that has caught nothing has done its job
+   exactly. So the figure is not "three of fifteen have caught something";
+   it is **three of the seven that were ever in the catching business**, with
+   `capsule-blindness`, `field-consumers`, `label-coupling` and
+   `watch-derivation` the four detectors still silent. That is the set rule 4
+   may be aimed at, and it is half the size the bare column suggested. The
+   earlier framing was not wrong about the numbers; it was wrong about the
+   population, which is the failure this repository produces at every level.
 
 ## How to use this file
 

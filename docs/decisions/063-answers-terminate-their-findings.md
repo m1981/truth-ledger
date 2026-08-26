@@ -181,6 +181,19 @@ time, and the rest are ordered by the blocking graph. Every date offered from
 memory in the session this record came from turned out to be unreproducible;
 a limit is checkable at the moment it is checked.
 
+**The limit governs EXECUTION, never RECORDING.** Filing an item is not
+starting it; it is giving it an address. Conflating the two left three
+specifications homeless for a whole session -- they lived in a table that dies
+with the answer, while the work kernel that exists to hold them stood ready.
+What was lost was not the direction, which is a sentence, but the **dead
+ends**: that one hook event cannot block at all, that the obvious cheap test
+would have passed all three violations it was meant to catch, that an oracle
+was satisfied two days before its own issue was filed. An implementer without
+those repeats every one of them. So the rationale goes in the item's `--text`,
+where it is the implementer's brief -- the cheap form of what design-rationale
+capture (gIBIS, QOC) exists to preserve, and what an ADR's *Rejected* section
+holds once a decision has been made.
+
 **Negative rule.** A one-sentence answer skips the skeleton entirely. Four
 headers over one sentence is theatre — the same failure this repository names
 for an assurance case that acquires a diagram before it acquires defeat
