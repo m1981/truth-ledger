@@ -601,3 +601,19 @@ submission with trial numbers. R9/R10 anytime; R10 before submission.
   queue grows by tr-d61e96fd (meta), tr-6fc53853 + tr-0e884e02
   (kuchnie). Retro doctrine candidates turned out already promoted
   (development-process.md sec 2a, 2026-07-16) -- no action needed.
+- 2026-08-25: the plan gains an entry for how it is now EXECUTED, which is
+  the one thing it had never recorded. ADR-062 (agent roles are separated
+  by what each is NOT told) governs every remaining batch below: the
+  measure role is given no hypothesis, the reviewer is given no
+  specification, the implementer must demonstrate its gate going red, and
+  a measurement is persisted before the next role is dispatched. It is
+  cited here rather than excused because it BEARS on the plan in the
+  strongest sense available -- it changes who may do each step and what
+  they may be told, and three separate defects this week were found by a
+  reviewer that had been denied the spec.
+  Cited with it, because they set what "done" means for every line above:
+  ADR-061 (DONE requires a gate that can go red for a named reason, and
+  someone has demonstrated it) and ADR-060 (normative prose cites a
+  position, and the citation is freshness-checked). Batches marked DONE
+  above predate that rule and are NOT retroactively re-judged here; the
+  rule binds what is written from this date.

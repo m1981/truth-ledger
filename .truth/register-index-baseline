@@ -44,6 +44,7 @@ docs/governance/operator-actions-2026-08.md  baseline 2026-08-24, unresolved: co
 docs/refactor/00-RUNBOOK.md  baseline 2026-08-24, unresolved: covered by no register
 docs/refactor/01-JOURNAL.md  baseline 2026-08-24, unresolved: covered by no register
 docs/specs/structural-selectors.md  baseline 2026-08-24, unresolved: covered by no register
+docs/books/books.md  baseline 2026-08-25, unresolved: a dated CONVERSATION transcript -- an operator question and its answer about ontological and metatheoretical vocabulary, with a reading list. Nobody revises it and no reader acts on it, so it is the same character as docs/reviews (dated, never revised) but it is not a review, and inventing a register for one transcript would be the over-building this index exists to make visible. Excused rather than given a row for that reason, unlike docs/scope.md, which states this system's boundary and earns one. WHAT WOULD CHANGE THIS: a second such transcript, at which point they are a class and the class needs a register.
 
 # --- check (b): filed decisions the roadmap accounts for nowhere ---------
 #
@@ -94,5 +95,3 @@ adr-unaccounted:ADR-056  baseline 2026-08-24, unresolved: docs/roadmap-v3.md men
 adr-unaccounted:ADR-057  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
 adr-unaccounted:ADR-058  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
 adr-unaccounted:ADR-059  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
-adr-unaccounted:ADR-060  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere
-adr-unaccounted:ADR-061  baseline 2026-08-24, unresolved: docs/roadmap-v3.md mentions it nowhere

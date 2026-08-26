@@ -225,6 +225,25 @@ EXIT_USAGE = 2
 EXIT_ENV = 3
 EXIT_EMPTY = 8
 
+# A register may declare that it does not cover its whole nominal subject.
+# The index row that describes it must carry the SAME declaration, or the
+# index is broader than the thing it indexes -- and a reader who never
+# opens the register concludes it is total. That is the mis-scoped
+# partition this repository keeps finding, one level up: the register
+# limited itself honestly and the INDEX quantified over everything.
+#
+# Checked BOTH ways. A register that self-limits and an index row that
+# does not is the dangerous direction; an index row claiming a limit the
+# register does not declare is a promise nothing keeps, and is also a
+# finding.
+# Two different strings on purpose. The register DECLARES with a
+# self-referential sentence; the index row ACKNOWLEDGES with the short
+# form. A single marker made the index's own row fire on itself, because
+# docs/registers.md contains the short form inside a row ABOUT another
+# register -- a declaration has to be about its own file to be one.
+SELF_LIMIT_DECLARATION = "THIS REGISTER IS NOT TOTAL"
+SELF_LIMIT_MARKER = "NOT TOTAL"
+
 ADR_CITE_RE = re.compile(r"\bADR-(\d{1,4})\b")
 ADR_FILE_RE = re.compile(r"^(\d{1,4})-.*\.md$")
 # A path inside a location cell. Backticked on purpose rather than linked:
@@ -566,7 +585,7 @@ GAP_BASELINE_SECTION = """
 def sweep():
     rows, malformed = index_rows(os.path.join(ROOT, INDEX_REL))
     locations, missing, shape, unlocated, currency = [], [], [], [], []
-    currency_unchecked = []
+    currency_unchecked, limits = [], []
     for row in rows:
         for loc in row["locations"]:
             problem = location_problem(loc)
@@ -614,6 +633,38 @@ def sweep():
                     "this register's decay, so a dead path there is a "
                     "register whose staleness nothing reports (%s)"
                     % (row["register"], tok, INDEX_REL))
+
+    # --- (a3) the index may not out-claim the register it points at ----
+    for row in rows:
+        row_text = " ".join((row["register"], row["purpose"], row["status"],
+                             row["currency"]))
+        row_limits = SELF_LIMIT_MARKER in row_text
+        reg_limits, readable = False, False
+        for loc in row["locations"]:
+            full = os.path.join(ROOT, loc)
+            if not os.path.isfile(full):
+                continue
+            readable = True
+            if SELF_LIMIT_DECLARATION in read(full, "a register"):
+                reg_limits = True
+        if not readable:
+            continue
+        if reg_limits and not row_limits:
+            limits.append(
+                "%s: the register at %s declares %r, and this index "
+                "row does not -- the index is then BROADER than the thing it "
+                "indexes, and a reader who never opens the register takes "
+                "the row's description as the whole of it"
+                % (row["register"], ", ".join(row["locations"]),
+                   SELF_LIMIT_DECLARATION))
+        elif row_limits and not reg_limits:
+            limits.append(
+                "%s: this index row says %r and the register at %s does not "
+                "declare %r -- a limit stated only in the index is a promise "
+                "the register never made, and the register is what a reader "
+                "ends up in" % (row["register"], SELF_LIMIT_MARKER,
+                                ", ".join(row["locations"]),
+                                SELF_LIMIT_DECLARATION))
 
     roadmap_path = os.path.join(ROOT, ROADMAP_REL)
     cited = cited_adrs(roadmap_path) if os.path.exists(roadmap_path) else None
@@ -683,6 +734,7 @@ def sweep():
     return {"rows": rows, "malformed": malformed, "locations": locations,
             "missing": missing, "shape": shape, "unlocated": unlocated,
             "currency": currency, "currency_unchecked": currency_unchecked,
+            "limits": limits,
             "accounting": accounting, "stale": stale,
             "docs": docs, "covered": covered, "uncovered": uncovered,
             # A row is FAIL when anything about ITS cells is wrong, so the
@@ -817,7 +869,7 @@ def main(argv):
         "%s line %d: %s" % (INDEX_REL, n, why)
         for n, why in r["malformed"]
     ] + list(r["missing"]) + list(r["shape"]) + list(r["unlocated"]) \
-      + list(r["currency"]) + list(r["stale"])
+      + list(r["currency"]) + list(r["limits"]) + list(r["stale"])
 
     for key in sorted(unreasoned):
         failures.append(
@@ -975,6 +1027,7 @@ def main(argv):
         "malformed_locations": r["shape"],
         "unlocated_rows": r["unlocated"],
         "currency_findings": r["currency"],
+        "self_limit_findings": r["limits"],
         "currency_unchecked_rows": r["currency_unchecked"],
         "currency_paths_checked": sum(len(row["currency_paths"])
                                       for row in r["rows"]),
