@@ -1,10 +1,14 @@
 # Scope
 
-Status: **PROPOSED** (2026-08-25, agent-authored). This is the only document
-in this repository that no measurement produced. Everything else here is
-either a decision somebody ruled on or an artifact an instrument emitted.
-A boundary cannot be measured from inside; it has to be declared. Until an
-operator rules on it, read this as a proposal that nothing yet enforces.
+Status: **ACCEPTED** (2026-08-26, operator ruling). Drafted by an agent
+2026-08-25 and ruled on unchanged: all four refusals stand as written.
+
+This is the only document in this repository that no measurement produced.
+Everything else here is either a decision somebody ruled on or an artifact
+an instrument emitted. A boundary cannot be measured from inside; it has to
+be declared, and declaring it is the operator's act, not an agent's. That
+is why it carried PROPOSED for a day and why the ruling is dated
+separately from the drafting.
 
 ## The sentence this system is built on
 
