@@ -43,6 +43,21 @@
 #    in one is a real defect. (That distinction was not theoretical: on
 #    2026-08-17 the runbook duplicated a retraction table out of the
 #    journal and this sweep blocked the push for it.)
+#    docs/governance/catch-log.md joins them on the SAME reasoning,
+#    2026-08-26, and is FLAGGED AS AN EXTENSION, not an operator ruling --
+#    drop the line to put it back in scope. It postdates the 2026-08-01
+#    recalibration by three weeks, which is the only reason it was not on
+#    that list. It is an append-only record of what a mechanism caught and
+#    what it did not; its own rule 1 says entries are NEVER deleted because
+#    it is history and not state, and naming a claim that later died is the
+#    substance of an entry, exactly as the journal names the ids it
+#    retracted. It passes the growth-gate test that decides this section:
+#    the question is not whether a document is old but whether somebody
+#    ACTS on it, and the catch log is read to understand what happened.
+#    DECAY CONDITION, so this line can be retired rather than inherited: if
+#    the catch log ever becomes an instruction -- if, say, an instrument is
+#    deleted on the strength of its zero-catch census -- it stops passing
+#    that test and this line must go.
 #    docs/diagnosis-2026-08/ joins the excluded set on the same reasoning,
 #    2026-08-17. It is a DATED diagnostic dossier -- its own 00-STATE.md
 #    header stamps the measurement ("Ostatni pomiar: <date>, HEAD <sha>")
@@ -141,6 +156,7 @@ FILES="$(printf '%s\n' "$SCOPE_GLOBS" \
   | grep -v '^docs/roadmap-v3\.md$' \
   | grep -v '^docs/field-notes' \
   | grep -v '^docs/refactor/01-JOURNAL\.md$' \
+  | grep -v '^docs/governance/catch-log\.md$' \
   | grep -v '^docs/diagnosis-' \
   | sort -u)"
 export CLAIMS_FILE VOCAB_JSON FILES
