@@ -582,6 +582,32 @@ def main(argv):
     prose_susp, prose_current = suspect_prose(prose_recorded)
     suspects += prose_susp
     if "--record-links" in argv:
+        # A refresh must not bless a degraded measure. Demonstrated 2026-08-26:
+        # with one SOURCES entry hidden, the ordinary run raised two failures
+        # and this branch printed "recorded 36 link ... hash(es)" and exited 0
+        # -- one link FEWER than the file it overwrote, because the arms of the
+        # unreadable source had simply vanished from the census. The failure
+        # list was already computed above; the early return below just meant
+        # nobody ever saw it. That is the shape --record-baseline was caught
+        # in, one instrument over, and it was suspected in this file on
+        # 2026-08-26 and left unchecked for a whole session.
+        if failures:
+            print("arm-index: REFUSING to record -- the sweep has %d failure(s) "
+                  "and a refresh taken now would freeze a census computed from "
+                  "sources it could not read:" % len(failures))
+            for text in failures:
+                print("  FAIL  %s" % text)
+            return 1
+        # The header of the recorded file says to refresh only AFTER reading
+        # the suspect rows, never instead. Nothing enforced that, so the rows
+        # being erased are printed here: the signal is shown at the moment it
+        # is destroyed, which is the only moment it can still be read.
+        if suspects:
+            print("arm-index: %d suspect entr(ies) are being overwritten by "
+                  "this refresh -- read them before you accept it:"
+                  % len(suspects))
+            for _key, text in suspects:
+                print("  SUSPECT  %s" % text)
         with open(os.path.join(ROOT, HASHES_REL), "w", encoding="utf-8") as f:
             f.write("# arm-index: hash celu kazdego dowiazania wiersz Appendix A <-> ramie.\n"
                     "# Zmiana hasha czyni wiersz SUSPECT -- nie zepsutym. Inwersja bywa\n"
