@@ -55,7 +55,12 @@ four times.
 Five sections: **Odpowiedź** (the verdict, before the evidence) · **Dowód**
 (only what carries it) · **Co z tego wynika** (the implication, not the
 observation) · **Domknięcie** (the table) · **Otwarte** (escalations carried
-forward). Five rules, each earned:
+forward). Seven rules, each earned. (Five were written first; rules 6 and 7
+were added after the operator asked for addressable rows and a closing
+recommendation, and this line is corrected with them rather than left
+counting the original five -- a drift that stood in this record, unnoticed by
+its author, in the paragraph directly above the rule about counted
+assertions.)
 
 1. **Every finding raised in the body terminates in exactly one of three:
    `robię`, `Twoja decyzja`, `odpuszczam — z powodem`. Unclassified: zero.**
@@ -96,6 +101,29 @@ forward). Five rules, each earned:
    measurement: a sortal read where the split was by verb, a predicted
    fail-open a cross-check already covered, and a constant number read as
    staleness where it was blindness.
+
+   **A `cmd` mark says a measurement was taken. It does not say the source
+   was the right one for the claim's domain, and that is the harder half.**
+   Same session, twice more, both times AFTER checking something:
+
+   * A behavioural claim about a CLI flag — repeated three answers running,
+     marked as fact — was compressed out of a register entry that carried the
+     qualifier ("a **stored** oracle") the claim needed. The source was read;
+     one word was dropped.
+   * A claim that a hook's stdin contract omits a field, marked `cmd`, was
+     read off an example given for **tool events** and taken as the universal
+     contract. Both halves were false: the field is documented, and a second
+     field made it unnecessary anyway.
+
+   So the mark carries a second obligation: **name the source, and be able to
+   say why that source governs this claim's domain.** One instance is not the
+   domain — the failure this repository produces at every level, and the one
+   provenance alone does not catch, because the measurement genuinely
+   happened.
+
+   Practically: where the source is a document, cite the file or URL beside
+   the mark; where it is a command, cite the command. A `cmd` mark that
+   cannot name what it read is `wnioskowanie` wearing better clothes.
 
 3. **A warrant is required on every finding marked `wnioskowanie`** — one
    line: on what licence these data yield this claim. All three errors above
@@ -210,6 +238,34 @@ traceable.
   **raised again**, not looked up. This is the convention's weakest seam and
   it is stated rather than papered over — an independent audit named that
   column as the one where a finding can be buried under a plausible reason.
+
+## Why these seven need a gate, and the measurement that says so
+
+Not one of the seven is enforced by anything. That is stated here rather than
+left to be discovered, because the same session produced the evidence for how
+much an unenforced rule holds: **three rules were broken by their own author
+AFTER the rule already existed and was in working memory.**
+
+| rule | the violation | how long after |
+|---|---|---|
+| ADR-062 rule 4 — persist a measurement before dispatching the next role | a number quoted to the operator lived a full round in a chat message and nowhere else, and was wrong while it was cited | one exchange |
+| rule 1 — every finding terminates | a review returned nine findings plus one off-scope; five were repaired and the prepared commit message said "five false assertions fixed" as though that were all of it | the convention was in memory at the time |
+| rule 2 — provenance per finding | a behavioural claim about a CLI flag, asserted as fact in three consecutive answers, compressed out of a register entry whose qualifier it needed | provenance was already a rule |
+
+The pattern is not that the author is careless. It is that **an instruction is
+not a mechanism**, and this record is an instruction. Every catch in
+`docs/governance/catch-log.md` was made by something that runs; every miss was
+a judgement about content that nothing runs over. **The assistant's answer to
+the operator is the one surface in this system with no gate at all** -- the
+same seam the catch log measures as every-catch-structural,
+every-miss-content, here applied to the output rather than the repository.
+
+The narrative of how the seven rules arrived is deliberately NOT written down
+beyond this table. It would be a seventh dated document in `docs/reviews/`
+against six already written the same day, it is read to be understood rather
+than acted on, and by the test this repository applies to its own frozen
+reference that makes it a record, not an instruction. The table above is the
+part that is actionable: it is the argument for building the gate.
 
 ## Falsifier
 
