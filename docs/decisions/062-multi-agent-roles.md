@@ -75,6 +75,36 @@ prevent it**, by the dispatcher, one exchange after writing the rules down.
 See `docs/reviews/agents-md-audit-and-review-2026-08-24.md`, which is that
 persistence performed after the fact.
 
+## Rule 1 is not security by obscurity
+
+The first reader who knows Saltzer and Schroeder will raise **open design**
+against rule 1, and the objection deserves an answer in the record rather than
+in a reply.
+
+> *The Protection of Information in Computer Systems*, Proceedings of the IEEE
+> 63(9), September 1975, pp. 1278-1308, principle 4: a protection mechanism
+> must not depend on attackers being ignorant of its **design**.
+
+The objects are different, and that is the whole answer. Open design forbids
+depending on ignorance of the design of the mechanism. Rule 1 depends on
+ignorance of the **specification of the one change under review**. The reviewer
+knows the entire apparatus -- this decision, the instruments, the doctrine, and
+that it is being denied a brief. It is denied only the brief.
+
+The test that separates the two is publication, and it is worth stating because
+it is falsifiable: **security by obscurity fails the moment the design is
+published; this arrangement does not.** A reviewer who has read this ADR and
+knows rule 1 exists is still not told what was asked for, and the effect --
+correctness checked instead of conformance -- is unchanged. If publishing this
+file ever weakens the arrangement, rule 1 was obscurity after all and should be
+withdrawn.
+
+What does threaten it is not publication but **recovery**: a reviewer that can
+reconstruct the specification from the diff, from the dispatcher's questions, or
+from a handoff written to be helpful, has been briefed by other means. That is
+the failure mode to watch, and it is why the dispatcher's message to a reviewer
+is itself part of the mechanism rather than a courtesy around it.
+
 ## Rejected
 
 - **One agent doing implement-and-verify.** Measured to fail here, twice.
@@ -88,7 +118,7 @@ persistence performed after the fact.
 
 ## Consequences
 
-- `AGENTS.md` gains a short operational section: the four roles, the three
+- `AGENTS.md` gains a short operational section: the four roles, the four
   rules, and the instruction that a review is dispatched on the diff, never in
   parallel with the work that produces it.
 - Mechanisable residue, for whoever wants it: a commit that adds or edits a
