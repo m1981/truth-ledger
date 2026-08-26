@@ -66,6 +66,8 @@ It has no gate, no baseline and no instrument. It is read by a person.
 | 2026-08-25 | a probe reported STILL GREEN and the FIXTURE was why, twice: a `--ttl-days` stamp cell with no backticked field could not express the defect, and a negation mutation swapped WHICH record was counted while the count stayed 1. An arm asserting a number cannot see an identity swap | writing the mutation and disbelieving the green | cmd |
 | 2026-08-25 | the two-marker resolution: one marker made the index row fire on ITSELF, because `docs/registers.md` names the marker in a row about another file. A declaration must be about its own file to be one — use versus mention, object language versus metalanguage. Discovered empirically, by a gate shooting at itself | the gate, on its own index row, on first run | cmd |
 | 2026-08-26 | **a measurement reported to the operator as 61 was 47.** The range that produced it swept in pre-existing tests around the arms it meant to audit. It had already been reported and acted on for a full round. Writing it to disk is what exposed it: the act of stating it where a later reader could check it forced the range to be named, and the range was wrong | persisting a measurement to disk (ADR-062 r.4), and the operator's `grep -rc permissive` returning 0 against the record that should have held it | cmd |
+| 2026-08-26 | a new environment carrier `TRUTH_BATTERY_PLAN` added to `scripts/release-battery.sh` and classified nowhere. It exits the battery before the first check, so a push under it verifies nothing — the `--single-run` shape: lifts everything, on nothing, leaving no record. Caught minutes after it was written, before any reviewer started | `python3 instruments/waiver-index.py` → exit 1, naming the carrier and both places it could be declared | cmd |
+| 2026-08-26 | two live claims asserting pre-ADR-057 semantics: `tr-56a8e36c` (the ADR-019 canary arm ADR-057 replaced) and `tr-d0191e65` (a clock-reader phrase `template/truthlib/policy.py` no longer contains, the arm having moved to `kernel.ttl_expiry`). Both had been false for two weeks with every instrument green | `python3 template/scripts/truth reproduce` → exit 7; the battery surfaced it at the push boundary | cmd |
 
 ## MISSES — it reached the operator, or lived, despite the apparatus
 
@@ -85,6 +87,8 @@ It has no gate, no baseline and no instrument. It is read by a person.
 | 2026-08-25 | `instruments/map.py` and `docs/map.txt` appeared in the working tree and **no session can be identified as their author**. Untracked, never committed, unknown to the ledger, naming no author and no session; git offers only an mtime. In a repository whose subject is knowing where a fact came from, an instrument of unknown provenance is a hole in the thing itself | nothing. `git log`, `git status` and the ledger were all asked and none can answer; provenance here is establishable only by testimony | hist |
 | 2026-08-25 | the universal scope claim survived in `docs/registers.md` after being retracted in `docs/waivers.md` — the index kept "every gate that can be lifted" while the register it points at had already given it up. A limit repaired in one place and left standing one hop away, where `register-index` reported OK | nothing compared an index row's description against the register's own self-limitation. Now gated, both directions | cmd |
 | 2026-08-25 → 08-26 | that same number lived a full round in a chat message and nowhere else, and it was **wrong while it was being cited**. ADR-062 rule 4 was written IN THIS SESSION, after a phantom citation in `AGENTS.md`, and was broken again by its own author one layer further out. The lesson is not "persist more": an unpersisted measurement is not merely unverifiable, it decays before anyone can check it, and this one was wrong in exactly the way a written record exposes — a silently over-wide range | nothing checks that a number quoted in a report exists in the record the report cites. Rule 4 says to persist; nothing reads back | hist |
+| 2026-08-26 | a timing measurement whose stage function used `eval` without a subshell, so a `cd` inside one stage leaked into every later one. Three stages reported **0s** — failed starts read as results. The author had written the L0 rule ("did I measure the world, or my own apparatus?") into `docs/governance/architects-crib.md` hours earlier | nothing: no gate covers a measurement written in a scratch file. Marked `test` on the day it happened, which is what rule 5 is for — provenance tracks reproducibility, not recency | test |
+| 2026-08-26 | ADR-057 changed what `stale` means, replaced a canary arm and moved the clock reader, and **nothing connected the decision to the claims that depended on it**. Suspect links hash prose citations; no mechanism runs decision → dependent claims. `reproduce` caught the consequence, two weeks and one push boundary late | the direction does not exist. Structural, not a defect to repair: an instance is repaired by judging two claims, the class needs a link type nobody has built | cmd |
 
 ---
 
@@ -98,7 +102,7 @@ and rule 4 says it is the only deletion criterion available here.
 |---|---|
 | `arm-index.py` | 1 |
 | `register-index.py` | 1 |
-| `waiver-index.py` | 2 |
+| `waiver-index.py` | 3 |
 | `map.py` | — (provenance unknown; see MISSES) |
 | `blast-report.py` | — |
 | `capsule-blindness.py` | — |
@@ -112,6 +116,7 @@ and rule 4 says it is the only deletion criterion available here.
 | `watch-derivation.py` | — |
 | `doc-health.sh` | — |
 | `truth-canary.sh` | — |
+| `truth reproduce` (the push-boundary sweep) | 1 |
 | review by an agent NOT given the spec | 7 |
 | mutation of a gate (ADR-061) | 2 |
 | git history as an oracle | 2 |
@@ -122,7 +127,7 @@ and rule 4 says it is the only deletion criterion available here.
 
 ## What the figures currently say
 
-**Nineteen catches, fourteen misses, and the sample is still far too small to
+**Twenty-one catches, sixteen misses, and the sample is still far too small to
 conclude anything.** That sentence is the honest reading and it should stay
 until the log has run for months, not days.
 
