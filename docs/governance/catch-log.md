@@ -65,6 +65,7 @@ It has no gate, no baseline and no instrument. It is read by a person.
 | 2026-08-25 | `NOT COUNTABLE` asserted over 209 trivially countable standing excusals, and over `--ttl-days`, whose "no presence test separates it" was one line of predicate away from false — the real population is **2**. Over-suppression reads as humility and hides a number: the mirror of the correctly-made decision that a WRONG population is worse than none | adversarial reviewer | cmd |
 | 2026-08-25 | a probe reported STILL GREEN and the FIXTURE was why, twice: a `--ttl-days` stamp cell with no backticked field could not express the defect, and a negation mutation swapped WHICH record was counted while the count stayed 1. An arm asserting a number cannot see an identity swap | writing the mutation and disbelieving the green | cmd |
 | 2026-08-25 | the two-marker resolution: one marker made the index row fire on ITSELF, because `docs/registers.md` names the marker in a row about another file. A declaration must be about its own file to be one — use versus mention, object language versus metalanguage. Discovered empirically, by a gate shooting at itself | the gate, on its own index row, on first run | cmd |
+| 2026-08-26 | **a measurement reported to the operator as 61 was 47.** The range that produced it swept in pre-existing tests around the arms it meant to audit. It had already been reported and acted on for a full round. Writing it to disk is what exposed it: the act of stating it where a later reader could check it forced the range to be named, and the range was wrong | persisting a measurement to disk (ADR-062 r.4), and the operator's `grep -rc permissive` returning 0 against the record that should have held it | cmd |
 
 ## MISSES — it reached the operator, or lived, despite the apparatus
 
@@ -83,6 +84,7 @@ It has no gate, no baseline and no instrument. It is read by a person.
 | 2026-08-25 | the `admitted on` vocabulary check EXISTED and was correct; it was placed below a `continue`. The defect was not a missing check but a check in the wrong position, which no coverage measure can see — the line is executed on every run, for a subset nobody declared | nothing tests that a check applies to the domain its own documentation claims. The file said "checked against the parser"; the code said "checked, for flags" | cmd |
 | 2026-08-25 | `instruments/map.py` and `docs/map.txt` appeared in the working tree and **no session can be identified as their author**. Untracked, never committed, unknown to the ledger, naming no author and no session; git offers only an mtime. In a repository whose subject is knowing where a fact came from, an instrument of unknown provenance is a hole in the thing itself | nothing. `git log`, `git status` and the ledger were all asked and none can answer; provenance here is establishable only by testimony | hist |
 | 2026-08-25 | the universal scope claim survived in `docs/registers.md` after being retracted in `docs/waivers.md` — the index kept "every gate that can be lifted" while the register it points at had already given it up. A limit repaired in one place and left standing one hop away, where `register-index` reported OK | nothing compared an index row's description against the register's own self-limitation. Now gated, both directions | cmd |
+| 2026-08-25 → 08-26 | that same number lived a full round in a chat message and nowhere else, and it was **wrong while it was being cited**. ADR-062 rule 4 was written IN THIS SESSION, after a phantom citation in `AGENTS.md`, and was broken again by its own author one layer further out. The lesson is not "persist more": an unpersisted measurement is not merely unverifiable, it decays before anyone can check it, and this one was wrong in exactly the way a written record exposes — a silently over-wide range | nothing checks that a number quoted in a report exists in the record the report cites. Rule 4 says to persist; nothing reads back | hist |
 
 ---
 
@@ -113,13 +115,14 @@ and rule 4 says it is the only deletion criterion available here.
 | review by an agent NOT given the spec | 7 |
 | mutation of a gate (ADR-061) | 2 |
 | git history as an oracle | 2 |
-| operator-side reading | 2 |
+| operator-side reading | 3 |
+| persisting a measurement to disk (ADR-062 r.4) | 1 |
 
 ---
 
 ## What the figures currently say
 
-**Eighteen catches, thirteen misses, and the sample is still far too small to
+**Nineteen catches, fourteen misses, and the sample is still far too small to
 conclude anything.** That sentence is the honest reading and it should stay
 until the log has run for months, not days.
 

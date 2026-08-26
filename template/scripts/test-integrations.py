@@ -1034,7 +1034,9 @@ class TestTierCInstruments(unittest.TestCase):
             self.assertEqual(gone.returncode, 1)
             self.assertIn("RECORD VANISHED", gone.stdout)
             self.assertIn("Do NOT drop the line", gone.stdout)
-            self.assertNotIn("now mentions it", gone.stdout)
+            self.assertNotIn("now mentions it", gone.stdout,
+                             "a vanished record must not be reported as a "
+                             "resolution -- the remedies are opposite")
 
             # and following the OLD remedy still does not bury it: the
             # number space has a hole where ADR-002 was.
@@ -1201,7 +1203,9 @@ class TestTierCInstruments(unittest.TestCase):
                  ("flag", "--duplicate-ok", ["claim"], "nothing", "overridden_duplicates"),
                  ("flag", "--orphan-ok", ["verdict"], "SENTENCE", "orphan_basis")])
             clean = self._wi(inst, tmp)
-            self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
+            self.assertEqual(clean.returncode, 0,
+                             "a control tree with nothing seeded must pass: "
+                             "%s%s" % (clean.stdout, clean.stderr))
 
             # REVERSE: the parser grows a bypass the register never heard of
             self._write_stub(tmp, ["claim", "verdict"],
@@ -1298,7 +1302,9 @@ class TestTierCInstruments(unittest.TestCase):
                  ("flag", "--accept-unsafe-ok", ["claim"], "nothing", "accept.screened = false")],
                 ledger=ledger)
             out = self._wi(inst, tmp)
-            self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+            self.assertEqual(out.returncode, 0,
+                             "a control tree with nothing seeded must pass: "
+                             "%s%s" % (out.stdout, out.stderr))
             # 1, not 2: the record whose screen was NOT lifted must not
             # count as a bypass, which is why the value is part of the key
             self.assertRegex(out.stdout,
@@ -1373,7 +1379,9 @@ class TestTierCInstruments(unittest.TestCase):
             env = self._wi(inst, tmp)
             self.assertEqual(env.returncode, 3)
             self.assertIn("the sweep did NOT run", env.stderr)
-            self.assertNotIn("Traceback", env.stderr)
+            self.assertNotIn("Traceback", env.stderr,
+                             "an environment failure must be a sentence, "
+                             "never a stack trace")
 
             # ...and the harder half, which the previous case cannot
             # isolate: a CLI that prints PERFECTLY USABLE help and then
@@ -1394,7 +1402,9 @@ class TestTierCInstruments(unittest.TestCase):
             self.assertEqual(noisy.returncode, 3,
                              "a CLI that exited non-zero was trusted anyway")
             self.assertIn("exited 3", noisy.stderr)
-            self.assertNotIn("Traceback", noisy.stderr)
+            self.assertNotIn("Traceback", noisy.stderr,
+                             "an environment failure must be a sentence, "
+                             "never a stack trace")
         finally:
             shutil.rmtree(tmp)
 
@@ -1809,9 +1819,10 @@ class TestTierCInstruments(unittest.TestCase):
             got = self._wi(inst, tmp)
             self.assertEqual(
                 got.returncode, 0,
-                "the parser bound to a three-column table whose first cell "
-                "is also `carrier`, so the register was read from the wrong "
-                "one: %s%s" % (got.stdout, got.stderr))
+                "the register must be found by the EIGHT-COLUMN header, "
+                "not by a first cell that another table also uses: the "
+                "parser bound to the wrong table: %s%s"
+                % (got.stdout, got.stderr))
         finally:
             shutil.rmtree(tmp)
 
@@ -1868,7 +1879,10 @@ class TestTierCInstruments(unittest.TestCase):
                 tmp, rows + [("syntax", "<path>#<selector>", ["--paths"],
                               "nothing", "")])
             ok = self._wi(inst, tmp)
-            self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
+            self.assertEqual(ok.returncode, 0,
+                             "an unbounded row must pass: there is no source "
+                             "to check it against: %s%s"
+                             % (ok.stdout, ok.stderr))
             self.assertIn("unbounded carriers", ok.stdout)
             self.assertIn("<path>#<selector>", ok.stdout)
             self.assertIn("NOT total", ok.stdout)
@@ -1973,7 +1987,9 @@ class TestTierCInstruments(unittest.TestCase):
                 ledger=ledger, declare_env=False,
                 declare_policy_file=False)
             out = self._wi(inst, tmp)
-            self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+            self.assertEqual(out.returncode, 0,
+                             "a control tree with nothing seeded must pass: "
+                             "%s%s" % (out.stdout, out.stderr))
 
             # exactly one of the four records is the override
             self.assertRegex(
@@ -2020,11 +2036,15 @@ class TestTierCInstruments(unittest.TestCase):
                   "NOT COUNTABLE -- `ttl_days` is on every claim")],
                 ledger=ledger)
             out = self._wi(inst, tmp)
-            self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+            self.assertEqual(out.returncode, 0,
+                             "a control tree with nothing seeded must pass: "
+                             "%s%s" % (out.stdout, out.stderr))
             self.assertRegex(out.stdout, r"scope_basis\s+3 record")
             self.assertIn("NOT COUNTABLE", out.stdout)
             self.assertIn("--ttl-days", out.stdout)
-            self.assertNotRegex(out.stdout, r"ttl_days\s+3 record")
+            self.assertNotRegex(out.stdout, r"ttl_days\s+3 record",
+                                "a field present in ordinary traffic must not "
+                                "be counted as a waiver population")
             self.assertIn("LOWER BOUND", out.stdout)
         finally:
             shutil.rmtree(tmp)
@@ -2084,8 +2104,8 @@ class TestTierCInstruments(unittest.TestCase):
                 ok = self._wi(inst, tmp)
                 self.assertEqual(
                     ok.returncode, 0,
-                    "a finished reason was refused: %r -> %s"
-                    % (reason, ok.stdout))
+                    "a finished sentence must be accepted, whatever word "
+                    "it ends on: %r -> %s" % (reason, ok.stdout))
         finally:
             shutil.rmtree(tmp)
 
@@ -2256,7 +2276,9 @@ class TestTierCInstruments(unittest.TestCase):
             prose = self._wi(inst, tmp)
             self.assertEqual(prose.returncode, 1)
             self.assertIn("must be exactly", prose.stdout)
-            self.assertNotIn("the parser says", prose.stdout)
+            self.assertNotIn("the parser says", prose.stdout,
+                             "prose in the column must be refused as prose, "
+                             "not compared against the parser")
         finally:
             shutil.rmtree(tmp)
 
@@ -2277,7 +2299,9 @@ class TestTierCInstruments(unittest.TestCase):
                 ledger=[{"id": "tr-1", "kind": "claim",
                          "payload": {"scope_basis": "because"}}])
             out = self._wi(inst, tmp)
-            self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+            self.assertEqual(out.returncode, 0,
+                             "a control tree with nothing seeded must pass: "
+                             "%s%s" % (out.stdout, out.stderr))
             self.assertIn("NOT COUNTABLE", out.stdout)
             self.assertIn("--single-run", out.stdout)
 
@@ -2372,7 +2396,9 @@ class TestTierCInstruments(unittest.TestCase):
             inst = self._mini_register_tree(
                 tmp, ["002-b.md"], ["001-a.md"], "ADR-001 ADR-002\n")
             clean = self._ri(inst, tmp)
-            self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
+            self.assertEqual(clean.returncode, 0,
+                             "a control tree with nothing seeded must pass: "
+                             "%s%s" % (clean.stdout, clean.stderr))
             before = clean.stdout.count("OK   ")
 
             index = os.path.join(tmp, "docs", "registers.md")
@@ -2472,7 +2498,9 @@ class TestTierCInstruments(unittest.TestCase):
             gone = self._ri(inst, tmp)
             self.assertEqual(gone.returncode, 1)
             self.assertIn("no longer exists", gone.stdout)
-            self.assertNotIn("no longer uncovered", gone.stdout)
+            self.assertNotIn("no longer uncovered", gone.stdout,
+                             "a path whose SUBJECT is gone must not be "
+                             "reported as newly covered")
 
             # ADR-042 rule 2: zero docs to judge is not a pass
             shutil.rmtree(os.path.join(tmp, "docs", "notes"))
@@ -2500,7 +2528,9 @@ class TestTierCInstruments(unittest.TestCase):
             inst = self._mini_register_tree(
                 tmp, ["002-b.md"], ["001-a.md"], "ADR-001 ADR-002\n")
             clean = self._ri(inst, tmp)
-            self.assertEqual(clean.returncode, 0)
+            self.assertEqual(clean.returncode, 0,
+                             "a control tree with nothing seeded must pass: "
+                             "%s%s" % (clean.stdout, clean.stderr))
             self.assertIn("path(s) checked across", clean.stdout)
             self.assertIn("0 row(s) name no checkable path", clean.stdout)
 
@@ -2562,7 +2592,9 @@ class TestTierCInstruments(unittest.TestCase):
                         "unresolved: probe\n")
             rec = subprocess.run([sys.executable, inst, "--record-baseline"],
                                  cwd=tmp, capture_output=True, text=True)
-            self.assertEqual(rec.returncode, 0, rec.stderr)
+            self.assertEqual(rec.returncode, 0,
+                             "recording a baseline over a read corpus must "
+                             "succeed: %s" % rec.stderr)
             with open(base) as f:
                 written = f.read()
             self.assertIn("baseline 2026-01-01", written,
@@ -2679,7 +2711,9 @@ class TestTierCInstruments(unittest.TestCase):
             unreadable = self._ri(inst, tmp)
             self.assertEqual(unreadable.returncode, 3)
             self.assertIn("the sweep did NOT run", unreadable.stderr)
-            self.assertNotIn("Traceback", unreadable.stderr)
+            self.assertNotIn("Traceback", unreadable.stderr,
+                             "an environment failure must be a sentence, "
+                             "never a stack trace")
         finally:
             shutil.rmtree(tmp)
 

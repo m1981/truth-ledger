@@ -16,14 +16,19 @@ clock so an expired override is not extracted as load-bearing), FAZA 3
 
 ## Context
 
-**SIX of the ten overrides in this system are admitted on a sentence.**
+**SIX of the ELEVEN CLI-flag overrides are admitted on a sentence.**
+(Eleven since `--ttl-days` joined the register on 2026-08-25. This record
+quantifies over FLAGS only, which is its own subject -- the extractor
+below reads claim payloads. `docs/waivers.md` holds 36 waivers over six
+carriers, and the count that is authoritative is the instrument's, not
+this sentence's: `python3 instruments/waiver-index.py`.)
 `--scope-ok` says why a quantifier may stand. `--paths-ok` says why a freehand
 watch set may exceed the budget. `--generated-ok` says why a generated
 artifact may be watched, `--evidence-exit-ok` why a failing probe still proves
 something, `--orphan-ok` why citations may be left dangling, and ADR-051's
 `--refresh-evidence` why a moved output is still the same fact.
 
-**The other four are admitted on nothing at all**, and the split is not
+**Four are admitted on nothing at all, and one on a number**, and the split is not
 random. Corrected 2026-08-24, after this record spent its whole life claiming
 otherwise — and corrected twice, because the first correction said "five of
 eight" in a sentence that listed six, having counted `--refresh-evidence` in
@@ -160,9 +165,16 @@ unreproducible number in a repository about reproducibility is its own defect.
    here or anywhere else. A population that cannot see one of its members is
    a floor, and must be read as one.
 
-Applying the rule to this ledger on 2026-08-25: **23 records carry an override
-sentence, 28 carry an override with none, both sets disjoint, and an unknown
-number of `--single-run` filings are in neither.**
+Applying the rule to this ledger, re-measured **2026-08-26**: **23 records
+carry an override sentence, 28 carry an override with none, both sets
+disjoint, and an unknown number of `--single-run` filings are in neither.**
+
+Those two figures did NOT move when the register grew from eight flags to 36
+waivers over six carriers, and that is the finding rather than a discrepancy:
+the environment, file, syntax and config carriers write nothing to the ledger,
+so a count OF THE LEDGER cannot see them. `waiver-index` counts file-carried
+waivers by their own entries instead, which is why it reports numbers this
+record cannot.
 
 **Not specified here.** How to give the four sentence-less overrides a
 rationale — a `--duplicate-ok SENTENCE`, basis fields for the two unsafe

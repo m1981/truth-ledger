@@ -125,35 +125,106 @@ that way.
 
 ## What the register now measures
 
+**No figure here is authoritative.** Read them off
+`python3 instruments/waiver-index.py`; this section is dated, and the counts
+below were true on 2026-08-26 after the operator round that followed the
+adversarial review.
+
 ```
-escape surface   32 waiver(s): 13 on a sentence, 5 on a value, 14 on NOTHING
+escape surface   36 waiver(s): 13 on a sentence, 6 on a value, 17 on NOTHING
 flag inventory   50 harvested: 11 waivers, 39 declared not-an-override, 0 unclassified
-env inventory    17 harvested:  8 waivers,  9 declared not-an-override, 0 unclassified
+env  inventory   17 harvested:  9 waivers,  8 declared not-an-override, 0 unclassified
 file inventory   17 harvested: 11 waivers,  6 declared not-an-override, 0 unclassified
-unbounded        2 recorded by hand, from NO list: <path>#<selector>, core.hooksPath
-population       NOT COUNTABLE (23 of 32)
+unbounded         5 recorded by hand, from NO list
+population       NOT COUNTABLE (15 of 36)
 ```
 
-**Twenty-three of thirty-two waivers leave no countable trace.** Nine are
-visible in the ledger. That is the honest shape of the escape surface, and it
-is why every population figure in ADR-059 is a lower bound.
+**The first version of this record said 32 waivers and 23 not-countable**, and
+it stayed on disk while the register moved to 36 and 15. That divergence — a
+record describing a register it no longer matched — is the class ADR-060
+exists for, found by the operator against this file. It is corrected here and
+the counts now carry the date and the pointer, rather than standing as facts.
 
-### A defect I introduced and caught in my own output
+**The flag half specifically**: eleven flag waivers, six on a sentence, one on
+a value, four on nothing. ADR-059 said "SIX of the ten" and the six is right;
+the ten became eleven when `--ttl-days` moved into the register.
 
-The first version counted every backticked field in the `stamp` column. It
-reported **`ttl_days` 268** on a ledger of 268 claims, and `evidence_paths`
-268 — measuring the ledger and calling it the escape surface. `session` and
-`ts` the same. A wrong population is worse than a missing one, because it
-reads as a measurement. Rows whose stamp cannot separate the waiver's use from
-ordinary traffic now carry the literal `NOT COUNTABLE` and no number is
-printed for them.
+**The ledger figures did NOT move**: 23 records carry an override sentence, 28
+carry an override with none, the two sets disjoint. Re-measured 2026-08-26 by
+ADR-059's counting rule. Those count records in the LEDGER, and the carriers
+added since — environment, files, syntax, config — write nothing there, which
+is why the register grew by 20 rows while these two numbers did not change at
+all. That is the finding, not a discrepancy.
 
-A second one, same class, caught by the sweep on itself: the per-row FAIL mark
-was a substring search over every failure line, so the row for
-`.truth/waiver-not-an-override` showed FAIL whenever any message merely
-*named* that file. Name-scoped now — the same defect as reading the
-`admitted on` column by substring, which an adversarial review had already
-found once.
+## The assertion audit, and what it did not touch
+
+The operator named a defect class from a single instance: an **inverted arm**,
+whose signature is that the assertion message describes an OBSERVATION rather
+than a REQUIREMENT. `assertEqual(local.returncode, 0, "a shell local was
+reported as inherited")` is a sentence about what is; the requirement would
+read "an inherited variable must not be classified as local".
+
+Their instruction was that assuming it is the only one is the generalisation
+this repository has already fallen for. It was, and the sweep found something
+worse than a second instance.
+
+**Measured 2026-08-26** over the 34 methods this work added
+(`test_register_index_*`, `test_waiver_index_*`,
+`test_every_instrument_is_classified`), counting assertions that demand a PASS
+— `returncode, 0`, `assertNotIn`, `assertNotRegex` — because a strict
+assertion that fires wrongly is loud while a permissive one that pins a defect
+is silent:
+
+| | permissive assertions | stating a requirement |
+|---|---|---|
+| this work's arms | **47** | **46** |
+| pre-existing arms in the same file | **48** | **0** |
+
+**Only one genuine inversion was found**, the one the operator named, already
+fixed. The sweep's real yield is that the requirement was UNSTATED in most of
+them — and an assertion with no stated requirement cannot be audited for
+inversion at all, so "it is the only one" was not provable. That is why the
+answer was to state all of them rather than to search harder.
+
+**I first reported this number to the operator as 61. It is 47.** The 61 came
+from a range that swept in pre-existing tests around it. The corrected
+measurement is above; the wrong one existed only in a chat message, which is
+the second half of the same defect — see below.
+
+### The 47th, and the 48 not touched — neither is a silent limit
+
+- **One of 47 has no "must" sentence**: `assertIn("path(s) checked across", …)`
+  and its siblings assert a substring of expected output rather than a pass
+  condition. The requirement is carried by the string itself. Left as is.
+- **The 48 pre-existing permissive assertions in `test-integrations.py` were
+  NOT touched.** They are outside this work's arms, and rewriting another
+  change's assertions would put unreviewed edits into a diff about waivers.
+  They are a **backlog with a number**, not an omission: any one of them may
+  be inverted and none of them says what it requires. That is the honest state
+  and it is written here because a limit nobody states is exactly what this
+  work spent two rounds removing.
+
+**No mechanism enforces requirement-form messages.** The signature is
+detectable by reading and by nothing else; a lint over assertion prose was
+considered and rejected as grading English, which is the ADR-059 line between
+L1 and L2. So this is DECLARED, and the number above is the measurement a
+later reader can check it against.
+
+## ADR-062 rule 4, broken again, by me, one layer further out
+
+The rule says a finding that lives only in a task notification cannot be
+cited, because there is nothing for a later reader to check it against. It was
+written in this session, after a phantom citation in `AGENTS.md`.
+
+**The assertion measurement lived only in a chat message for a full round.**
+`grep -c permissive docs/reviews/waiver-carriers-2026-08-25.md` returned 0
+while the number was being reported and acted on — and the number was wrong.
+The operator caught it with that grep.
+
+The lesson is not "persist more". It is that **a measurement reported in prose
+and not written to disk is not merely unverifiable — it decays before anyone
+can check it**, and the wrongness here was of exactly the kind a written
+record would have exposed: a range that quietly included files it should not.
 
 ## Gate
 
@@ -184,30 +255,49 @@ The harvest **over-reports rather than under-reports**, which is the direction
 a safety reading must fail in: three shell locals and two test-fixture string
 literals are classified by hand as not-inherited, and the policy file says why.
 
-## Standing state
+## Standing state, 2026-08-26
 
 ```
-python3 instruments/waiver-index.py     exit 0   32 waivers over 6 carriers
-python3 instruments/register-index.py   exit 1   the standing ADR-062 ruling
+python3 instruments/waiver-index.py     exit 0   36 waivers over 6 carriers
+python3 instruments/register-index.py   exit 0   ALL THREE failures resolved
 python3 instruments/arm-index.py        exit 0
+python3 instruments/semantic-audit.py   exit 0
 bash scripts/fact-health.sh             exit 0
 bash template/scripts/doc-health.sh     exit 0
 bash scripts/gate-reachability.sh       exit 0
-.venv/bin/python .../test-integrations.py   Ran 55 -- OK
+bash .githooks/pre-commit               exit 0
+.venv/bin/python .../test-integrations.py   Ran 63 -- OK
 .venv/bin/python .../test-truth-core.py     Ran 538 -- OK
 ```
 
-Item 0b stays **DECLARED**. This change widens what membership covers; it does
-not touch the four content columns, which are still held by reading.
+`register-index` reached exit 0 for the first time in this effort. All three
+of its failures were this work's own, and all three were rulings an agent
+made — recorded with their actor and their reversal condition in
+`docs/governance/operator-actions-2026-08.md`, because a resolved failure that
+does not say who resolved it reads as if the repository had always been clean.
+
+Item 0b stays **DECLARED**. This change widened what membership covers; it did
+not touch the four content columns, which are still held by reading, and the
+operator round added a fifth thing held by reading: nothing enforces that an
+assertion states a requirement.
 
 ## What is still not covered, stated so nobody reads silence as coverage
 
-- **`syntax`, `config`, `code` are unbounded.** Two instances are recorded.
-  There is no reason to believe they are the only two.
-- **The shell env harvest is one idiom.** `${NAME:-}`, `${NAME:?}` and
+- **`syntax`, `config`, `code` are unbounded.** FIVE instances are recorded —
+  `<path>#<selector>`, `core.hooksPath`, `git push --no-verify`,
+  `.claude/settings.json`, `scripts/truth-whisper.deny`. There is no reason to
+  believe five is what exists.
+- **The shell env harvest is three idioms**: `${NAME:-}`, `${NAME:?}` and
   `env NAME=`. A bare `$NAME` read of an inherited variable is missed.
-- **Non-`.truth/` policy files are not harvested** — `.claude/settings.json`,
-  `.githooks/`, `copier.yml` all carry behaviour that can be turned off.
-- **`--single-run` still writes nothing**, and now so do seven environment
-  carriers. More than two thirds of the escape surface is invisible in the
-  ledger by construction, not by oversight.
+  Extensionless files are read by shebang, so the CLI entry point is covered;
+  a Python file with neither shebang nor suffix is not.
+- **The `file` carrier is scoped to `.truth/`.** Policy files elsewhere are
+  recorded under `config`, which has no reverse direction.
+- **Assertion messages are not enforced** — 48 pre-existing permissive
+  assertions in the same file state no requirement, and any of them may be
+  inverted. Counted, named, untouched.
+- **`--single-run` writes nothing**, and neither do the environment and config
+  carriers: **15 of 36 waivers leave no countable trace**. Two thirds of the
+  escape surface used to be reported that way; the criterion above cut it to
+  15 by counting file entries and refining one predicate. What remains is
+  invisible by construction, not by oversight.

@@ -225,3 +225,85 @@ chain: tr-84a9a3e3). The three staled intermediates were appended
 to the (c) retraction block above. Nothing further is owed here; the
 standing rule stays: every release bump re-runs this succession
 ceremony from the committing session.
+
+---
+
+## Three rulings taken by an AGENT, 2026-08-25/26 — actor named on purpose
+
+These cleared the last three failures of `instruments/register-index.py`,
+which then reported exit 0 for the first time. **All three were decisions, not
+repairs, and an agent made them.** They are recorded here because the history
+that carries them speaks in the operator's voice, the red is gone, and nothing
+in the tree would otherwise say who chose. A resolved failure that does not
+name its decider reads as if the repository had always been clean.
+
+Each entry gives what was decided, who, and **what would reverse it** — the
+last because a ruling with no stated reversal condition is a preference
+wearing a decision's clothes.
+
+### (i) ADR-062 is cited in `docs/roadmap-v3.md`
+
+**Decided:** cited, not excused. The plan gained an entry recording how it is
+now EXECUTED — the ADR-062 role separation governs every remaining batch —
+with ADR-060 and ADR-061 cited alongside because they set what "done" means.
+Batches already marked DONE are explicitly NOT re-judged; the rule binds what
+is written from that date forward.
+
+**Actor:** agent, 2026-08-25. The operator had left this standing since
+2026-08-19 and named it as one of three decisions awaiting the agent.
+
+**Why cited rather than baselined:** the register's own criterion is whether a
+decision bears on the plan. ADR-062 changes who may perform each step and what
+they may be told, and three defects that week were found by a reviewer that
+had been denied the specification. That is bearing on the plan in the
+strongest sense the criterion admits.
+
+**What would reverse it:** a ruling that the roadmap is a closed history log
+which no longer takes new entries. Then the citation comes out and ADR-062 is
+baselined with that ruling as its reason. Note the side effect if so: dropping
+the entry re-opens the `adr-unaccounted:` findings for ADR-060 and ADR-061,
+whose baseline lines were removed as genuinely resolved.
+
+### (ii) `docs/scope.md` has its own register row, ungated
+
+**Decided:** a row in `docs/registers.md`, currency column reading *"none, and
+deliberately none"*. The file itself was NOT touched, NOT gated and NOT
+baselined.
+
+**Actor:** agent, 2026-08-26, on the operator's instruction that the file is
+PROPOSED, agent-authored and awaiting their ruling, and must not be gated.
+
+**Why a row and not a baseline:** a baseline is for a finding nobody has got
+to yet. `scope.md` is not an unresolved finding; it is a declaration that no
+measurement produced, and it states this system's own limits. Hiding it in an
+excuse file would be an irony with no room here.
+
+**What would reverse it:** the operator ruling on the scope charter. If it is
+accepted, the row's currency becomes the ruling and the "deliberately none"
+sentence comes out. If it is rejected, the file goes and the row goes with it.
+
+### (iii) `docs/books/books.md` is baselined, not given a row
+
+**Decided:** an entry in `.truth/register-index-baseline` with a reason that
+states what the file is and what would change the decision.
+
+**Actor:** agent, 2026-08-26. The operator explicitly left this one open and
+required that any baselining carry a real reason — not the form of the 42
+identical entries that merely restate the finding.
+
+**Why baselined rather than given a row:** it is a dated conversation
+transcript with a reading list. Nobody revises it and no reader acts on it, so
+it is the same character as `docs/reviews` but is not a review, and inventing
+a register for a single transcript is the over-building this index exists to
+make visible.
+
+**What would reverse it:** a second such transcript. Two make a class, and a
+class needs a register rather than two excuses.
+
+### The standing asymmetry these three make visible
+
+`register-index` reaching exit 0 does not mean the repository became correct.
+It means an agent exercised three judgements the instrument could not make and
+recorded them where a human can disagree. **Two of the three are reversible by
+a single operator sentence**, and the third — books.md — is reversible by the
+arrival of one more file.
