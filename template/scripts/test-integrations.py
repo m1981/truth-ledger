@@ -542,6 +542,11 @@ class TestTierCInstruments(unittest.TestCase):
     UNCOVERED_INSTRUMENTS = frozenset((
         "arm-index.py", "capsule-blindness.py", "field-consumers.py",
         "label-coupling.py", "watch-derivation.py",
+        # Appeared 2026-08-25 while this suite was being edited, and this
+        # arm refused until it was classified -- which is the arm working.
+        # Listed as UNCOVERED rather than judged: naming the gap is the
+        # honest state, and whoever knows what it does can move it.
+        "map.py",
     ))
 
     def test_every_instrument_is_classified(self):
@@ -971,7 +976,8 @@ class TestTierCInstruments(unittest.TestCase):
                 tmp, ["002-b.md"], ["001-a.md"], "ADR-001 ADR-002\n")
             clean = self._ri(inst, tmp)
             self.assertEqual(clean.returncode, 0,
-                             "the control tree is not clean: %s%s"
+                             "a control tree with nothing seeded must pass, or nothing "
+                             "the probes below prove is about the seeded defect: %s%s"
                              % (clean.stdout, clean.stderr))
 
             # forward: a filed decision the plan mentions nowhere
@@ -1008,7 +1014,8 @@ class TestTierCInstruments(unittest.TestCase):
                           "unresolved: probe\n"
                           "adr-unaccounted:ADR-003  baseline 2026-01-01, "
                           "unresolved: probe\n"))
-            self.assertEqual(self._ri(inst, tmp).returncode, 0)
+            self.assertEqual(self._ri(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
 
             # (i) resolution: the roadmap now mentions ADR-002
             with open(os.path.join(tmp, "docs", "roadmap-v3.md"), "w") as f:
@@ -1086,7 +1093,8 @@ class TestTierCInstruments(unittest.TestCase):
     ]
 
     def _mini_waiver_tree(self, root, verbs, flags, rows, ledger=(),
-                          policy=None):
+                          policy=None, declare_env=True,
+                          declare_policy_file=True):
         """A throwaway tree with a stub CLI and a seven-column register."""
         os.makedirs(os.path.join(root, "instruments"))
         os.makedirs(os.path.join(root, "docs"))
@@ -1095,20 +1103,50 @@ class TestTierCInstruments(unittest.TestCase):
         shutil.copy2(os.path.join(INSTRUMENTS_DIR, "waiver-index.py"),
                      os.path.join(root, "instruments", "waiver-index.py"))
         self._write_stub(root, verbs, flags)
+        # A real repository always reads SOMETHING from the environment,
+        # and the ADR-042 guard now refuses a carrier that harvested
+        # nothing while the register lists nothing for it -- correctly,
+        # because a zero there is a broken harvest rather than a clean
+        # surface. A fixture with no env read at all is not a repository,
+        # so every tree gets one, declared in FIXTURE_POLICY.
+        with open(os.path.join(root, "scripts", "fixture-env.sh"), "w") as f:
+            f.write('X="${FIXTURE_BASELINE_ENV:-}"\n')
         self._write_register(root, rows)
         with open(os.path.join(root, ".truth", "claims.jsonl"), "w") as f:
             for rec in ledger:
                 f.write(json.dumps(rec) + "\n")
-        # Every flag must be classified, so a tree that gives the stub any
-        # flag beyond the registered ones needs a policy file too.
-        self._write_policy(root, policy or "")
+        # Every harvested carrier must be classified -- flags, environment
+        # names AND the .truth/ files the tree itself has. The two the
+        # helper creates are declared here so an arm's policy argument
+        # only ever carries what that arm is about.
+        self._write_policy(root, policy or "", declare_env=declare_env,
+                           declare_policy_file=declare_policy_file)
         return os.path.join(root, "instruments", "waiver-index.py")
 
+    # The .truth/ files the fixture itself creates. Every tree has them,
+    # and the `file` carrier is harvested from that directory, so they
+    # must be classified or every arm fails on the fixture rather than on
+    # what it is testing.
+    FIXTURE_POLICY = (
+        "file:.truth/claims.jsonl  the ledger itself, not a policy.\n"
+        "file:.truth/waiver-not-an-override  the fixture's own policy.\n"
+        "env:FIXTURE_BASELINE_ENV  a constant in the fixture so the tree "
+        "harvests a non-empty env carrier.\n")
+
     @staticmethod
-    def _write_policy(root, body):
+    def _write_policy(root, body, declare_env=True, declare_policy_file=True):
+        # An arm that gives the fixture's env name a REGISTER ROW must not
+        # also declare it -- one waiver, one side, which the sweep checks.
+        head = TestTierCInstruments.FIXTURE_POLICY
+        if not declare_env:
+            head = "".join(l for l in head.splitlines(True)
+                           if not l.startswith("env:"))
+        if not declare_policy_file:
+            head = "".join(l for l in head.splitlines(True)
+                           if "waiver-not-an-override" not in l)
         with open(os.path.join(root, ".truth",
                                "waiver-not-an-override"), "w") as f:
-            f.write("# probe\n" + body)
+            f.write("# probe\n" + head + body)
 
     def _write_stub(self, root, verbs, flags, usage_only=None):
         body = "\n".join(self.STUB_CLI_LINES).format(
@@ -1118,17 +1156,28 @@ class TestTierCInstruments(unittest.TestCase):
             f.write(body + "\n")
         os.chmod(cli, 0o755)
 
+    # The register must SAY it is not total, and the sweep checks the
+    # sentence is there. Every throwaway register carries it, so an arm
+    # that removes it is testing the check rather than the fixture.
+    LIMIT_LINE = "THIS REGISTER IS NOT TOTAL.\n\n"
+
     @staticmethod
-    def _write_register(root, rows):
-        header = ("| flag | verbs | gate it lifts | admitted on | stamp on "
-                  "the record | decays | governing record |\n"
-                  "|---|---|---|---|---|---|---|\n")
-        body = "".join(
-            "| `%s` | %s | a gate | %s | `%s` | no | ADR-000 |\n"
-            % (flag, ", ".join(vs), admitted, stamp)
-            for flag, vs, admitted, stamp in rows)
+    def _write_register(root, rows, limit=True):
+        header = ("| carrier | name | where it applies | gate it lifts | "
+                  "admitted on | stamp on the record | decays | "
+                  "governing record |\n"
+                  "|---|---|---|---|---|---|---|---|\n")
+        body = ""
+        for row in rows:
+            carrier, name, where, admitted, stamp = row
+            body += ("| %s | `%s` | %s | a gate | %s | %s | no | ADR-000 |\n"
+                     % (carrier, name, ", ".join(where), admitted,
+                        stamp if stamp.startswith("NOT COUNTABLE")
+                        else (("`%s`" % stamp) if stamp
+                              else "NOT COUNTABLE")))
+        limit_text = (TestTierCInstruments.LIMIT_LINE if limit else "")
         with open(os.path.join(root, "docs", "waivers.md"), "w") as f:
-            f.write("# Waivers\n\n" + header + body + "\n")
+            f.write("# Waivers\n\n" + limit_text + header + body + "\n")
 
     def _wi(self, inst, root):
         return subprocess.run([sys.executable, inst], cwd=root,
@@ -1148,10 +1197,9 @@ class TestTierCInstruments(unittest.TestCase):
                 tmp, ["claim", "verdict"],
                 {"claim": ["--scope-ok SENTENCE", "--duplicate-ok"],
                  "verdict": ["--orphan-ok SENTENCE"]},
-                [("--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
-                 ("--duplicate-ok", ["claim"], "nothing",
-                  "overridden_duplicates"),
-                 ("--orphan-ok", ["verdict"], "SENTENCE", "orphan_basis")])
+                [("flag", "--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
+                 ("flag", "--duplicate-ok", ["claim"], "nothing", "overridden_duplicates"),
+                 ("flag", "--orphan-ok", ["verdict"], "SENTENCE", "orphan_basis")])
             clean = self._wi(inst, tmp)
             self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
 
@@ -1174,10 +1222,9 @@ class TestTierCInstruments(unittest.TestCase):
                               "verdict": ["--orphan-ok SENTENCE"]})
             self._write_register(
                 tmp,
-                [("--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
-                 ("--duplicate-ok", ["claim"], "nothing",
-                  "overridden_duplicates"),
-                 ("--exit-ok", ["verdict"], "SENTENCE", "orphan_basis")])
+                [("flag", "--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
+                 ("flag", "--duplicate-ok", ["claim"], "nothing", "overridden_duplicates"),
+                 ("flag", "--exit-ok", ["verdict"], "SENTENCE", "orphan_basis")])
             fwd = self._wi(inst, tmp)
             self.assertEqual(fwd.returncode, 1)
             self.assertIn("--exit-ok", fwd.stdout)
@@ -1193,26 +1240,25 @@ class TestTierCInstruments(unittest.TestCase):
         """
         tmp = tempfile.mkdtemp(prefix="waiver-index-")
         try:
-            base = [("--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
-                    ("--duplicate-ok", ["claim"], "nothing",
-                     "overridden_duplicates")]
+            base = [("flag", "--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
+                    ("flag", "--duplicate-ok", ["claim"], "nothing", "overridden_duplicates")]
             inst = self._mini_waiver_tree(
                 tmp, ["claim"],
                 {"claim": ["--scope-ok SENTENCE", "--duplicate-ok"]}, base)
-            self.assertEqual(self._wi(inst, tmp).returncode, 0)
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
 
             # the register claims a rationale where the parser takes none
             self._write_register(
                 tmp, [base[0],
-                      ("--duplicate-ok", ["claim"], "SENTENCE",
-                       "overridden_duplicates")])
+                      ("flag", "--duplicate-ok", ["claim"], "SENTENCE", "overridden_duplicates")])
             lie = self._wi(inst, tmp)
             self.assertEqual(lie.returncode, 1)
             self.assertIn("the parser says", lie.stdout)
 
             # ...and the other way: a sentence flag described as bare
             self._write_register(
-                tmp, [("--scope-ok", ["claim"], "nothing", "scope_basis"),
+                tmp, [("flag", "--scope-ok", ["claim"], "nothing", "scope_basis"),
                       base[1]])
             other = self._wi(inst, tmp)
             self.assertEqual(other.returncode, 1)
@@ -1220,7 +1266,7 @@ class TestTierCInstruments(unittest.TestCase):
 
             # the register names the wrong verbs
             self._write_register(
-                tmp, [("--scope-ok", ["verdict"], "SENTENCE", "scope_basis"),
+                tmp, [("flag", "--scope-ok", ["verdict"], "SENTENCE", "scope_basis"),
                       base[1]])
             verbs = self._wi(inst, tmp)
             self.assertEqual(verbs.returncode, 1)
@@ -1248,9 +1294,8 @@ class TestTierCInstruments(unittest.TestCase):
             inst = self._mini_waiver_tree(
                 tmp, ["claim"],
                 {"claim": ["--scope-ok SENTENCE", "--accept-unsafe-ok"]},
-                [("--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
-                 ("--accept-unsafe-ok", ["claim"], "nothing",
-                  "accept.screened = false")],
+                [("flag", "--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
+                 ("flag", "--accept-unsafe-ok", ["claim"], "nothing", "accept.screened = false")],
                 ledger=ledger)
             out = self._wi(inst, tmp)
             self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
@@ -1279,10 +1324,11 @@ class TestTierCInstruments(unittest.TestCase):
         """
         tmp = tempfile.mkdtemp(prefix="waiver-index-")
         try:
-            rows = [("--scope-ok", ["claim"], "SENTENCE", "scope_basis")]
+            rows = [("flag", "--scope-ok", ["claim"], "SENTENCE", "scope_basis")]
             inst = self._mini_waiver_tree(
                 tmp, ["claim"], {"claim": ["--scope-ok SENTENCE"]}, rows)
-            self.assertEqual(self._wi(inst, tmp).returncode, 0)
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
 
             # Zero rows with a live parser is a DIVERGENCE, not an empty
             # sweep: every flag the CLI accepts is now unlisted.
@@ -1292,7 +1338,7 @@ class TestTierCInstruments(unittest.TestCase):
             lost = self._wi(inst, tmp)
             self.assertEqual(lost.returncode, 1)
             self.assertIn("NOTHING classifies it", lost.stdout)
-            self.assertIn("no table header row", lost.stdout)
+            self.assertIn("no eight-column table header row", lost.stdout)
 
             # a parser with no overrides and a register with one is a
             # DIVERGENCE, not an empty sweep
@@ -1364,12 +1410,13 @@ class TestTierCInstruments(unittest.TestCase):
         """
         tmp = tempfile.mkdtemp(prefix="waiver-index-")
         try:
-            rows = [("--scope-ok", ["claim"], "SENTENCE", "scope_basis")]
+            rows = [("flag", "--scope-ok", ["claim"], "SENTENCE", "scope_basis")]
             inst = self._mini_waiver_tree(
                 tmp, ["claim"],
                 {"claim": ["--scope-ok SENTENCE", "--json"]}, rows,
-                policy="--json  selects machine output; read-only.\n")
-            self.assertEqual(self._wi(inst, tmp).returncode, 0)
+                policy="flag:--json  selects machine output; read-only.\n")
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
 
             # a NEW flag matching neither historical override shape
             self._write_stub(tmp, ["claim"],
@@ -1382,33 +1429,603 @@ class TestTierCInstruments(unittest.TestCase):
             self.assertIn("NOTHING classifies it", new.stdout)
 
             # declaring it not-an-override clears it -- that is the judgement
-            self._write_policy(tmp, "--json  selects machine output; read-only.\n"
-                                    "--single-run  a probe entry.\n")
-            self.assertEqual(self._wi(inst, tmp).returncode, 0)
+            self._write_policy(tmp, "flag:--json  selects machine output; read-only.\n"
+                                    "flag:--single-run  a probe entry.\n")
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
 
             # a declaration with no reason does not
-            self._write_policy(tmp, "--json  selects machine output; read-only.\n"
-                                    "--single-run\n")
+            self._write_policy(tmp, "flag:--json  selects machine output; read-only.\n"
+                                    "flag:--single-run\n")
             bare = self._wi(inst, tmp)
             self.assertEqual(bare.returncode, 1)
             self.assertIn("with no reason", bare.stdout)
 
             # mirror: a declaration whose flag is gone
-            self._write_policy(tmp, "--json  selects machine output; read-only.\n"
-                                    "--single-run  a probe entry.\n"
-                                    "--long-gone  a probe entry.\n")
+            self._write_policy(tmp, "flag:--json  selects machine output; read-only.\n"
+                                    "flag:--single-run  a probe entry.\n"
+                                    "flag:--long-gone  a probe entry.\n")
             stale = self._wi(inst, tmp)
             self.assertEqual(stale.returncode, 1)
             self.assertIn("--long-gone", stale.stdout)
             self.assertIn("outlived its subject", stale.stdout)
 
             # a flag on BOTH sides is a contradiction, not a pass
-            self._write_policy(tmp, "--json  selects machine output; read-only.\n"
-                                    "--single-run  a probe entry.\n"
-                                    "--scope-ok  a probe entry.\n")
+            self._write_policy(tmp, "flag:--json  selects machine output; read-only.\n"
+                                    "flag:--single-run  a probe entry.\n"
+                                    "flag:--scope-ok  a probe entry.\n")
             both = self._wi(inst, tmp)
             self.assertEqual(both.returncode, 1)
             self.assertIn("BOTH a row in", both.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_harvests_every_carrier_it_claims_to(self):
+        """A register of FLAGS whose title reads over BYPASSES is a
+        mis-scoped partition, and a domain left unstated reads as
+        universal. Two carriers besides flags CAN be enumerated -- the
+        environment, from every `os.environ` read and `${NAME:-}` idiom in
+        the tree, and `.truth/`, from the directory listing -- so both get
+        a real reverse direction rather than a hand-kept list.
+
+        The finding that forced this: `TRUTH_SELF_VERDICT=1` lifts the
+        ADR-010 author-is-not-verifier refusal. No flag names it, it
+        stamps nothing, and it is deliberately absent from the refusal
+        text. A register of flags cannot hold it.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            rows = [("flag", "--scope-ok", ["claim"], "SENTENCE",
+                     "scope_basis")]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"], {"claim": ["--scope-ok SENTENCE"]}, rows)
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
+
+            # env, reverse: a source file starts reading a new name
+            probe = os.path.join(tmp, "instruments", "probe.py")
+            with open(probe, "w") as f:
+                f.write('import os\nos.environ.get("TRUTH_NEW_ESCAPE")\n')
+            env = self._wi(inst, tmp)
+            self.assertEqual(env.returncode, 1,
+                             "a new environment name passed: %s" % env.stdout)
+            self.assertIn("TRUTH_NEW_ESCAPE", env.stdout)
+            self.assertIn("NOTHING classifies it", env.stdout)
+
+            # ...and the shell half of the same harvest
+            os.remove(probe)
+            sh = os.path.join(tmp, "scripts", "probe.sh")
+            with open(sh, "w") as f:
+                f.write('X="${TRUTH_SHELL_ESCAPE:-}"\n')
+            shell = self._wi(inst, tmp)
+            self.assertEqual(shell.returncode, 1,
+                             "a shell-carried name passed: %s" % shell.stdout)
+            self.assertIn("TRUTH_SHELL_ESCAPE", shell.stdout)
+
+            # a name ASSIGNED in the same file is a local, not inherited
+            with open(sh, "w") as f:
+                f.write('TRUTH_SHELL_ESCAPE=1\nX="${TRUTH_SHELL_ESCAPE:-}"\n')
+            local = self._wi(inst, tmp)
+            self.assertEqual(local.returncode, 0,
+                             "a name assigned WITHOUT reading itself must not be\n                             "
+                             "reported as inherited: %s" % local.stdout)
+            os.remove(sh)
+
+            # file, reverse: a new .truth/ policy file
+            newpol = os.path.join(tmp, ".truth", "brand-new-opt-out")
+            with open(newpol, "w") as f:
+                f.write("# probe\n")
+            fil = self._wi(inst, tmp)
+            self.assertEqual(fil.returncode, 1,
+                             "a new .truth/ file passed: %s" % fil.stdout)
+            self.assertIn("brand-new-opt-out", fil.stdout)
+            os.remove(newpol)
+
+            # forward, env: a row naming a name nothing reads
+            self._write_register(
+                tmp, rows + [("env", "TRUTH_NOBODY_READS", ["nowhere"],
+                              "nothing", "")])
+            ghost = self._wi(inst, tmp)
+            self.assertEqual(ghost.returncode, 1)
+            self.assertIn("TRUTH_NOBODY_READS", ghost.stdout)
+            self.assertIn("outlived it", ghost.stdout)
+
+            # forward, file: a row naming a policy file that is not there
+            self._write_register(
+                tmp, rows + [("file", ".truth/not-here", ["nowhere"],
+                              "nothing", "")])
+            nofile = self._wi(inst, tmp)
+            self.assertEqual(nofile.returncode, 1)
+            self.assertIn(".truth/not-here", nofile.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_checks_admitted_on_for_every_carrier(self):
+        """The controlled vocabulary is not a flag-only rule.
+
+        It was checked below the `carrier != "flag"` return, so 21 of 32
+        rows could hold arbitrary prose in that column while the summary
+        line counted them in neither bucket -- announcing a total larger
+        than its own parts. A reading that silently shrinks, in the column
+        a previous adversarial pass had already hardened for flags.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            rows = [("flag", "--scope-ok", ["claim"], "SENTENCE",
+                     "scope_basis"),
+                    ("env", "FIXTURE_BASELINE_ENV", ["scripts/fixture-env.sh"],
+                     "nothing", "")]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"], {"claim": ["--scope-ok SENTENCE"]}, rows,
+                policy="", declare_env=False)
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
+
+            for carrier, name, where in (
+                    ("env", "FIXTURE_BASELINE_ENV", ["scripts/fixture-env.sh"]),
+                    ("syntax", "<something>", ["nowhere"])):
+                # keep BOTH baseline rows: dropping the env row would
+                # leave the fixture's env read unclassified, and that
+                # failure would mask the one under test
+                self._write_register(
+                    tmp, [rows[0], rows[1]] + ([] if carrier == "env" else
+                                               [(carrier, name, where,
+                                                 "whatever prose I like, "
+                                                 "banana", "")])
+                    if carrier != "env" else
+                    [rows[0], (carrier, name, where,
+                               "whatever prose I like, banana", "")])
+                got = self._wi(inst, tmp)
+                self.assertEqual(
+                    got.returncode, 1,
+                    "prose in `admitted on` passed on carrier %r: %s"
+                    % (carrier, got.stdout))
+                self.assertIn("must be exactly", got.stdout)
+                self.assertIn("on every carrier", got.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_checks_where_a_non_flag_waiver_applies(self):
+        """A row may abbreviate; it may not point somewhere false.
+
+        SUBSET, not equality -- a register that must list all six readers
+        of a policy file is one nobody reads. What it may not do is name
+        a place the thing does not apply, and the harvest already has the
+        answer two lines away.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            rows = [("flag", "--scope-ok", ["claim"], "SENTENCE",
+                     "scope_basis"),
+                    ("env", "FIXTURE_BASELINE_ENV", ["scripts/fixture-env.sh"],
+                     "nothing", "")]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"], {"claim": ["--scope-ok SENTENCE"]}, rows,
+                declare_env=False)
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
+
+            # abbreviating is fine: name nothing at all
+            self._write_register(
+                tmp, [rows[0], ("env", "FIXTURE_BASELINE_ENV", [],
+                                "nothing", "")])
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                             "a `where` cell must be allowed to name the place that "
+                             "matters rather than every reader")
+
+            # pointing at a file that does not read it is not
+            self._write_register(
+                tmp, [rows[0], ("env", "FIXTURE_BASELINE_ENV",
+                                ["scripts/nobody-reads-this.py"],
+                                "nothing", "")])
+            ghost = self._wi(inst, tmp)
+            self.assertEqual(ghost.returncode, 1)
+            self.assertIn("and it does not", ghost.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_harvest_reaches_the_shapes_this_repo_uses(self):
+        """Three shapes the first harvest missed, all at exit 0.
+
+        `NAME="${NAME:-}"` is the commonest bash way to READ an inherited
+        variable, and treating the assignment as proof of locality missed
+        exactly the idiom this repository's own scripts use -- an earlier
+        version of this suite ASSERTED that miss as correct. The CLI entry
+        point `scripts/truth` is Python with no suffix. And the hook
+        directory is where gate-disabling lives, so every hook name counts,
+        not the three that happen to exist.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            rows = [("flag", "--scope-ok", ["claim"], "SENTENCE",
+                     "scope_basis"),
+                    ("env", "FIXTURE_BASELINE_ENV", ["scripts/fixture-env.sh"],
+                     "nothing", "")]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"], {"claim": ["--scope-ok SENTENCE"]}, rows,
+                declare_env=False)
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
+            os.makedirs(os.path.join(tmp, ".githooks"), exist_ok=True)
+
+            for rel, body in (
+                    ("scripts/self-assign.sh",
+                     'TRUTH_SELF_ASSIGN_BYPASS="${TRUTH_SELF_ASSIGN_BYPASS:-}"\n'),
+                    ("scripts/no-suffix-entry",
+                     '#!/usr/bin/env python3\n'
+                     'import os\nos.environ.get("TRUTH_ENTRYPOINT_BYPASS")\n'),
+                    (".githooks/post-commit",
+                     '#!/usr/bin/env bash\nX="${TRUTH_POSTCOMMIT_BYPASS:-}"\n'),
+                    # NO shebang: only the hook-name list reaches this
+                    # one, so it is what isolates HOOK_NAMES from the
+                    # shebang path. With a shebang the two overlap and
+                    # neither check can be shown to be load-bearing.
+                    (".githooks/post-merge",
+                     'X="${TRUTH_POSTMERGE_BYPASS:-}"\n'),
+                    # `env NAME=value cmd` is the third shell idiom the
+                    # register advertises; without an arm it contributed
+                    # nothing measurable to the harvest.
+                    ("scripts/envrun.sh",
+                     'env TRUTH_ENVRUN_BYPASS=1 true\n')):
+                path = os.path.join(tmp, rel)
+                with open(path, "w") as f:
+                    f.write(body)
+                got = self._wi(inst, tmp)
+                self.assertEqual(
+                    got.returncode, 1,
+                    "the harvest walked past %s: %s" % (rel, got.stdout))
+                self.assertIn("BYPASS", got.stdout)
+                os.remove(path)
+
+            # a genuine local -- assigned without reading itself -- is not
+            # reported, or the harvest would cry on every shell script
+            local = os.path.join(tmp, "scripts", "genuine-local.sh")
+            with open(local, "w") as f:
+                f.write('TRUTH_REAL_LOCAL=1\nX="${TRUTH_REAL_LOCAL:-}"\n')
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                             "a name assigned without reading itself must not be reported "
+                             "as inherited")
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_refuses_a_carrier_that_harvested_nothing(self):
+        """ADR-042 rule 2, per carrier.
+
+        This repository always has flags, environment reads and `.truth/`
+        files. A zero for any of them is a broken harvest, not a clean
+        escape surface -- and guarding only rows-and-flags left the two
+        new carriers able to agree with an empty register.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            rows = [("flag", "--scope-ok", ["claim"], "SENTENCE",
+                     "scope_basis"),
+                    ("env", "FIXTURE_BASELINE_ENV", ["scripts/fixture-env.sh"],
+                     "nothing", "")]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"], {"claim": ["--scope-ok SENTENCE"]}, rows,
+                declare_env=False)
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
+
+            # remove the tree's only env read AND its row: empty agrees
+            # with empty, which is the case that must not exit 0
+            os.remove(os.path.join(tmp, "scripts", "fixture-env.sh"))
+            self._write_register(tmp, [rows[0]])
+            self._write_policy(tmp, "")
+            empty = self._wi(inst, tmp)
+            self.assertEqual(empty.returncode, 8,
+                             "an empty carrier agreed with an empty register: "
+                             "%s%s" % (empty.stdout, empty.stderr))
+            self.assertIn("harvested ZERO for carrier(s) env", empty.stderr)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_marks_only_the_row_a_finding_is_about(self):
+        """The per-row FAIL mark must be name-scoped, not a substring
+        search over every failure line.
+
+        The real case: `.truth/waiver-not-an-override` is itself a row in
+        this register -- the escape surface's own escape surface -- and
+        almost every failure message NAMES that path, because it is where
+        an unclassified thing must be declared. Under a substring match
+        that row showed FAIL whenever anything else failed. Same defect as
+        reading the `admitted on` column by substring, which a prior
+        review had already found once; a fix reported as self-caught and
+        held by nothing is not a fix.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            rows = [("flag", "--scope-ok", ["claim"], "SENTENCE",
+                     "scope_basis"),
+                    ("env", "FIXTURE_BASELINE_ENV", ["scripts/fixture-env.sh"],
+                     "nothing", ""),
+                    # the row whose NAME is inside other messages
+                    ("file", ".truth/waiver-not-an-override",
+                     ["instruments/waiver-index.py"], "SENTENCE", "")]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"], {"claim": ["--scope-ok SENTENCE", "--json"]},
+                rows, policy="flag:--json  read-only.\n", declare_env=False,
+                declare_policy_file=False)
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                             "a control tree with nothing seeded must pass")
+
+            # seed a failure ABOUT --json, whose message names the policy
+            # path -- and therefore names the `file` row above
+            self._write_policy(tmp, "", declare_env=False,
+                               declare_policy_file=False)
+            got = self._wi(inst, tmp)
+            self.assertEqual(got.returncode, 1)
+            self.assertIn("--json", got.stdout)
+            # a ROW line carries the name immediately after the mark;
+            # a FAILURE line merely mentions it somewhere, which is the
+            # whole point of this arm
+            row_line = [l for l in got.stdout.splitlines()
+                        if l.startswith("OK    .truth/waiver-not-an-override")
+                        or l.startswith("FAIL  .truth/waiver-not-an-override")]
+            self.assertEqual(len(row_line), 1, got.stdout)
+            self.assertTrue(
+                row_line[0].startswith("OK "),
+                "the row for .truth/waiver-not-an-override was marked FAIL "
+                "because an unrelated failure line merely NAMED it; the mark "
+                "must be scoped to the row the finding is about: %r"
+                % row_line[0])
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_finds_the_register_table_by_its_shape(self):
+        """`docs/waivers.md` carries more than one table.
+
+        Matching a header on its first cell alone binds the parser to
+        whichever table comes first, and the register would then be read
+        from the wrong one -- reporting every real row as sitting below a
+        blank line. The eight-column shape is what keeps the two apart,
+        and until this arm existed that fix was held by nothing.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            rows = [("flag", "--scope-ok", ["claim"], "SENTENCE",
+                     "scope_basis"),
+                    ("env", "FIXTURE_BASELINE_ENV", ["scripts/fixture-env.sh"],
+                     "nothing", "")]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"], {"claim": ["--scope-ok SENTENCE"]}, rows,
+                declare_env=False)
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                             "a control tree with nothing seeded must pass")
+
+            # a SECOND table above the register, whose first cell is also
+            # `carrier` -- exactly the shape of the domain statement in
+            # the real file
+            reg = os.path.join(tmp, "docs", "waivers.md")
+            with open(reg, encoding="utf-8") as f:
+                body = f.read()
+            decoy = ("| carrier | enumerated from | reverse direction |\n"
+                     "|---|---|---|\n"
+                     "| flag | the parser | gated |\n\n")
+            with open(reg, "w", encoding="utf-8") as f:
+                f.write(body.replace("| carrier | name |", decoy +
+                                     "| carrier | name |", 1))
+            got = self._wi(inst, tmp)
+            self.assertEqual(
+                got.returncode, 0,
+                "the parser bound to a three-column table whose first cell "
+                "is also `carrier`, so the register was read from the wrong "
+                "one: %s%s" % (got.stdout, got.stderr))
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_requires_the_register_to_state_its_own_limit(self):
+        """Three carriers cannot be enumerated from any source, so the
+        register must say it is not total -- in itself, where a reader of
+        it alone will see it.
+
+        The sentence is GATED because a limit held by nothing is the first
+        thing a redraft deletes. This same effort lost a finding about six
+        overdue gate-metrics reviews exactly that way, replaced by a
+        sentence that could not be checked.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            rows = [("flag", "--scope-ok", ["claim"], "SENTENCE",
+                     "scope_basis")]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"], {"claim": ["--scope-ok SENTENCE"]}, rows)
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
+
+            self._write_register(tmp, rows, limit=False)
+            gone = self._wi(inst, tmp)
+            self.assertEqual(gone.returncode, 1,
+                             "the register dropped its limit statement and "
+                             "still passed: %s" % gone.stdout)
+            self.assertIn("does not contain the marker", gone.stdout)
+            self.assertIn("concludes it covers every way a gate can be "
+                          "lifted", gone.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_records_unbounded_carriers_without_checking_them(self):
+        """`syntax`, `config` and `code` have no list to walk back from.
+
+        A `<path>#<selector>` entry is exempt from the one-path and churn
+        budgets by ADR-055: the bypass is carried by PATH SYNTAX, so no
+        flag names it and no directory holds it. Rows in these carriers
+        are recorded and NOT reverse-checked, and the sweep says so rather
+        than implying a coverage it cannot have. An unrecognised carrier
+        is refused, because a typo would silently buy that exemption.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            rows = [("flag", "--scope-ok", ["claim"], "SENTENCE",
+                     "scope_basis")]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"], {"claim": ["--scope-ok SENTENCE"]}, rows)
+
+            # an unbounded row names something no source enumerates, and
+            # passes precisely because there is nothing to check it against
+            self._write_register(
+                tmp, rows + [("syntax", "<path>#<selector>", ["--paths"],
+                              "nothing", "")])
+            ok = self._wi(inst, tmp)
+            self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
+            self.assertIn("unbounded carriers", ok.stdout)
+            self.assertIn("<path>#<selector>", ok.stdout)
+            self.assertIn("NOT total", ok.stdout)
+
+            # a carrier nobody declared is refused, not silently exempted
+            self._write_register(
+                tmp, rows + [("sintax", "<path>#<typo>", ["--paths"],
+                              "nothing", "")])
+            typo = self._wi(inst, tmp)
+            self.assertEqual(typo.returncode, 1,
+                             "a misspelled carrier bought an exemption: %s"
+                             % typo.stdout)
+            self.assertIn("is not one of", typo.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_policy_keys_name_their_carrier(self):
+        """One name can be a flag on one carrier and nothing on another,
+        and a bare key cannot say which list it is excused FROM."""
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            rows = [("flag", "--scope-ok", ["claim"], "SENTENCE",
+                     "scope_basis")]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"],
+                {"claim": ["--scope-ok SENTENCE", "--json"]}, rows,
+                policy="flag:--json  read-only.\n")
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
+
+            self._write_policy(tmp, "--json  read-only.\n")
+            bare = self._wi(inst, tmp)
+            self.assertEqual(bare.returncode, 1)
+            self.assertIn("is not a namespaced key", bare.stdout)
+
+            self._write_policy(tmp, "syntax:--json  read-only.\n")
+            unb = self._wi(inst, tmp)
+            self.assertEqual(unb.returncode, 1,
+                             "an unbounded carrier was used as an excuse "
+                             "namespace: %s" % unb.stdout)
+            self.assertIn("which is not harvested", unb.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_earns_not_countable_rather_than_asserting_it(self):
+        """NOT COUNTABLE is a claim that no separating predicate exists,
+        and it has to be earned like any other claim.
+
+        Two ways it was asserted instead of earned, both fixed here:
+
+        A file-carried waiver's uses ARE its lines -- one non-comment
+        entry is one standing excusal, and `wc -l` is the count. Marking
+        those unmeasurable suppressed 209 of them, and turned the
+        DELIBERATE emptiness of `.truth/generated-paths` (whose own header
+        says emptiness is a statement) into an absence.
+
+        And `--ttl-days` was declared uncountable on the claim that its
+        override is "the ABSENCE of `ttl_default`, which no presence test
+        separates". The separating predicate is one line of the grammar
+        below and it answers 2, not "unmeasurable".
+
+        Over-suppression reads as humility and hides a number. It is the
+        mirror of the earlier, correct decision that a WRONG population is
+        worse than none -- so a missing one must be earned too.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            ledger = [
+                # carries a decaying basis, an explicit shelf life, no
+                # default stamp: the one shape that IS the override
+                {"id": "tr-1", "kind": "claim",
+                 "payload": {"scope_basis": "why", "ttl_days": 3650}},
+                # ttl_days present but NULL -- what a claim filed WITHOUT
+                # the flag looks like, and what turned 2 into 6
+                {"id": "tr-2", "kind": "claim",
+                 "payload": {"scope_basis": "why", "ttl_days": None}},
+                # decayed by default, so not an override of the decay
+                {"id": "tr-3", "kind": "claim",
+                 "payload": {"scope_basis": "why", "ttl_days": 30,
+                             "ttl_default": True}},
+                # a shelf life with no override basis at all
+                {"id": "tr-4", "kind": "claim", "payload": {"ttl_days": 90}},
+                # a SECOND default-decayed record. Without it the negation
+                # could be inverted and the count stayed 1 -- the mutation
+                # swapped WHICH record was counted, not how many, and an
+                # arm that asserts a number cannot see that.
+                {"id": "tr-5", "kind": "claim",
+                 "payload": {"paths_basis": "why", "ttl_days": 30,
+                             "ttl_default": True}},
+            ]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"],
+                {"claim": ["--scope-ok SENTENCE", "--ttl-days N"]},
+                [("flag", "--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
+                 ("flag", "--ttl-days", ["claim"], "a value",
+                  "(scope_basis/paths_basis/generated_ok_basis) + ttl_days "
+                  "+ !ttl_default"),
+                 ("file", ".truth/waiver-not-an-override",
+                  ["instruments/waiver-index.py"], "SENTENCE", "ENTRIES"),
+                 ("env", "FIXTURE_BASELINE_ENV", ["scripts/fixture-env.sh"],
+                  "nothing", "")],
+                ledger=ledger, declare_env=False,
+                declare_policy_file=False)
+            out = self._wi(inst, tmp)
+            self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+
+            # exactly one of the four records is the override
+            self.assertRegex(
+                out.stdout, r"\+ !ttl_default\s+1 record",
+                "the separating predicate must count only the record that "
+                "carries a basis, an explicit shelf life and no default "
+                "stamp: %s" % out.stdout)
+            # a file-carried waiver is counted by its entries
+            self.assertRegex(
+                out.stdout, r"waiver-not-an-override\s+\d+ standing entr",
+                "a file-carried waiver's uses are its lines and must be "
+                "counted: %s" % out.stdout)
+            # and the genuinely uncountable one still says so
+            self.assertIn("NOT COUNTABLE", out.stdout)
+            self.assertIn("FIXTURE_BASELINE_ENV", out.stdout)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_waiver_index_refuses_to_print_a_population_it_cannot_take(self):
+        """A stamp whose presence does not mean the waiver was used.
+
+        `ttl_days` is on every claim; `evidence_paths` on every
+        path-claim; `session` and `ts` on every record. Counting those
+        measured the ledger and called it the escape surface -- 268
+        "uses" of --ttl-days on a ledger of 268 claims. A wrong
+        population is worse than a missing one, because it reads as a
+        measurement, so such rows carry NOT COUNTABLE and no number is
+        printed for them.
+        """
+        tmp = tempfile.mkdtemp(prefix="waiver-index-")
+        try:
+            ledger = [{"id": "tr-%d" % i, "kind": "claim",
+                       "payload": {"ttl_days": 30, "scope_basis": "why"}}
+                      for i in range(3)]
+            inst = self._mini_waiver_tree(
+                tmp, ["claim"],
+                {"claim": ["--scope-ok SENTENCE", "--ttl-days N"]},
+                [("flag", "--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
+                 # the REAL shape: a marker AND a backticked field, so the
+                 # convention is what suppresses the count. A cell with no
+                 # field at all cannot tell the two apart, and an earlier
+                 # version of this arm could not make the check go red.
+                 ("flag", "--ttl-days", ["claim"], "a value",
+                  "NOT COUNTABLE -- `ttl_days` is on every claim")],
+                ledger=ledger)
+            out = self._wi(inst, tmp)
+            self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+            self.assertRegex(out.stdout, r"scope_basis\s+3 record")
+            self.assertIn("NOT COUNTABLE", out.stdout)
+            self.assertIn("--ttl-days", out.stdout)
+            self.assertNotRegex(out.stdout, r"ttl_days\s+3 record")
+            self.assertIn("LOWER BOUND", out.stdout)
         finally:
             shutil.rmtree(tmp)
 
@@ -1429,11 +2046,12 @@ class TestTierCInstruments(unittest.TestCase):
         """
         tmp = tempfile.mkdtemp(prefix="waiver-index-")
         try:
-            rows = [("--scope-ok", ["claim"], "SENTENCE", "scope_basis")]
+            rows = [("flag", "--scope-ok", ["claim"], "SENTENCE", "scope_basis")]
             inst = self._mini_waiver_tree(
                 tmp, ["claim"], {"claim": ["--scope-ok SENTENCE", "--json"]},
-                rows, policy="--json  selects machine output; read-only.\n")
-            self.assertEqual(self._wi(inst, tmp).returncode, 0)
+                rows, policy="flag:--json  selects machine output; read-only.\n")
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
 
             # the three real truncations, each in its own shape
             for reason, needle in (
@@ -1445,7 +2063,7 @@ class TestTierCInstruments(unittest.TestCase):
                      "joining word 'so'"),
                     ("a joining word with a full stop after it, so.",
                      "joining word 'so'")):
-                self._write_policy(tmp, "--json  %s\n" % reason)
+                self._write_policy(tmp, "flag:--json  %s\n" % reason)
                 got = self._wi(inst, tmp)
                 self.assertEqual(
                     got.returncode, 1,
@@ -1462,7 +2080,7 @@ class TestTierCInstruments(unittest.TestCase):
                     "it changes where input comes from and nothing about what it does.",
                     "a rendering choice only!",
                     "which transition runs?"):
-                self._write_policy(tmp, "--json  %s\n" % reason)
+                self._write_policy(tmp, "flag:--json  %s\n" % reason)
                 ok = self._wi(inst, tmp)
                 self.assertEqual(
                     ok.returncode, 0,
@@ -1483,10 +2101,11 @@ class TestTierCInstruments(unittest.TestCase):
         """
         tmp = tempfile.mkdtemp(prefix="waiver-index-")
         try:
-            rows = [("--scope-ok", ["claim"], "SENTENCE", "scope_basis")]
+            rows = [("flag", "--scope-ok", ["claim"], "SENTENCE", "scope_basis")]
             inst = self._mini_waiver_tree(
                 tmp, ["claim"], {"claim": ["--scope-ok SENTENCE"]}, rows)
-            self.assertEqual(self._wi(inst, tmp).returncode, 0)
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
 
             for shape, needle in (
                     ("--sneaky-ok reason", "--sneaky-ok"),
@@ -1549,12 +2168,13 @@ class TestTierCInstruments(unittest.TestCase):
         """
         tmp = tempfile.mkdtemp(prefix="waiver-index-")
         try:
-            rows = [("--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
-                    ("--duplicate-ok", ["claim"], "nothing", "overridden_duplicates")]
+            rows = [("flag", "--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
+                    ("flag", "--duplicate-ok", ["claim"], "nothing", "overridden_duplicates")]
             inst = self._mini_waiver_tree(
                 tmp, ["claim"],
                 {"claim": ["--scope-ok SENTENCE", "--duplicate-ok"]}, rows)
-            self.assertEqual(self._wi(inst, tmp).returncode, 0)
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
 
             reg = os.path.join(tmp, "docs", "waivers.md")
             with open(reg, encoding="utf-8") as f:
@@ -1575,11 +2195,12 @@ class TestTierCInstruments(unittest.TestCase):
                                       "| no | ADR-000 | eighth |\n", 1))
             wide = self._wi(inst, tmp)
             self.assertEqual(wide.returncode, 1)
-            self.assertIn("columns, not the seven", wide.stdout)
+            self.assertIn("columns, not the eight", wide.stdout)
 
             # (c) a blank line mid-table orphans the rows below it
             lines = table.splitlines(True)
-            cut = max(i for i, l in enumerate(lines) if l.startswith("| `--"))
+            cut = max(i for i, l in enumerate(lines)
+                      if l.startswith("| flag | `--"))
             with open(reg, "w", encoding="utf-8") as f:
                 f.write("".join(lines[:cut]) + "\n" + "".join(lines[cut:]))
             blank = self._wi(inst, tmp)
@@ -1589,7 +2210,7 @@ class TestTierCInstruments(unittest.TestCase):
             # (d) a duplicate row is one waiver with two homes. Inserted
             # INSIDE the block: appended after it, the truncation finding
             # fires first and this would test the wrong thing.
-            dup_row = ("| `--scope-ok` | claim | a gate | SENTENCE "
+            dup_row = ("| flag | `--scope-ok` | claim | a gate | SENTENCE "
                        "| `scope_basis` | no | ADR-000 |\n")
             with open(reg, "w", encoding="utf-8") as f:
                 f.write(table.replace(dup_row, dup_row + dup_row, 1))
@@ -1599,8 +2220,8 @@ class TestTierCInstruments(unittest.TestCase):
 
             # (e) a first cell with no backticked flag
             with open(reg, "w", encoding="utf-8") as f:
-                f.write(table.replace("| `--duplicate-ok` |",
-                                      "| duplicate-ok |", 1))
+                f.write(table.replace("| flag | `--duplicate-ok` |",
+                                      "| flag | duplicate-ok |", 1))
             nof = self._wi(inst, tmp)
             self.assertEqual(nof.returncode, 1)
             self.assertIn("names no backticked flag", nof.stdout)
@@ -1624,14 +2245,14 @@ class TestTierCInstruments(unittest.TestCase):
         """
         tmp = tempfile.mkdtemp(prefix="waiver-index-")
         try:
-            rows = [("--scope-ok", ["claim"], "SENTENCE", "scope_basis")]
+            rows = [("flag", "--scope-ok", ["claim"], "SENTENCE", "scope_basis")]
             inst = self._mini_waiver_tree(
                 tmp, ["claim"], {"claim": ["--scope-ok SENTENCE"]}, rows)
-            self.assertEqual(self._wi(inst, tmp).returncode, 0)
+            self.assertEqual(self._wi(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
 
             self._write_register(
-                tmp, [("--scope-ok", ["claim"], "SENTENCE, never nothing",
-                       "scope_basis")])
+                tmp, [("flag", "--scope-ok", ["claim"], "SENTENCE, never nothing", "scope_basis")])
             prose = self._wi(inst, tmp)
             self.assertEqual(prose.returncode, 1)
             self.assertIn("must be exactly", prose.stdout)
@@ -1651,8 +2272,8 @@ class TestTierCInstruments(unittest.TestCase):
             inst = self._mini_waiver_tree(
                 tmp, ["claim"],
                 {"claim": ["--scope-ok SENTENCE", "--single-run"]},
-                [("--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
-                 ("--single-run", ["claim"], "nothing", "")],
+                [("flag", "--scope-ok", ["claim"], "SENTENCE", "scope_basis"),
+                 ("flag", "--single-run", ["claim"], "nothing", "")],
                 ledger=[{"id": "tr-1", "kind": "claim",
                          "payload": {"scope_basis": "because"}}])
             out = self._wi(inst, tmp)
@@ -1672,7 +2293,7 @@ class TestTierCInstruments(unittest.TestCase):
         try:
             inst = self._mini_waiver_tree(
                 tmp, ["claim"], {"claim": ["--scope-ok SENTENCE"]},
-                [("--scope-ok", ["claim"], "SENTENCE", "scope_basis")])
+                [("flag", "--scope-ok", ["claim"], "SENTENCE", "scope_basis")])
             bad = subprocess.run([sys.executable, inst, "--nope"], cwd=tmp,
                                  capture_output=True, text=True)
             self.assertEqual(bad.returncode, 2)
@@ -1682,6 +2303,56 @@ class TestTierCInstruments(unittest.TestCase):
             missing = self._wi(inst, tmp)
             self.assertEqual(missing.returncode, 2)
             self.assertIn("not found", missing.stderr)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_register_index_refuses_an_index_broader_than_its_register(self):
+        """A register may declare it does not cover its whole subject. The
+        index row describing it must carry the same declaration.
+
+        Otherwise the index is BROADER than the thing it indexes, and a
+        reader who never opens the register takes the row's description as
+        the whole of it -- which is the mis-scoped partition this
+        repository keeps finding, one level up. It was found here: the
+        waiver register limited itself honestly in its own text while
+        `docs/registers.md` still said "every gate that can be lifted".
+
+        Both directions. A limit stated only in the INDEX is a promise the
+        register never made, and the register is where a reader ends up.
+        """
+        tmp = tempfile.mkdtemp(prefix="register-index-")
+        try:
+            inst = self._mini_register_tree(
+                tmp, ["002-b.md"], ["001-a.md"], "ADR-001 ADR-002\n")
+            index = os.path.join(tmp, "docs", "registers.md")
+            with open(index, encoding="utf-8") as f:
+                table = f.read()
+            self.assertEqual(self._ri(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
+
+            # the register self-limits; the row does not acknowledge it
+            with open(os.path.join(tmp, "docs", "roadmap-v3.md"), "a") as f:
+                f.write("\nTHIS REGISTER IS NOT TOTAL.\n")
+            broad = self._ri(inst, tmp)
+            self.assertEqual(broad.returncode, 1,
+                             "an index row outran its register: %s"
+                             % broad.stdout)
+            self.assertIn("BROADER than the thing it indexes", broad.stdout)
+
+            # acknowledging it in the row clears it
+            with open(index, "w", encoding="utf-8") as f:
+                f.write(table.replace("| roadmap | the plan |",
+                                      "| roadmap | the plan, NOT TOTAL |", 1))
+            self.assertEqual(self._ri(inst, tmp).returncode, 0,
+                             "an index row that acknowledges the register's own limit "
+                             "must pass")
+
+            # ...and the reverse: a limit only the index claims
+            with open(os.path.join(tmp, "docs", "roadmap-v3.md"), "w") as f:
+                f.write("ADR-001 ADR-002\n")
+            promise = self._ri(inst, tmp)
+            self.assertEqual(promise.returncode, 1)
+            self.assertIn("promise the register never made", promise.stdout)
         finally:
             shutil.rmtree(tmp)
 
@@ -1755,7 +2426,8 @@ class TestTierCInstruments(unittest.TestCase):
         try:
             inst = self._mini_register_tree(
                 tmp, ["002-b.md"], ["001-a.md"], "ADR-001 ADR-002\n")
-            self.assertEqual(self._ri(inst, tmp).returncode, 0)
+            self.assertEqual(self._ri(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
 
             stray = os.path.join(tmp, "docs", "loose-note.md")
             with open(stray, "w") as f:
@@ -1770,7 +2442,8 @@ class TestTierCInstruments(unittest.TestCase):
                 f.write("docs/loose-note.md  baseline 2026-01-01, "
                         "unresolved: probe\n")
             self.assertEqual(self._ri(inst, tmp).returncode, 0,
-                             "baselining the uncovered doc did not excuse it")
+                             "a baselined path must be excused, or the baseline excuses "
+                             "nothing")
 
             # reverse (i): it is covered now, so the entry outlived its
             # finding
@@ -1874,7 +2547,8 @@ class TestTierCInstruments(unittest.TestCase):
                 tmp, ["002-b.md"], ["001-a.md"], "ADR-001\n",
                 baseline=("adr-unaccounted:ADR-002  baseline 2026-01-01, "
                           "unresolved: probe\n"))
-            self.assertEqual(self._ri(inst, tmp).returncode, 0)
+            self.assertEqual(self._ri(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
 
             base = os.path.join(tmp, ".truth", "register-index-baseline")
             with open(base, "w") as f:
@@ -1944,7 +2618,8 @@ class TestTierCInstruments(unittest.TestCase):
         try:
             inst = self._mini_register_tree(
                 tmp, ["002-b.md"], ["001-a.md"], "ADR-001 ADR-002\n")
-            self.assertEqual(self._ri(inst, tmp).returncode, 0)
+            self.assertEqual(self._ri(inst, tmp).returncode, 0,
+                                         "a control tree with nothing seeded must pass, or nothing the probes below prove is about the seeded defect")
 
             index = os.path.join(tmp, "docs", "registers.md")
             # A row whose location is not backticked yields no location.
