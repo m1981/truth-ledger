@@ -18,7 +18,17 @@ Fatigue budget: first-touch-per-session dedup keyed on
 (session, file, ledger hash), re-whispering only when the ledger has
 changed since (ADR-005 "fatigue budget, designed in"). The cache file
 doubles as the trial's whisper counter (adoption gate: signal without
-fatigue)."""
+fatigue).
+
+Aggregation (operator ruling 2026-08-28, ruling 3 in
+docs/governance/operator-actions-2026-08-28.md): only P0 hits keep
+their full WATCHED BY line; P1/P2 hits collapse into one line with
+per-tier counts and a pointer to `truth impact <path>`. Basis: J-040's
+recount measured 22.6 claims named per edit -- a whisper at that volume
+is tuned out, not read, which is the fatigue half of the ADR-005
+adoption gate. A line whose tier the regex cannot parse passes through
+VERBATIM: an unrecognized form must degrade to noise, never to silence
+(the RULING-8 fail-open class)."""
 import hashlib
 import json
 import os
@@ -125,9 +135,23 @@ if r.returncode == 3 and r.stdout.strip():
             f.write(key + "\n")
     except OSError:
         pass  # fail open: whisper still fires, just undeduped this time
+    # Aggregate below P0 (ruling 3, 2026-08-28): full lines fatigue at
+    # 22.6 claims/edit (J-040). Unparseable lines pass through verbatim.
+    kept, counts = [], {"P1": 0, "P2": 0}
+    for line in r.stdout.strip().splitlines():
+        m = re.search(r"\((P[0-2]), ", line)
+        if m and m.group(1) in counts:
+            counts[m.group(1)] += 1
+        else:
+            kept.append(line)
+    if counts["P1"] or counts["P2"]:
+        kept.append(
+            f"editing {rel} -> also watched by {counts['P1']} P1 and "
+            f"{counts['P2']} P2 claim(s), aggregated per operator ruling "
+            f"2026-08-28 -- full view: scripts/truth impact {rel}")
     emit("allow", additionalContext=(
         "truth-ledger whisper (mechanical prediction, not judgment):\n"
-        + r.stdout.strip()))
+        + "\n".join(kept)))
 elif r.returncode not in (0, 3):
     print(f"truth impact unavailable (exit {r.returncode}): "
           f"{r.stderr.strip()[:200]}", file=sys.stderr)

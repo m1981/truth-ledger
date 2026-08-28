@@ -447,6 +447,41 @@ class TestClaudeWhisperHook(unittest.TestCase):
             subprocess.run(["git", "-C", self.sb.root, "worktree", "remove", "--force", wt_dir], capture_output=True)
             shutil.rmtree(wt_dir, ignore_errors=True)
 
+    def test_whisper_aggregates_below_p0(self):
+        """Operator ruling 2026-08-28 (ruling 3): P0 hits keep their full
+        WATCHED BY line; P1/P2 hits collapse into ONE aggregate line with
+        counts and a pointer to `truth impact`. Red-proven against the
+        pre-ruling hook, which injected every line verbatim."""
+        self.sb.write_file("watched.py", "print('hello')\n")
+        self.sb.git_commit("add watched.py")
+        for text, tier in (
+                ("watched.py drives the p0 boot path", "P0"),
+                ("watched.py carries the p1 helper table", "P1"),
+                ("watched.py mentions the p2 naming footnote", "P2")):
+            res = self.sb.run_truth(
+                "claim", text, "--class", "VERIFIED",
+                "--evidence-cmd", "cat watched.py", "--paths", "watched.py",
+                "--tier", tier)
+            self.assertEqual(res.returncode, 0, res.stderr)
+
+        payload = {
+            "session_id": f"s-agg-{int(time.time()*1000)}",
+            "tool_input": {"file_path": os.path.join(self.sb.root, "watched.py")}
+        }
+        res = self._run_hook(payload)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        ctx = json.loads(res.stdout)["hookSpecificOutput"].get("additionalContext", "")
+        self.assertIn("drives the p0 boot path", ctx,
+                      "a P0 hit must keep its full line")
+        self.assertNotIn("p1 helper table", ctx,
+                         "a P1 hit must not appear as a full line")
+        self.assertNotIn("p2 naming footnote", ctx,
+                         "a P2 hit must not appear as a full line")
+        self.assertIn("1 P1 and 1 P2", ctx,
+                      "the aggregate line must carry per-tier counts")
+        self.assertIn("truth impact watched.py", ctx,
+                      "the aggregate line must point at the full view")
+
     def test_deny_pattern_malformed_fails_closed(self):
         """Deny stage: a malformed regex in truth-whisper.deny fails CLOSED."""
         deny_file = os.path.join(self.sb.root, "scripts", "truth-whisper.deny")

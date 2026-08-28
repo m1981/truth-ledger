@@ -9,6 +9,14 @@ Work items live in the same ledger (ADR-002): pick work with
 `scripts/truth ready` (only premise-valid items show), close with
 `scripts/truth done <wk-id> --claim "<fact>"` (claim-at-death). Verbs and
 the tracker seam are documented in template/.truth/README.md — cite, don't restate.
+Verdicts are dispatch-gated (operator rulings 1-2, 2026-08-28,
+docs/governance/operator-actions-2026-08-28.md): a fresh verifier is
+warranted only for a P0 claim, a fresh divergence, or a claim a decision
+is about to rest on; a P2 claim gets no verdict ceremony —
+`scripts/truth reproduce` is the standing recheck for everything.
+Orientation ("what neighbors what") is pull-based via the external
+labels-deps scan (`brief`/`impact`/`find`); facts ("is this still true")
+stay with `scripts/truth`. labels-deps feeds no gate (ruling 6, same file).
 Never edit .truth/claims.jsonl directly; status changes are new records.
 `scripts/truth` is a SYMLINK to `template/scripts/truth`: watch the REAL
 path in `evidence_paths`, because a watch on the symlink can never fire --
