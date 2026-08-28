@@ -139,13 +139,33 @@ the corpus by design, so a dead citation there is not a finding.
 reached by a root); `instruments/register-index.py` (every register's location
 and currency, both directions).
 
-**Defeat condition.** A check no root invokes AND whose filename misses the
-sweep's patterns. **Not hypothetical: `scripts/retracted-figures.sh` is in
-that class today**, named in `scope.md`. And `docs/registers.md` delegates
-this question to a sweep that cannot see three of the five instruments it
-names.
+**Defeat condition.** Not "a check no root invokes" — that formulation was
+wrong here and is corrected below. The real one: **a live check the
+reachability sweep cannot enumerate, while the sweep reports that every check
+it found was reached.** The sweep's answer is true over the set it can see and
+is read as true over the set that exists.
 
-**Status: PARTIAL, and the gap is documented rather than closed.**
+**Instanced, and it is not hypothetical.** `scripts/retracted-figures.sh` runs
+on every push — `scripts/release-battery.sh:151` invokes it and the push
+output carries `ok retracted-figures -- 2 figure(s), 5 occurrence(s)`. It does
+NOT appear in `bash scripts/gate-reachability.sh`, which lists twelve paths
+and reports *"14 checks examined, every one reached by a root"*. A live gate
+runs outside the measure of gate coverage, and the measure says nothing is
+missing.
+
+This corrects a claim made in `docs/scope.md` and copied into an earlier draft
+of this leaf without checking either half: that file's blind-spot list calls
+`retracted-figures.sh` "a check that no root invokes AND whose filename does
+not match the sweep's patterns". The second conjunct holds; **the first is
+false**, so the example failed as stated while the underlying blind spot was
+real and worse than described. The correction is recorded rather than quietly
+applied, because the original stood in the charter and was carried into this
+case within an hour of the case being written.
+
+Also standing: `docs/registers.md` delegates this question to a sweep that
+cannot see three of the five instruments it names.
+
+**Status: PARTIAL, and the gap is now stated at its true size.**
 
 ### C7 — a measure reports green having examined nothing
 
@@ -158,7 +178,10 @@ against 12, green for four days.
 
 **Defeat condition.** A counter that enumerates by pattern in a surface
 `capsule-blindness.py` cannot read — it reads `.truth/claims.jsonl` only.
-**Instanced twice this week, in `scripts/release-battery.sh`, both withdrawn**
+**`scripts/gate-reachability.sh` is one such counter** (see C6): it enumerates
+by filename pattern and reports completeness over what it recognised, which is
+the RULING-8 shape one register over.
+**Instanced twice more this week, in `scripts/release-battery.sh`, both withdrawn**
 (`docs/reviews/plan-mode-review-2026-08-26.md`,
 `docs/reviews/battery-nested-stub-review-2026-08-28.md`).
 

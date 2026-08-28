@@ -68,9 +68,23 @@ the invalidation records that were retired at PPV 3.6%.
 State it plainly, because a system that hides its blind spot is worse than
 one that has a bigger one:
 
-- A **check that no root invokes** and whose filename does not match the
-  patterns in `scripts/gate-reachability.sh`. This is not hypothetical:
-  `scripts/retracted-figures.sh` is in that class today.
+- A **live check the coverage sweep cannot enumerate.**
+  `scripts/gate-reachability.sh` reports *"every one reached by a root"* over
+  the set it recognises by filename pattern, and `scripts/retracted-figures.sh`
+  runs on every push — `scripts/release-battery.sh:151` invokes it — without
+  appearing in that list. The measure of gate coverage is itself enumerated by
+  pattern, which is the RULING-8 class one register over, and
+  `instruments/capsule-blindness.py` cannot see it because it reads
+  `.truth/claims.jsonl` only.
+  *Corrected 2026-08-28.* This entry previously read "a check that no root
+  invokes AND whose filename does not match the patterns" and named the same
+  file. The second conjunct held; **the first was false**, so the example
+  failed as stated while the blind spot behind it was real and larger. The
+  correction is dated rather than quietly applied because the false version
+  was copied into `docs/assurance.md` C6 within an hour of that case being
+  written, by an author who checked neither half. The Status line above is
+  untouched: this is a descriptive sentence, not one of the refusals, and a
+  description is overturned by measurement rather than by a new ruling.
 - A **sentence that is false and cites nothing.** `fact-health.sh` polices
   citations; a false recital carrying no citation is invisible to it. This
   is stated in ADR-060 and accepted.
