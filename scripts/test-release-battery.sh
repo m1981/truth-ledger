@@ -84,7 +84,8 @@ cleanup_mutants() {
   # presence at exit is normal and must not be announced -- a cleanup
   # notice that fires on every healthy run is a notice nobody reads, and
   # then the one run with real debris looks like all the others.
-  rm -f scripts/.skip-stub.py
+  [ -n "${STUBDIR:-}" ] && rm -rf "$STUBDIR"
+  rm -f scripts/.skip-stub.py   # pre-2026-08-28 location, in case of stale debris
   for m in scripts/.arm*.sh scripts/test-zz-dark-arm.sh; do
     [ -e "$m" ] || continue
     rm -f "$m"; found=1
@@ -204,7 +205,18 @@ run() {  # run <script> [env assignments...] -> sets OUT and RC as GLOBALS
 # feed the battery SYNTHETIC suite output through a stub, because the
 # alternative is mutating the suites themselves, which live in template/
 # and answer to the canary.
-STUB="scripts/.skip-stub.py"
+# OUTSIDE the measured tree, deliberately (2026-08-28). This stub used to
+# live at scripts/.skip-stub.py, and the day gate-reachability.sh learned
+# to assert its own complement (83cd6c2) the two gates collided: while this
+# suite runs, the stub EXISTS, the literal `python3 <stub>` in the skip_arm
+# sed scripts below is a textual edge from this (reached) file, and the
+# nested battery's sweep flags a reached file no CHECK pattern names --
+# blocking the push through ARM 13. A `not-a-check:` declaration cannot fix
+# it: the stub is transient, so the entry would fail the mirror rule
+# ("no root reaches it") on every run where the stub is absent. A fixture
+# has no business being a node in the graph that measures the repo.
+STUBDIR="$(mktemp -d "${TMPDIR:-/tmp}/truth-skipstub.XXXXXX")"
+STUB="$STUBDIR/skip-stub.py"
 cat > "$STUB" <<'PY'
 #!/usr/bin/env python3
 """Synthetic suite output for the skip-awareness arms: prints whatever
@@ -373,7 +385,7 @@ fi
 
 if want 7; then
 echo "ARM 7: a SKIPPED pinned surface must fail the version-lockstep arm"
-skip_arm 7 's|python3 template/scripts/test-truth-core\.py TestCrossSurfaceVersions|python3 scripts/.skip-stub.py|' \
+skip_arm 7 's|python3 template/scripts/test-truth-core\.py TestCrossSurfaceVersions|python3 '"$STUB"'|' \
   "version lockstep" "version lockstep" \
   $'Ran 7 tests in 0.010s\n\nOK (skipped=1)' $'Ran 7 tests in 0.010s\n\nOK' \
   "a skipped pinned surface fails lockstep, and the same surfaces pass when none is skipped"
@@ -382,7 +394,7 @@ fi
 
 if want 8; then
 echo "ARM 8: ANY skip in the core suite must fail"
-skip_arm 8 's|python3 template/scripts/test-truth-core\.py 2>&1|python3 scripts/.skip-stub.py 2>\&1|' \
+skip_arm 8 's|python3 template/scripts/test-truth-core\.py 2>&1|python3 '"$STUB"' 2>\&1|' \
   "core suite" "core suite" \
   $'Ran 531 tests in 1.000s\n\nOK (skipped=1)' $'Ran 531 tests in 1.000s\n\nOK' \
   "a skipped core test fails the arm, and an unskipped run still passes"
@@ -391,7 +403,7 @@ fi
 
 if want 9; then
 echo "ARM 9: ANY skip in the v04 suite must fail (no baseline there)"
-skip_arm 9 's|python3 template/scripts/test-truth-v04\.py|python3 scripts/.skip-stub.py|' \
+skip_arm 9 's|python3 template/scripts/test-truth-v04\.py|python3 '"$STUB"'|' \
   "v04 suite" "v04 suite" \
   $'Ran 13 tests in 0.100s\n\nOK (skipped=1)' $'Ran 13 tests in 0.100s\n\nOK' \
   "a skipped fold invariant fails the v04 arm, and an unskipped run still passes"
@@ -400,7 +412,7 @@ fi
 
 if want 10; then
 echo "ARM 10: ANY skip in the structural suite must fail"
-skip_arm 10 's|python3 template/scripts/test-structural\.py|python3 scripts/.skip-stub.py|' \
+skip_arm 10 's|python3 template/scripts/test-structural\.py|python3 '"$STUB"'|' \
   "structural suite" "structural suite" \
   $'Ran 116 tests in 0.500s\n\nOK (skipped=1)' $'Ran 116 tests in 0.500s\n\nOK' \
   "a skipped selector test fails the structural arm, and an unskipped run still passes"
@@ -409,7 +421,7 @@ fi
 
 if want 11; then
 echo "ARM 11: ANY skip in the integration suite must fail"
-skip_arm 11 's|python3 template/scripts/test-integrations\.py|python3 scripts/.skip-stub.py|' \
+skip_arm 11 's|python3 template/scripts/test-integrations\.py|python3 '"$STUB"'|' \
   "integrations" "integrations" \
   $'Ran 28 tests in 1.000s\n\nOK (skipped=1)' $'Ran 28 tests in 1.000s\n\nOK' \
   "a skipped integration arm fails the arm, and an unskipped run still passes"
