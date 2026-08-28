@@ -558,8 +558,10 @@ with the rest of the Tier C surface. Advisory by design, never a
 refusal: a gate keyed on elapsed time is defeated by `sleep` and would
 teach that bypass (the ADR-011 shape). Latency is measured on FIRST
 agrees only -- later ones are dominated by hash-match reaffirms, which
-are legitimately fast. Gated by scripts/test-instruments.sh (the
-retired canary SEP arms); no schema change.
+are legitimately fast. Gated in the meta-repo by
+template/scripts/test-integrations.py (TestTierCInstruments -- the
+retired canary SEP arms; the interim scripts/test-instruments.sh was
+itself retired at 32022c6); no schema change.
 
 **The staling breakdown** (ADR-050, `truth staling [--since ts]
 [--json]`): what the path-touched-means-stale rule actually cost on

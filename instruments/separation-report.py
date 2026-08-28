@@ -17,7 +17,11 @@ truthlib.shellio.load_events. The pure report itself
 (truthlib.reports.separation_report) moved there with A2. Stdlib only.
 
 Usage: python3 instruments/separation-report.py [--json]
-Gate:  scripts/test-instruments.sh
+Gate:  template/scripts/test-integrations.py (TestTierCInstruments),
+       run at push by scripts/release-battery.sh. Until 2026-08-28 this
+       line named scripts/test-instruments.sh, retired at 32022c6 -- the
+       same dead pointer field-consumers.py had already recorded in its
+       own header.
 
 
 FAZA 4 (2026-08-17): this is now a META-REPO-LOCAL VIEW, not the

@@ -654,8 +654,10 @@ rm -rf "$AL_TMP"
 # ---- FAULT SEP: RETIRED (ADR-046) ---------------------------------------
 # SEP1/SEP2/SEP3 pinned the ADR-010 separation instrument through the
 # `truth stats` separation section, which left the template CLI (Tier C).
-# Their assertions moved VERBATIM-in-substance to the meta-repo gate
-# scripts/test-instruments.sh, which drives the same separation_report
+# Their assertions moved VERBATIM-in-substance to the meta-repo gate --
+# since 32022c6 template/scripts/test-integrations.py
+# (TestTierCInstruments; the interim scripts/test-instruments.sh is
+# retired) -- which drives the same separation_report
 # through instruments/separation-report.py (incl. the SEP3 negative
 # control and the JSON-field-not-text-grep lesson).
 
@@ -2294,9 +2296,10 @@ rm -rf "$SD"
 # The two override-velocity stats arms ("verbatim re-justification after
 # expiry raised the advisory" and its narrowed-re-file negative control)
 # pinned the `truth stats` overrides section, which left the template CLI
-# (Tier C). Their assertions moved to the meta-repo gate
-# scripts/test-instruments.sh, which seeds the identical expiry/repeat
-# fixture and drives override_report through
+# (Tier C). Their assertions moved to the meta-repo gate -- since
+# 32022c6 template/scripts/test-integrations.py (TestTierCInstruments;
+# the interim scripts/test-instruments.sh is retired) -- which seeds
+# the identical expiry/repeat fixture and drives override_report through
 # instruments/override-velocity.py. The PURE detector tests
 # (TestOverrideReport in test-truth-core.py) never moved.
 
@@ -3314,7 +3317,9 @@ else
 fi
 # BF5 RETIRED (ADR-046): the stats blast section left the template CLI
 # (Tier C). Its render assertion (floor + observed-vs-forecast rows)
-# moved to scripts/test-instruments.sh, driven through
+# moved to the meta-repo gate -- since 32022c6
+# template/scripts/test-integrations.py (TestTierCInstruments; the
+# interim scripts/test-instruments.sh is retired) -- driven through
 # instruments/blast-report.py against the identical hot-watch fixture.
 BFSH="$(mktemp -d)"; TDIRS+=("$BFSH")
 git clone -q --depth 1 "file://$PWD" "$BFSH/shallow" 2>/dev/null

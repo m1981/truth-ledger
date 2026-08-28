@@ -5339,8 +5339,10 @@ class TestStatsCLIShape(unittest.TestCase):
     counts, verdicts, half-life (feeds the FS-1 intake advisory), queue
     aging. The retired TestOverrideReportCLI arms
     (test_verbatim_refile_after_expiry_raises_the_advisory,
-    test_max_scope_ttl_rendered_in_plain_text) moved to
-    scripts/test-instruments.sh, which drives the same assertions
+    test_max_scope_ttl_rendered_in_plain_text) moved to the meta-repo
+    gate -- since 32022c6 template/scripts/test-integrations.py
+    (TestTierCInstruments; the interim scripts/test-instruments.sh is
+    retired) -- which drives the same assertions
     through instruments/override-velocity.py; the pure override_report
     tests above never moved."""
 
@@ -5383,7 +5385,9 @@ class TestConcernsCore(unittest.TestCase):
     the fold stays concern-blind over the legacy records (a tagged claim
     and its untagged twin derive identical status under every
     verdict/invalidation shape). The retired CLI arms (TestConcernsCLI;
-    the stats tally test) live on in scripts/test-instruments.sh."""
+    the stats tally test) live on in template/scripts/test-integrations.py
+    (TestTierCInstruments; the interim scripts/test-instruments.sh is
+    retired since 32022c6)."""
 
     def test_slug_shape_guards_the_legacy_validate_branch(self):
         # CONCERN_RE is what validate's legacy branch shape-checks

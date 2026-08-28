@@ -25,7 +25,11 @@ worth having again, it re-enters as its own Tier C sidecar store, never
 as claim-payload metadata.
 
 Usage: python3 instruments/concern-tag.py [--json]
-Gate:  scripts/test-instruments.sh
+Gate:  template/scripts/test-integrations.py (TestTierCInstruments),
+       run at push by scripts/release-battery.sh. Until 2026-08-28 this
+       line named scripts/test-instruments.sh, retired at 32022c6 -- the
+       same dead pointer field-consumers.py had already recorded in its
+       own header.
 """
 import json
 import os
