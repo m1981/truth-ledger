@@ -109,16 +109,21 @@ sentences).
 
 ## Execution log (this session, 2026-08-28)
 
-- [ ] Ruling 3: whisper aggregation shipped in `scripts/truth-whisper.py`;
-      red-then-green demonstrated in `TestClaudeWhisperHook` (ADR-061 form).
-- [ ] Ruling 3: `wk-5473af07` closed with claim-at-death citing this ruling.
-- [ ] Rulings 1-2: dispatch policy recorded here; AGENTS.md points at this
+- [x] Ruling 3: whisper aggregation shipped in `scripts/truth-whisper.py`;
+      red-then-green demonstrated in `TestClaudeWhisperHook` (ADR-061 form:
+      the failing run's message shows the old verbatim injection).
+- [x] Ruling 3: `wk-5473af07` closed with claim-at-death (the claim id is
+      in the closing ledger records of 2026-08-28).
+- [x] Rulings 1-2: dispatch policy recorded here; AGENTS.md points at this
       file instead of restating it.
-- [ ] Ruling 5: recon over ADR-054..061 (seven read-only agents), claims
-      filed for the shipped subset; the doctrine-only remainder named in the
-      closing session note.
-- [ ] Ruling 6: orientation line added beside the AGENTS.md fact-checking
+- [x] Ruling 5: recon over ADR-054..061 (seven read-only agents; capsules
+      re-run by the filing session before filing). Seven claims filed:
+      054/055/056/059/060 as shipped-mechanism claims, 058 as a dark-gate
+      claim (the script is wired to nothing — itself a finding), 061 as a
+      NORM-status claim (doctrine-only, no gate of its own, and none owed).
+- [x] Ruling 6: orientation line added beside the AGENTS.md fact-checking
       line.
 
 A box above is checked only after the thing it names exists on disk or in
-the ledger; this file was created with every box empty.
+the ledger; this file was created with every box empty and the boxes were
+checked in the same session, after each landing.
