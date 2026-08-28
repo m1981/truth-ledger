@@ -70,6 +70,8 @@ It has no gate, no baseline and no instrument. It is read by a person.
 | 2026-08-26 | two live claims asserting pre-ADR-057 semantics: `tr-56a8e36c` (the ADR-019 canary arm ADR-057 replaced) and `tr-d0191e65` (a clock-reader phrase `template/truthlib/policy.py` no longer contains, the arm having moved to `kernel.ttl_expiry`). Both had been false for two weeks with every instrument green | `python3 template/scripts/truth reproduce` → exit 7; the battery surfaced it at the push boundary | cmd |
 | 2026-08-26 | seven defects in a 45-line change its author had declared green, gate-proven red in both directions and byte-identically restored. Four of them (D1–D4) were one cause: a completeness gate that models only part of the decision it claims to cover. The change was withdrawn, not patched | a reviewer given the diff, the tree and the house conventions, and NOT given the brief, the author's account, or any measurement — `docs/reviews/plan-mode-review-2026-08-26.md` | hist |
 | 2026-08-26 | **`arm-index --record-links` froze a census computed from sources it could not read.** With one SOURCES entry hidden, the ordinary run raised two failures and the refresh printed `recorded 36 link and 221 prose hash(es)` at exit 0 — one link FEWER than the file it overwrote, the unreadable source's arms having silently vanished. The failure list was computed and never printed, because the early return preceded it: the `--record-baseline` shape, one instrument over | an independent audit of the transcript, which recovered the suspicion from the session's first answer; then a demonstration — hide the source, run the flag, watch it write | cmd |
+| 2026-08-28 | **an operator-actions entry that was itself ruling on citation hygiene cited a RETRACTED claim as a live fact.** Six ledger ids were copied from a validator's output into live prose without one status check; `tr-a8bda1a1` had been retracted. Caught at the moment of writing, not two weeks later and not at a push boundary | `bash scripts/fact-health.sh` → `FAIL tr-a8bda1a1 retracted -- live prose stands on a dead fact`. The entry now names that record by line number, and says why | cmd |
+| 2026-08-28 | **a live push-boundary bypass of the entire integration suite**, in a change its author had run green and gate-proven. The stub keyed on an environment variable nothing in the push path clears, and `scripts/release-battery.sh` is the only push-boundary root for that suite -- so the consumer hooks, every Tier C instrument, `register-index` and `waiver-index` were unwatched at push whenever the variable was set. Reproduced end to end: failing test plus the variable gives HOOK_EXIT=0 and "all arms green" | a reviewer given the diff and the tree and NOT the brief -- `docs/reviews/nested-stub-review-2026-08-28.md`; the change was WITHDRAWN, not patched | hist |
 
 ## MISSES — it reached the operator, or lived, despite the apparatus
 
@@ -95,6 +97,9 @@ It has no gate, no baseline and no instrument. It is read by a person.
 | 2026-08-26 | `instruments/capsule-blindness.py` exists precisely for "a capsule that enumerates by pattern counts what it recognises, not what exists" — and could not have caught the above, because `capsule-blindness.py:75` reads `.truth/claims.jsonl` only. A pattern counter living in a shell script is outside its domain | the instrument's domain is the ledger; the class is wider than the instrument. Structural — an instance is repaired by rewriting one counter, the class needs the instrument to reach code | cmd |
 | 2026-08-26 | `bash scripts/test-release-battery.sh 2` dies with `line 262: CANARY_STUB: unbound variable` — the stub is defined inside `if want 1`, so no arm after the first can be exercised alone. Pre-existing; it made both the reviewer's and the dispatcher's per-arm measurements incomplete | no gate covers the suite's own arm-selection wiring; the suite is only ever run whole | cmd |
 | 2026-08-26 | that defect was **suspected in the session's first answer**, stated as "nobody but me knows this, so I am saying it plainly", and then evaporated for the whole session — one of seven escalations the audit found with no repository trace. It was real, and it sat unchecked for forty-odd answers while everything around it was being hardened | nothing carried it. `Otwarte` did not exist yet, and when it did its recall was ~45% against an independently compiled list. This is the instance that turns that statistic into a defect | hist |
+| 2026-08-28 | sixth instance in one session of provenance's harder half: ids were to hand from a validator's line-numbered output, so their identity was supplied by assumption and their status never checked. ADR-063 rule 2 names exactly this and was in memory | nothing checks that a claim id appearing in a draft has been looked up before the draft is written; `fact-health` catches it only once the file exists | hist |
+| 2026-08-28 | the `unset` that would have closed that bypass **had existed** -- in the withdrawn plan-mode diff -- and was deleted by the same hand that later wrote the stub, while reverting that change. Neither step noticed the dependency: the revert saw a line belonging to a dead design, the stub saw an environment variable that already meant "nested" | nothing links a line removed in one change to a change that later depends on it. This is the decision -> dependent-work direction, the same gap as decision -> dependent claims, one register over | hist |
+| 2026-08-28 | **the constraint that would have killed the design was written in the target file before the work began** -- `scripts/release-battery.sh:20-28`: "a check that examined nothing is a FAILURE, never a pass" and "NO SKIP FLAG, deliberately... a second, softer bypass would be this hook teaching its own workaround". The change was a second, softer bypass, written nine paragraphs below the sentence forbidding it | nothing reads a file's own header back to the person editing it. The rule was not missing, not stale, and not hidden -- it was unread | cmd |
 
 ---
 
@@ -138,8 +143,9 @@ assigned by judgement:
 | `watch-derivation.py` | — | detector · "does a claim watch what its recipe reads?" |
 | `doc-health.sh` | — | gate · refuses; refusals are not logged here |
 | `truth-canary.sh` | — | gate · catches seeded faults every run; not logged here |
+| `fact-health.sh` | 1 | gate · refused a draft as it was written |
 | `truth reproduce` (the push-boundary sweep) | 1 | gate · refused a push this very session |
-| review by an agent NOT given the spec | 8 | practice, not an instrument |
+| review by an agent NOT given the spec | 9 | practice, not an instrument |
 | mutation of a gate (ADR-061) | 2 | practice, not an instrument |
 | git history as an oracle | 2 | practice, not an instrument |
 | operator-side reading | 3 | practice, not an instrument |
@@ -149,7 +155,7 @@ assigned by judgement:
 
 ## What the figures currently say
 
-**Twenty-three catches, twenty misses, and the sample is still far too small to
+**Twenty-five catches, twenty-three misses, and the sample is still far too small to
 conclude anything.** That sentence is the honest reading and it should stay
 until the log has run for months, not days.
 

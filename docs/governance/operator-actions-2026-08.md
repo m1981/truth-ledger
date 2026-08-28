@@ -307,3 +307,54 @@ It means an agent exercised three judgements the instrument could not make and
 recorded them where a human can disagree. **Two of the three are reversible by
 a single operator sentence**, and the third — books.md — is reversible by the
 arrival of one more file.
+
+## 2026-08-28 — six permanent ADR-008 warnings stay, and why
+
+**What was decided:** not to silence them. **Who decided:** the operator, on a
+staff-drafted pair of options. **What it is:** every commit that stages
+`.truth/claims.jsonl` re-validates the whole file (`check-truth.sh:62` runs
+`truth validate --stdin` over the staged content), and six lines produce an
+ADR-008 ordering warning every single time.
+
+**What they are.** Lines 4655–4660 are six claims filed on 2026-08-15 and
+appended to the ledger by `dc330c1` on 2026-08-17, landing after records dated
+08-16. Five are `tr-75538ed6`, `tr-2c5de4e2`, `tr-32eea890`, `tr-4603905b`
+and `tr-def87da8`, all unverified. **The sixth is named here by line number
+only, 4656, because it has since been RETRACTED** and this file is live prose:
+naming it would be exactly the "live prose stands on a dead fact" that
+`fact-health` refuses, and it refused this paragraph on its first draft. That
+one of the six is already dead is itself part of the record — it is why the
+count of lines, not the count of live ids, is what this entry pins. The warning's own text offers two readings,
+"legitimate after a union merge, a clock regression otherwise", and
+`git log --merges -- .truth/claims.jsonl` returns nothing, so the first
+reading does not apply here. It is an out-of-order append, two days
+backwards, whose origin git can name even though the file cannot.
+
+**Why it is not a defect of state.** The fold sorts by `(ts, id, canonical
+serialisation)` per ADR-016, so file order changes nothing computed;
+`validate` reports 4791 records OK. The cost is not correctness. It is that
+six contentless alarms fire at every commit, and that is how a reader is
+trained to scroll past ADR-008 — a repository that has already measured what
+an unread signal costs it.
+
+**Why it was not silenced anyway.** The check lives in
+`template/truthlib/kernel.py:667` — template code, shipped to consumers. An
+exception list naming six lines of THIS repository would fail the ADR-003
+placement test, the same test `scripts/fact-health.sh` cites in its own header
+for staying consumer-side. A general mechanism (known-ordering exceptions
+keyed by line content, not line number) would be defensible in the template
+and is a session of work for six lines of noise; the specification slot is
+worth more spent on `wk-8365a92b` or `wk-1fc6ab40`. Rewriting history to
+reorder the lines was rejected without discussion: the ledger is append-only
+and that is its whole point.
+
+**What would reverse it:** a seventh such entry, or the first backwards jump
+whose origin git cannot name. Either turns the noise from known into
+unexplained, and the general mechanism becomes worth its session — with these
+six as its first test case.
+
+**A note on how this one was decided.** The first pair of options put to the
+operator recommended silencing, and was withdrawn before it was acted on: the
+staff work had not checked where the code lived, and ADR-063 rule 8 carries
+its own test — *would I sign what I prepared, if the decision were mine?* The
+answer was no, so the recommendation was replaced rather than defended.
