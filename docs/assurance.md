@@ -135,9 +135,13 @@ the corpus by design, so a dead citation there is not a finding.
 
 ### C6 — the mechanism a sentence names is wired to nothing
 
-**Evidence.** `scripts/gate-reachability.sh` (14 checks examined, every one
-reached by a root); `instruments/register-index.py` (every register's location
-and currency, both directions).
+**Evidence.** `scripts/gate-reachability.sh` — transitive closure from the
+roots, **and, since 2026-08-28, an assertion that its own complement is
+empty**: every file a root reaches which the CHECK patterns do not name must
+be declared `not-a-check:<path> -- <reason>` or the sweep fails.
+`instruments/register-index.py` (every register's location and currency, both
+directions). No count is quoted here on purpose; both figures move, and a
+count in prose is the drift this repository produced three times in one day.
 
 **Defeat condition.** Not "a check no root invokes" — that formulation was
 wrong here and is corrected below. The real one: **a live check the
@@ -145,13 +149,20 @@ reachability sweep cannot enumerate, while the sweep reports that every check
 it found was reached.** The sweep's answer is true over the set it can see and
 is read as true over the set that exists.
 
-**Instanced, and it is not hypothetical.** `scripts/retracted-figures.sh` runs
-on every push — `scripts/release-battery.sh:151` invokes it and the push
-output carries `ok retracted-figures -- 2 figure(s), 5 occurrence(s)`. It does
-NOT appear in `bash scripts/gate-reachability.sh`, which lists twelve paths
-and reports *"14 checks examined, every one reached by a root"*. A live gate
-runs outside the measure of gate coverage, and the measure says nothing is
-missing.
+**Instanced, and then closed — the same day, which is why the instance is
+recorded rather than deleted.** `scripts/retracted-figures.sh` runs on every
+push (`scripts/release-battery.sh:151`) and did not appear in the sweep's
+CHECK patterns, while the verdict said every check found was reached. Adding
+the complement assertion surfaced **nine** reached files outside the
+enumeration, of which **three were live gates**: that file, the whisper hook
+that denies edits, and `scripts/check-truth.sh` — **the commit gate, running
+on every commit, outside the measure of gate coverage**. All are now
+enumerated; the four genuine non-gates carry declarations with reasons.
+
+The class is not closed by that repair, only this instance. The patterns
+remain a hand list — **guarded by its complement**, which is the whole
+difference: anything a root reaches and the list does not name now fails the
+hour it is written.
 
 This corrects a claim made in `docs/scope.md` and copied into an earlier draft
 of this leaf without checking either half: that file's blind-spot list calls
@@ -165,7 +176,12 @@ case within an hour of the case being written.
 Also standing: `docs/registers.md` delegates this question to a sweep that
 cannot see three of the five instruments it names.
 
-**Status: PARTIAL, and the gap is now stated at its true size.**
+**Residual, and it is in the sweep's own header:** a check dispatched through
+a variable-built path is invisible to the textual edge-finder and reads as
+UNREACHABLE — the fail-safe direction, a loud false alarm rather than a quiet
+blessing. That is the remaining way past C6 and it is chosen, not overlooked.
+
+**Status: HELD, with a named residual and a repair dated 2026-08-28.**
 
 ### C7 — a measure reports green having examined nothing
 
@@ -178,9 +194,14 @@ against 12, green for four days.
 
 **Defeat condition.** A counter that enumerates by pattern in a surface
 `capsule-blindness.py` cannot read — it reads `.truth/claims.jsonl` only.
-**`scripts/gate-reachability.sh` is one such counter** (see C6): it enumerates
-by filename pattern and reports completeness over what it recognised, which is
-the RULING-8 shape one register over.
+**`scripts/gate-reachability.sh` WAS one such counter** (see C6): it
+enumerated by filename pattern and reported completeness over what it
+recognised — the RULING-8 shape one register over — until 2026-08-28, when it
+gained the complement assertion this class requires. That is the third time
+this repository has applied the same remedy to the same disease:
+`arm-index`'s reconciliation pass, `waiver-index`'s total classification, and
+now the sweep. The remedy is known; what is missing is anything that finds the
+next instance before a person does.
 **Instanced twice more this week, in `scripts/release-battery.sh`, both withdrawn**
 (`docs/reviews/plan-mode-review-2026-08-26.md`,
 `docs/reviews/battery-nested-stub-review-2026-08-28.md`).

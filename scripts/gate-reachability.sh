@@ -93,7 +93,10 @@ CHECKS="$($LS \
   'template/scripts/*-health.sh' 'template/scripts/truth-canary.sh' \
   'template/scripts/test-*.py' 'template/scripts/session-close.sh' \
   'instruments/field-consumers.py' 'instruments/label-coupling.py' \
-  'instruments/arm-index.py' | sort -u)"
+  'instruments/arm-index.py' \
+  'scripts/check-truth.sh' 'template/scripts/check-truth.sh' \
+  'scripts/retracted-figures.sh' 'scripts/truth-whisper.py' \
+  'scripts/release-battery.sh' | sort -u)"
 ROOTS="$($LS '.githooks/*' | sort -u)
 $($LS '.claude/settings.json')
 $($LS 'template/scripts/install-hooks.sh')"
@@ -195,7 +198,7 @@ while frontier:
     frontier = nxt
 
 # --- opt-out policy ------------------------------------------------------
-excused, advisory = {}, []
+excused, not_a_check, advisory = {}, {}, []
 if optout_state == "absent":
     advisory.append(
         f"ADVISORY: {optout_path} is ABSENT, so no exemption can be honoured "
@@ -219,7 +222,10 @@ else:
         if not reason:
             bad(f"{optout_path}:{n}", f"empty reason for {path}")
             continue
-        excused[path] = reason
+        if path.startswith("not-a-check:"):
+            not_a_check[path[len("not-a-check:"):].strip()] = reason
+        else:
+            excused[path] = reason
 
 # --- verdict -------------------------------------------------------------
 print(f"gate-reachability: {len(checks)} check(s) against {len(roots)} root(s)")
@@ -246,6 +252,51 @@ for c in checks:
                f"after the incident. Wire it, or list it in {optout_path} "
                "with a one-line reason")
 
+# --- THE COMPLEMENT --------------------------------------------------
+# An enumerating recipe that does not also assert its own complement is
+# empty counts what it RECOGNISES, not what EXISTS. That is the RULING-8
+# class (instruments/capsule-blindness.py), and this sweep was an instance
+# of it: `scripts/retracted-figures.sh` runs on every push -- the battery
+# invokes it -- and never appeared in the CHECK patterns, while the verdict
+# below said every check found was reached. So did `scripts/check-truth.sh`,
+# THE COMMIT GATE, and the whisper hook that denies edits. Three live gates
+# outside the measure of gate coverage, and the measure reported nothing
+# missing.
+#
+# The patterns above stay a hand list on purpose. A hand list GUARDED by its
+# complement is safe in a way an unguarded one never is: anything a root
+# reaches that the list does not name fails here, loudly, the hour it is
+# written. capsule-blindness.py cannot do this job -- it reads
+# .truth/claims.jsonl only, so a pattern counter living in a shell script is
+# outside its domain.
+#
+# Second key space in the opt-out file, `not-a-check:<path> -- <reason>`,
+# the shape .truth/register-index-baseline already uses for two key spaces
+# in one file. It carries its own mirror rule below.
+complement = sorted(p for p in via
+                    if p not in checks and p not in roots
+                    and not p.startswith(".githooks/"))
+for p in complement:
+    if p in not_a_check:
+        print(f"  n/a   {p} -- declared not a check: {not_a_check[p]}")
+    else:
+        bad(p, "a root REACHES it and the CHECK patterns do not name it. "
+               "Either it is a gate this sweep is not measuring, or it is "
+               f"not a gate -- say which in {optout_path} as "
+               f"`not-a-check:{p} -- <reason>`. An enumeration that never "
+               "states its own complement counts what it recognises, not "
+               "what exists")
+
+for path, reason in sorted(not_a_check.items()):
+    if path in checks:
+        bad(f"{optout_path}", f"not-a-check:{path} is declared, but the CHECK "
+                              "patterns DO name it -- the two key spaces "
+                              "contradict each other")
+    elif path not in via:
+        bad(f"{optout_path}", f"not-a-check:{path} is declared, but no root "
+                              "reaches it -- the entry outlived its finding, "
+                              "which is itself a failure (mirror rule)")
+
 for path, reason in sorted(excused.items()):
     if path not in checks:
         bad(f"{optout_path}", f"{path} is exempted but is not a check this "
@@ -270,6 +321,8 @@ for a in advisory:
     print(f"  {a}")
 
 print(f"\ngate-reachability: examined {len(checks)} check(s), "
-      f"{reachable} reachable, {unreachable} unreachable, {waived} opted out")
+      f"{reachable} reachable, {unreachable} unreachable, {waived} opted out; "
+      f"{len(complement)} reached file(s) outside the enumeration, "
+      f"{len(not_a_check)} declared not a check")
 sys.exit(1 if fail else 0)
 PY

@@ -29,3 +29,24 @@
 # exclusions, so nobody can waive a whole tree with one character.
 #
 # Add a line here the day a check genuinely has no root — and say why.
+
+# --- SECOND KEY SPACE: not-a-check --------------------------------------
+# Added 2026-08-28 with the complement assertion in the sweep. The first key
+# space answers "this CHECK is unreachable, and deliberately so". This one
+# answers the opposite question, which the sweep could not ask until now:
+# "a root reaches this file and the CHECK patterns do not name it -- is that
+# an unmeasured gate, or not a gate at all?"
+#
+# The question had never been asked, and the answer was three live gates
+# outside the measure: scripts/check-truth.sh (THE COMMIT GATE),
+# scripts/retracted-figures.sh, and scripts/truth-whisper.py. All three are
+# now in the CHECK patterns. What remains below is the honest residue.
+#
+# MIRROR RULE, as everywhere here: an entry naming a path the CHECK patterns
+# DO name, or a path no root reaches, is itself a FAILURE. A declaration that
+# outlived its finding is a gate that looks considered and covers nothing.
+
+not-a-check:scripts/truth -- the CLI itself, reached because hooks invoke it to file and fold records. It is the thing gates are ABOUT, not a gate: it refuses at intake, but those refusals are the subject of the canary's seeded faults, not of reachability
+not-a-check:template/scripts/truth -- the template-side mirror of the same CLI, reached through install-hooks.sh writing consumer hook bodies. Same reason
+not-a-check:scripts/truth-session-digest.py -- the SessionStart hook body. It REPORTS a digest to an agent starting work; it asserts nothing and can fail nothing, which is the census definition of a reporter (docs/governance/catch-log.md)
+not-a-check:template/scripts/truth-bd-adapter.sh -- the ADR-004 tracker adapter seam. It translates between the ledger and an external tracker; a translation layer has no verdict to give
