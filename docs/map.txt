@@ -86,6 +86,7 @@ docs/archive/embriologia-ledgera.md                                       doc   
 docs/archive/truth-ledger-field-notes.md                                  doc          record     Truth Ledger — Field Notes from the First Pilot Deployment
 docs/archive/truth-ledger-paper-v2.md                                     doc          record     The Truth Ledger: A Claim-Invalidation Layer for Agentic Software Development
 docs/archive/truth-ledger-paper.md                                        doc          record     An Append-Only Truth Ledger for Agentic Software Development: Design, Adversarial Falsification, and Repair
+docs/assurance.md                                                         doc          record     Assurance case
 docs/beads-integration-guide.md                                           doc          record     Beads + Truth Ledger — Agent Operating Guide
 docs/books/books.md                                                       doc          record     ❯ Wyjasnij mi jako amatorowi ontologicznemu i metalogicznemy na bazie powyzszej odpowiedzi co to jest i jakie ksiazki powinienem przeczytac zeby sprawni poruszac sie po drabinie ontoligicznej i metateoretycnzej: kanoniczny porzadek, co to jest proza pochodna, normatywy, ramiona, falsyfikacja, ⊊ , podzial idzie od rodzaju bytu, .
 docs/candidate-adoption-analysis-prompt.md                                doc          record     Candidate-adoption analysis — clean-room gold vs. the truth ledger
@@ -98,6 +99,7 @@ docs/decisions/059-asynchronous-semantic-audit.md                         norm  
 docs/decisions/060-normative-prose-cites-a-position.md                    norm         record     ADR-060: Normative prose cites a position, and the citation is freshness-checked
 docs/decisions/061-done-requires-a-red-gate.md                            norm         record     ADR-061: DONE requires a gate that can go red for a named reason
 docs/decisions/062-multi-agent-roles.md                                   norm         record     ADR-062: Agent roles are separated by what each is NOT told
+docs/decisions/063-answers-terminate-their-findings.md                    norm         record     ADR-063: An answer's findings terminate, or the answer is not finished
 docs/decisions/README.md                                                  doc          record     docs/decisions — the live decision register for this repository
 docs/diagnosis-2026-08/00-STATE.md                                        doc          record     Diagnoza truth-ledger — STAN
 docs/diagnosis-2026-08/01-findings.md                                     doc          record     Ustalenia — APPEND-ONLY
@@ -108,13 +110,16 @@ docs/diagrams/asbuilt-architecture.md                                     doc   
 docs/diagrams/concept-map.md                                              doc          record     Truth Ledger — Concept Map
 docs/diagrams/target-design-2026-07-20.md                                 doc          record     > STATUS: historical session artifact (2026-07-20). The antipattern/redesign content here was subsequently ADJUDICATED — most structural fixes were falsified by red-team review; see docs/roadmap-v3.md (do-not-do list) and docs/growth-gate/ for the settled outcomes. Kept for the reasoning record.
 docs/field-notes-2026-08-01-coverage-session.md                           doc          record     Field notes — the coverage session (2026-08-01)
+docs/field-notes-2026-08-28-ceremony-cut-session.md                       doc          record     Field notes — sesja 2026-08-28: cięcie ceremonii, backfill ogona, kolizja dwóch bramek
 docs/field-notes-batch-m-verification-session.md                          doc          record     Field notes — batch-M spec-review & self-verification session (2026-07-19, v0.9.9)
 docs/field-notes-kuchnie-multiagent.md                                    doc          record     Field notes — multi-agent worktree deployment (kuchnie pilot, 2026-07-15/16)
 docs/field-notes-migration-p0-p6.md                                       doc          record     Field notes — the P0–P6 target-shape migration (session of 2026-08-01/02)
 docs/field-notes-sdk-session.md                                           doc          record     Field notes — second-deployment session (temporal-go-agent-sdk)
+docs/governance/architects-crib.md                                        doc          record     Ściąga architekta — prawda na złym poziomie
 docs/governance/catch-log.md                                              doc          record     Catch log
 docs/governance/gate-metrics.md                                           doc          record     Gate-metric registry — Tier B gates and counted overrides
 docs/governance/operator-actions-2026-08-22.md                            doc          record     Operator actions — rulings of 2026-08-22
+docs/governance/operator-actions-2026-08-28.md                            doc          record     Operator actions — rulings of 2026-08-28: cut the ritual, keep the mechanics
 docs/governance/operator-actions-2026-08.md                               doc          record     Operator actions — 2026-08 (post-migration handoff)
 docs/growth-gate/README.md                                                doc          record     Growth-gate archive: gated successor designs
 docs/growth-gate/clean-room-convergence.md                                doc          record     Clean-room convergence check (2026-07-20)
@@ -124,15 +129,20 @@ docs/growth-gate/symbol-tracing-design.md                                 doc   
 docs/growth-gate/tlr-target-architecture-and-adrs.md                      doc          record     Truth Ledger — Target Architecture & ADRs (post-adversarial-review, rev 2)
 docs/growth-gate/vv-archetype-pairings.md                                 doc          record     V&V per spec archetype — pairings, standards map, and the mechanization design
 docs/independent-review.md                                                doc          record     Independent scientific review — truth-ledger paper
+docs/machinery-diagrams.md                                                doc          record     Maszyneria truth-ledger — rysunki struktury (migawka 2026-08-29)
 docs/refactor/00-RUNBOOK.md                                               doc          record     RUNBOOK — refaktor "Reproduce-on-Read"
 docs/refactor/01-JOURNAL.md                                               doc          record     DZIENNIK — refaktor "Reproduce-on-Read"
 docs/registers.md                                                         register     record     Registers — the index of this repository's administered lists
 docs/reviews/agents-md-audit-and-review-2026-08-24.md                     brief        record     AGENTS.md — audit, redraft, and why the redraft is not committed
+docs/reviews/agents-md-review-2026-08-26.md                               brief        record     AGENTS.md — independent review of the uncommitted change, 2026-08-26
+docs/reviews/agents-md-review-handoff-2026-08-26.md                       brief        record     Handoff: an independent review of `AGENTS.md`
 docs/reviews/agents-md-verification-2026-08-24.md                         brief        record     AGENTS.md redraft — verification of every factual claim before the fix
 docs/reviews/aksjomaty.md                                                 brief        record     Trzy poziomy pewności, oznaczone przy każdej pozycji:
 docs/reviews/architecture-repairs-2026-08-13.md                           brief        record     Architectural repairs — agent briefs
 docs/reviews/arm-index-brief-2026-08-14.md                                brief        record     A6 — the arm index: make 781 arms answer "what do you guard?"
 docs/reviews/backtick-paths-measurement-2026-08-24.md                     brief        record     Backtick paths — the measurement, and why open item 1 names the wrong script
+docs/reviews/battery-nested-stub-review-2026-08-28.md                     brief        record     Review: the nested-integrations stub — 2026-08-28
+docs/reviews/blank-canvas.md                                              brief        record     ❯ Nie rob pomiaru. Mam po prostu kryzys poznawczy i kognitywny jako specifikator i architekt tego systemu. Wiedza ktora staram sie ujarzmic siega Arystotelesa i
 docs/reviews/canary-fixture-coupling-2026-08-24.md                        brief        record     Measurement: fixture coupling in truth-canary.sh
 docs/reviews/gates-2026-07/01-proposed-adrs-rev1.md                       brief        record     Proposed ADRs 034–037 — mechanizing the remaining brain-rules
 docs/reviews/gates-2026-07/02-adversarial-review.md                       brief        record     Review of proposed ADRs 034–037
@@ -143,17 +153,22 @@ docs/reviews/gates-2026-07/06-plan-of-record.md                           brief 
 docs/reviews/gates-2026-07/07-proposed-adrs-rev3.md                       brief        record     Proposed ADRs, revision 3 — six records, plan-of-record absorbed
 docs/reviews/gates-2026-07/08-citation-measurement.md                     brief        record     Citation measurement — retracted ids cited outside archive (2026-07-31)
 docs/reviews/gates-2026-07/README.md                                      doc          record     Gates adoption review — 2026-07-30/31
+docs/reviews/how-model-should-respond.md                                  brief        record     Wiesz czego mi brakuje. Twoje ospowiedz czesto niosa wiele spostrzezen a na koncu wiadomosci jest tylko wzmianka jednego. Nie wiem czy to moje wrazenie wiec sprawdz w
+docs/reviews/ivv-grounding-2026-08-26.md                                  brief        record     Grounding note: what actually holds this project up
 docs/reviews/mechanism-layers-brief-2026-08-24.md                         brief        record     TODO — mechanism layers, from the 2026-08-24 session
 docs/reviews/migration-audit-2026-08-02.md                                brief        record     Audit of the P0–P6 target-shape migration — 2026-08-02
 docs/reviews/navigation-cost-analysis-2026-08-24.md                       brief        record     Analysis: why navigation in this repository is expensive
 docs/reviews/open-decisions-brief-2026-08-22.md                           brief        record     Six open decisions, and one defect nobody decided to have
+docs/reviews/plan-mode-review-2026-08-26.md                               brief        record     Review: plan mode in `scripts/release-battery.sh` — 2026-08-26
 docs/reviews/register-index-bidirectional-2026-08-24.md                   brief        record     register-index — the seven open defects, closed, and the rule they all shared
 docs/reviews/register-index-remaining-work.md                             brief        record     Register index — what is left to finish
 docs/reviews/register-index-review-2-2026-08-24.md                        brief        record     Second adversarial review: the ADR-accounting measure (still NOT done)
 docs/reviews/register-index-review-2026-08-24.md                          brief        record     Adversarial review: the register index change (UNCOMMITTED — do not merge as-is)
 docs/reviews/sortals.md                                                   brief        record     ---
+docs/reviews/the-house-sketch-2026-08-26.md                               brief        record     The house — a sketch, from the roof down
 docs/reviews/waiver-carriers-2026-08-25.md                                brief        record     The waiver register was a mis-scoped partition, and it was mine
 docs/reviews/waiver-register-2026-08-24.md                                brief        record     The waiver register — item 0b built, and the false premise it exposed
+docs/reviews/work-in-flight-2026-08-26.md                                 brief        record     Work in flight — 2026-08-26
 docs/roadmap-v3.md                                                        register     record     Roadmap v3 — post-review remediation
 docs/scope.md                                                             charter      record     Scope
 docs/specs/structural-selectors.md                                        doc          record     Structural Selectors
